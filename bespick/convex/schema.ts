@@ -28,6 +28,26 @@ export default defineSchema({
     pollAllowAdditionalOptions: v.optional(v.boolean()),
     pollMaxSelections: v.optional(v.number()),
     pollClosesAt: v.optional(v.number()),
+    votingParticipants: v.optional(
+      v.array(
+        v.object({
+          userId: v.string(),
+          firstName: v.string(),
+          lastName: v.string(),
+          group: v.optional(v.union(v.string(), v.null())),
+          portfolio: v.optional(v.union(v.string(), v.null())),
+          votes: v.optional(v.number()),
+        }),
+      ),
+    ),
+    votingAddVotePrice: v.optional(v.number()),
+    votingRemoveVotePrice: v.optional(v.number()),
+    votingAllowedGroups: v.optional(v.array(v.string())),
+    votingAllowedPortfolios: v.optional(v.array(v.string())),
+    votingAllowUngrouped: v.optional(v.boolean()),
+    votingAllowRemovals: v.optional(v.boolean()),
+    votingLeaderboardMode: v.optional(v.string()),
+    imageIds: v.optional(v.array(v.id('_storage'))),
   })
     .index('by_publishAt', ['status', 'publishAt']) // for schedulers/feeds
     .index('by_type', ['eventType']),

@@ -23,7 +23,7 @@ export default async function AdminCreatePage({
         <p className='mt-2 text-sm text-muted-foreground'>
           {isEditing
             ? 'Update details before an activity goes live or tweak published content.'
-            : 'Draft upcoming morale events and share them with the rest of the team.'}
+            : 'Draft upcoming morale events and share them with the rest of BESPIN.'}
         </p>
       </header>
       <ActivityFormTabs />

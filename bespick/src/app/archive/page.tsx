@@ -5,7 +5,13 @@ import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { MoreVertical } from 'lucide-react';
+import { AnnouncementModal } from '@/components/announcements/announcement-modal';
 import { PollModal } from '@/components/poll/poll-modal';
+import {
+  formatCreator,
+  formatDate,
+  formatEventType,
+} from '@/lib/announcements';
 import { api } from '../../../convex/_generated/api';
 import type { Doc, Id } from '../../../convex/_generated/dataModel';
 
@@ -24,6 +30,8 @@ export default function ArchivePage() {
     React.useState<boolean | null>(null);
   const [activePollId, setActivePollId] =
     React.useState<AnnouncementId | null>(null);
+  const [viewingAnnouncement, setViewingAnnouncement] =
+    React.useState<Announcement | null>(null);
 
   const isLoading = archivedActivities === undefined;
   const hasActivities = (archivedActivities?.length ?? 0) > 0;
@@ -72,6 +80,12 @@ export default function ArchivePage() {
   const handleOpenPoll = React.useCallback((id: AnnouncementId) => {
     setActivePollId(id);
   }, []);
+  const handleViewAnnouncement = React.useCallback(
+    (announcement: Announcement) => {
+      setViewingAnnouncement(announcement);
+    },
+    [],
+  );
 
   return (
     <section className='mx-auto w-full max-w-5xl px-4 py-16'>
@@ -121,6 +135,7 @@ export default function ArchivePage() {
               onEdit={handleEdit}
               deletingId={deletingId}
               onOpenPoll={handleOpenPoll}
+              onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
       </div>
@@ -131,6 +146,13 @@ export default function ArchivePage() {
           onClose={() => setActivePollId(null)}
           isAdmin={isAdmin}
           canVote={Boolean(user)}
+        />
+      )}
+
+      {viewingAnnouncement && (
+        <AnnouncementModal
+          announcement={viewingAnnouncement}
+          onClose={() => setViewingAnnouncement(null)}
         />
       )}
     </section>
@@ -144,6 +166,7 @@ type ArchiveCardProps = {
   onDelete: (id: AnnouncementId) => Promise<void>;
   deletingId: AnnouncementId | null;
   onOpenPoll?: (id: AnnouncementId) => void;
+  onViewAnnouncement: (announcement: Announcement) => void;
 };
 
 function ArchiveCard({
@@ -153,7 +176,9 @@ function ArchiveCard({
   onDelete,
   deletingId,
   onOpenPoll,
+  onViewAnnouncement,
 }: ArchiveCardProps) {
+  const isPollCard = activity.eventType === 'poll';
   const publishedDate = React.useMemo(
     () => formatDate(activity.publishAt),
     [activity.publishAt],
@@ -210,13 +235,22 @@ function ArchiveCard({
           <span className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
             Archived
           </span>
-          {activity.eventType === 'poll' && onOpenPoll && (
+          {isPollCard && onOpenPoll && (
             <button
               type='button'
               onClick={() => onOpenPoll(activity._id)}
               className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
             >
               View Poll
+            </button>
+          )}
+          {!isPollCard && (
+            <button
+              type='button'
+              onClick={() => onViewAnnouncement(activity)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View announcement
             </button>
           )}
         </div>
@@ -234,7 +268,7 @@ function DescriptionPreview({ text }: { text: string }) {
   return (
     <div className='mt-4'>
       <p
-        className='text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap break-words'
+        className='text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap wrap-break-word'
         style={{
           display: '-webkit-box',
           WebkitLineClamp: 2,
@@ -360,29 +394,4 @@ function ArchiveSkeleton() {
       ))}
     </div>
   );
-}
-
-function formatDate(timestamp: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp));
-}
-
-function formatEventType(type: Announcement['eventType']) {
-  return type
-    .split(/[-_]/g)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function formatCreator(createdBy?: string | null) {
-  if (!createdBy || createdBy === 'anonymous') return 'Anonymous';
-  if (createdBy.includes(':')) {
-    return createdBy.split(':')[0];
-  }
-  if (createdBy.includes('|')) {
-    return createdBy.split('|')[0];
-  }
-  return createdBy;
 }

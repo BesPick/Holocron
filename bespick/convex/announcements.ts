@@ -1,6 +1,86 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 
+type VotingParticipant = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  group?: string | null;
+  portfolio?: string | null;
+  votes?: number | null;
+};
+
+type VotingLeaderboardMode = 'all' | 'group' | 'group_portfolio';
+
+function normalizeVotingParticipants(
+  participants: VotingParticipant[] | undefined,
+): VotingParticipant[] {
+  if (!Array.isArray(participants)) return [];
+  const seen = new Set<string>();
+  const normalized: VotingParticipant[] = [];
+  for (const participant of participants) {
+    const userId = participant.userId?.trim();
+    if (!userId || seen.has(userId)) continue;
+    const firstName = (participant.firstName ?? '').trim();
+    const lastName = (participant.lastName ?? '').trim();
+    seen.add(userId);
+    normalized.push({
+      userId,
+      firstName,
+      lastName,
+      group:
+        typeof participant.group === 'string' || participant.group === null
+          ? participant.group
+          : null,
+      portfolio:
+        typeof participant.portfolio === 'string' ||
+        participant.portfolio === null
+          ? participant.portfolio
+          : null,
+      votes:
+        typeof participant.votes === 'number' &&
+        Number.isFinite(participant.votes)
+          ? Math.max(0, Math.floor(participant.votes))
+          : 0,
+    });
+  }
+  return normalized;
+}
+
+function resetVotingParticipantVotes(
+  participants: VotingParticipant[] | null | undefined,
+) {
+  if (!Array.isArray(participants)) return [];
+  return participants.map((participant) => ({
+    ...participant,
+    votes: 0,
+  }));
+}
+
+function normalizePrice(
+  value: number | null | undefined,
+  label: string,
+): number {
+  if (typeof value !== 'number' || Number.isNaN(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative number.`);
+  }
+  return Math.round(value * 100) / 100;
+}
+
+function normalizeLeaderboardMode(
+  value: unknown,
+  fallback: VotingLeaderboardMode,
+): VotingLeaderboardMode {
+  const allowed: VotingLeaderboardMode[] = ['all', 'group', 'group_portfolio'];
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (allowed.includes(lower as VotingLeaderboardMode)) {
+      return lower as VotingLeaderboardMode;
+    }
+  }
+  return fallback;
+}
+
 export const create = mutation({
   args: {
     title: v.string(),
@@ -14,6 +94,24 @@ export const create = mutation({
     pollAllowAdditionalOptions: v.optional(v.boolean()),
     pollMaxSelections: v.optional(v.number()),
     pollClosesAt: v.optional(v.union(v.number(), v.null())),
+    votingParticipants: v.optional(
+      v.array(
+        v.object({
+          userId: v.string(),
+          firstName: v.string(),
+          lastName: v.string(),
+          group: v.optional(v.union(v.string(), v.null())),
+          portfolio: v.optional(v.union(v.string(), v.null())),
+        }),
+      ),
+    ),
+    votingAddVotePrice: v.optional(v.number()),
+    votingRemoveVotePrice: v.optional(v.number()),
+    votingAllowedGroups: v.optional(v.array(v.string())),
+    votingAllowedPortfolios: v.optional(v.array(v.string())),
+    votingAllowUngrouped: v.optional(v.boolean()),
+    votingAllowRemovals: v.optional(v.boolean()),
+    votingLeaderboardMode: v.optional(v.string()),
     eventType: v.optional(
       v.union(
         v.literal('announcements'),
@@ -21,6 +119,7 @@ export const create = mutation({
         v.literal('voting')
       )
     ),
+    imageIds: v.optional(v.array(v.id('_storage'))),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -36,7 +135,7 @@ export const create = mutation({
         ? args.eventType
         : 'announcements';
 
-    if (!cleanedDescription && eventType !== 'poll') {
+    if (!cleanedDescription && eventType === 'announcements') {
       throw new Error('Description is required');
     }
 
@@ -109,6 +208,62 @@ export const create = mutation({
       }
     }
 
+    let votingParticipants: VotingParticipant[] | null = null;
+    let votingAddVotePrice: number | null = null;
+    let votingRemoveVotePrice: number | null = null;
+    let votingAllowedGroups: string[] | null = null;
+    let votingAllowedPortfolios: string[] | null = null;
+    let votingAllowUngrouped = false;
+    let votingAllowRemovals = true;
+    let votingLeaderboardMode: VotingLeaderboardMode = 'all';
+    if (eventType === 'voting') {
+      const participants = normalizeVotingParticipants(
+        args.votingParticipants,
+      );
+      if (participants.length === 0) {
+        throw new Error('Voting events require at least one participant.');
+      }
+      votingParticipants = participants;
+      votingAddVotePrice = normalizePrice(
+        args.votingAddVotePrice,
+        'Price to add a vote',
+      );
+      votingAllowRemovals =
+        typeof args.votingAllowRemovals === 'boolean'
+          ? args.votingAllowRemovals
+          : true;
+      if (votingAllowRemovals) {
+        votingRemoveVotePrice = normalizePrice(
+          args.votingRemoveVotePrice,
+          'Price to remove a vote',
+        );
+      } else {
+        votingRemoveVotePrice = null;
+      }
+      const allowedGroups = Array.isArray(args.votingAllowedGroups)
+        ? Array.from(new Set(args.votingAllowedGroups))
+        : [];
+      const allowedPortfolios = Array.isArray(args.votingAllowedPortfolios)
+        ? Array.from(new Set(args.votingAllowedPortfolios))
+        : [];
+      votingAllowedGroups = allowedGroups;
+      votingAllowedPortfolios = allowedPortfolios;
+      votingAllowUngrouped = Boolean(args.votingAllowUngrouped);
+      votingLeaderboardMode = normalizeLeaderboardMode(
+        args.votingLeaderboardMode,
+        'all',
+      );
+    }
+
+    const providedImageIds =
+      Array.isArray(args.imageIds) && args.imageIds.length > 0
+        ? args.imageIds
+        : [];
+    if (providedImageIds.length > 5) {
+      throw new Error('You can upload up to five images.');
+    }
+    const normalizedImageIds = Array.from(new Set(providedImageIds));
+
     const id = await ctx.db.insert('announcements', {
       title: cleanedTitle,
       description: cleanedDescription,
@@ -128,6 +283,31 @@ export const create = mutation({
         eventType === 'poll' ? pollMaxSelections : undefined,
       pollClosesAt:
         eventType === 'poll' ? pollClosesAt ?? undefined : undefined,
+      votingParticipants:
+        eventType === 'voting' ? votingParticipants ?? undefined : undefined,
+      votingAddVotePrice:
+        eventType === 'voting'
+          ? votingAddVotePrice ?? undefined
+          : undefined,
+      votingRemoveVotePrice:
+        eventType === 'voting'
+          ? votingRemoveVotePrice ?? undefined
+          : undefined,
+      votingAllowedGroups:
+        eventType === 'voting'
+          ? votingAllowedGroups ?? undefined
+          : undefined,
+      votingAllowedPortfolios:
+        eventType === 'voting'
+          ? votingAllowedPortfolios ?? undefined
+          : undefined,
+      votingAllowUngrouped:
+        eventType === 'voting' ? votingAllowUngrouped : undefined,
+      votingAllowRemovals:
+        eventType === 'voting' ? votingAllowRemovals : undefined,
+      votingLeaderboardMode:
+        eventType === 'voting' ? votingLeaderboardMode : undefined,
+      imageIds: normalizedImageIds.length ? normalizedImageIds : undefined,
     });
 
     return { id, status };
@@ -209,6 +389,24 @@ export const update = mutation({
     pollAllowAdditionalOptions: v.optional(v.boolean()),
     pollMaxSelections: v.optional(v.number()),
     pollClosesAt: v.optional(v.union(v.number(), v.null())),
+    votingParticipants: v.optional(
+      v.array(
+        v.object({
+          userId: v.string(),
+          firstName: v.string(),
+          lastName: v.string(),
+          group: v.optional(v.union(v.string(), v.null())),
+          portfolio: v.optional(v.union(v.string(), v.null())),
+        }),
+      ),
+    ),
+    votingAddVotePrice: v.optional(v.number()),
+    votingRemoveVotePrice: v.optional(v.number()),
+    votingAllowedGroups: v.optional(v.array(v.string())),
+    votingAllowedPortfolios: v.optional(v.array(v.string())),
+    votingAllowUngrouped: v.optional(v.boolean()),
+    votingAllowRemovals: v.optional(v.boolean()),
+    votingLeaderboardMode: v.optional(v.string()),
     eventType: v.optional(
       v.union(
         v.literal('announcements'),
@@ -216,6 +414,7 @@ export const update = mutation({
         v.literal('voting'),
       ),
     ),
+    imageIds: v.optional(v.array(v.id('_storage'))),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -231,7 +430,7 @@ export const update = mutation({
       args.eventType === 'poll' || args.eventType === 'voting'
         ? args.eventType
         : existing.eventType;
-    if (!cleanedDescription && eventType !== 'poll') {
+    if (!cleanedDescription && eventType === 'announcements') {
       throw new Error('Description is required');
     }
 
@@ -273,11 +472,11 @@ export const update = mutation({
 
     let pollQuestion: string | null = null;
     let pollOptions: string[] | null = null;
-    let pollAnonymous =
+    const pollAnonymous =
       typeof args.pollAnonymous === 'boolean'
         ? args.pollAnonymous
         : existing.pollAnonymous ?? false;
-    let pollAllowAdditionalOptions =
+    const pollAllowAdditionalOptions =
       typeof args.pollAllowAdditionalOptions === 'boolean'
         ? args.pollAllowAdditionalOptions
         : existing.pollAllowAdditionalOptions ?? false;
@@ -285,7 +484,7 @@ export const update = mutation({
       typeof args.pollMaxSelections === 'number'
         ? Math.max(1, Math.floor(args.pollMaxSelections))
         : existing.pollMaxSelections ?? 1;
-    let pollClosesAt =
+    const pollClosesAt =
       typeof args.pollClosesAt === 'number'
         ? args.pollClosesAt
         : args.pollClosesAt === null
@@ -320,6 +519,103 @@ export const update = mutation({
         throw new Error('Poll close time must be after the publish time.');
       }
     }
+
+    let votingParticipants: VotingParticipant[] | null = null;
+    let votingAllowedGroups: string[] | null = null;
+    let votingAllowedPortfolios: string[] | null = null;
+    let votingAllowUngrouped = existing.votingAllowUngrouped ?? false;
+    let votingAllowRemovals = existing.votingAllowRemovals ?? true;
+    let votingLeaderboardMode: VotingLeaderboardMode = normalizeLeaderboardMode(
+      existing.votingLeaderboardMode,
+      'all',
+    );
+    let votingAddVotePrice: number | null = null;
+    let votingRemoveVotePrice: number | null = null;
+    if (eventType === 'voting') {
+      const existingParticipants = normalizeVotingParticipants(
+        existing.votingParticipants ?? [],
+      );
+      const incomingParticipants = normalizeVotingParticipants(
+        args.votingParticipants,
+      );
+      const participantMap = new Map(
+        existingParticipants.map((participant) => [participant.userId, participant]),
+      );
+      if (incomingParticipants.length > 0) {
+        for (const participant of incomingParticipants) {
+          const existingParticipant = participantMap.get(participant.userId);
+          if (existingParticipant) {
+            participantMap.set(participant.userId, {
+              ...existingParticipant,
+              firstName: participant.firstName || existingParticipant.firstName,
+              lastName: participant.lastName || existingParticipant.lastName,
+              group:
+                typeof participant.group === 'string'
+                  ? participant.group
+                  : existingParticipant.group ?? null,
+              portfolio:
+                typeof participant.portfolio === 'string'
+                  ? participant.portfolio
+                  : existingParticipant.portfolio ?? null,
+            });
+          } else {
+            participantMap.set(participant.userId, participant);
+          }
+        }
+      }
+      const participants = Array.from(participantMap.values());
+      if (participants.length === 0) {
+        throw new Error('Voting events require at least one participant.');
+      }
+      votingParticipants = participants;
+      votingAddVotePrice = normalizePrice(
+        typeof args.votingAddVotePrice === 'number'
+          ? args.votingAddVotePrice
+          : existing.votingAddVotePrice,
+        'Price to add a vote',
+      );
+      votingAllowRemovals =
+        typeof args.votingAllowRemovals === 'boolean'
+          ? args.votingAllowRemovals
+          : votingAllowRemovals;
+      if (votingAllowRemovals) {
+        votingRemoveVotePrice = normalizePrice(
+          typeof args.votingRemoveVotePrice === 'number'
+            ? args.votingRemoveVotePrice
+            : existing.votingRemoveVotePrice,
+          'Price to remove a vote',
+        );
+      } else {
+        votingRemoveVotePrice = null;
+      }
+      const allowedGroupsInput =
+        args.votingAllowedGroups ?? existing.votingAllowedGroups ?? [];
+      const allowedPortfoliosInput =
+        args.votingAllowedPortfolios ?? existing.votingAllowedPortfolios ?? [];
+      votingAllowedGroups = Array.isArray(allowedGroupsInput)
+        ? Array.from(new Set(allowedGroupsInput))
+        : [];
+      votingAllowedPortfolios = Array.isArray(allowedPortfoliosInput)
+        ? Array.from(new Set(allowedPortfoliosInput))
+        : [];
+      votingAllowUngrouped =
+        typeof args.votingAllowUngrouped === 'boolean'
+          ? args.votingAllowUngrouped
+          : Boolean(existing.votingAllowUngrouped);
+      votingLeaderboardMode = normalizeLeaderboardMode(
+        args.votingLeaderboardMode,
+        votingLeaderboardMode,
+      );
+    }
+
+    const providedImageIds =
+      Array.isArray(args.imageIds) && args.imageIds.length > 0
+        ? args.imageIds
+        : existing.imageIds ?? [];
+    if (providedImageIds.length > 5) {
+      throw new Error('You can upload up to five images.');
+    }
+    const normalizedImageIds = Array.from(new Set(providedImageIds));
 
     const updatedBy =
       identity?.name ??
@@ -361,6 +657,40 @@ export const update = mutation({
         eventType === 'poll'
           ? pollClosesAt ?? undefined
           : undefined,
+      votingParticipants:
+        eventType === 'voting'
+          ? votingParticipants ?? existing.votingParticipants ?? undefined
+          : undefined,
+      votingAddVotePrice:
+        eventType === 'voting'
+          ? votingAddVotePrice ?? existing.votingAddVotePrice ?? undefined
+          : undefined,
+      votingRemoveVotePrice:
+        eventType === 'voting'
+          ? votingRemoveVotePrice ?? existing.votingRemoveVotePrice ?? undefined
+          : undefined,
+      votingAllowedGroups:
+        eventType === 'voting'
+          ? votingAllowedGroups ?? existing.votingAllowedGroups ?? undefined
+          : undefined,
+      votingAllowedPortfolios:
+        eventType === 'voting'
+          ? votingAllowedPortfolios ?? existing.votingAllowedPortfolios ?? undefined
+          : undefined,
+      votingAllowUngrouped:
+        eventType === 'voting'
+          ? votingAllowUngrouped
+          : undefined,
+      votingAllowRemovals:
+        eventType === 'voting'
+          ? votingAllowRemovals
+          : undefined,
+      votingLeaderboardMode:
+        eventType === 'voting'
+          ? votingLeaderboardMode ?? existing.votingLeaderboardMode ?? 'all'
+          : undefined,
+      imageIds:
+        normalizedImageIds.length > 0 ? normalizedImageIds : undefined,
     });
 
     return { id: args.id, status };
@@ -392,7 +722,16 @@ export const publishDue = mutation({
     );
 
     await Promise.all(
-      deleteDue.map((announcement) => ctx.db.delete(announcement._id)),
+      deleteDue.map(async (announcement) => {
+        if (announcement.eventType === 'voting') {
+          await ctx.db.patch(announcement._id, {
+            votingParticipants: resetVotingParticipantVotes(
+              announcement.votingParticipants,
+            ),
+          });
+        }
+        await ctx.db.delete(announcement._id);
+      }),
     );
 
     const archiveDue = candidates.filter(
@@ -403,9 +742,18 @@ export const publishDue = mutation({
     );
 
     await Promise.all(
-      archiveDue.map((announcement) =>
-        ctx.db.patch(announcement._id, { status: 'archived' }),
-      ),
+      archiveDue.map((announcement) => {
+        const update: {
+          status: 'archived';
+          votingParticipants?: VotingParticipant[];
+        } = { status: 'archived' };
+        if (announcement.eventType === 'voting') {
+          update.votingParticipants = resetVotingParticipantVotes(
+            announcement.votingParticipants,
+          );
+        }
+        return ctx.db.patch(announcement._id, update);
+      }),
     );
 
     return {
@@ -472,6 +820,7 @@ export const getPoll = query({
       closesAt,
       isClosed,
       isArchived: announcement.status === 'archived',
+      imageIds: announcement.imageIds ?? [],
     };
   },
 });
@@ -553,7 +902,7 @@ export const votePoll = mutation({
     }
 
     const now = Date.now();
-    let options = [...(announcement.pollOptions ?? [])];
+    const options = [...(announcement.pollOptions ?? [])];
 
     if (
       typeof announcement.pollClosesAt === 'number' &&
@@ -641,6 +990,89 @@ export const votePoll = mutation({
   },
 });
 
+export const purchaseVotes = mutation({
+  args: {
+    id: v.id('announcements'),
+    adjustments: v.array(
+      v.object({
+        userId: v.string(),
+        add: v.number(),
+        remove: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error('Unauthorized');
+
+    const announcement = await ctx.db.get(args.id);
+    if (!announcement || announcement.eventType !== 'voting') {
+      throw new Error('Voting event not found.');
+    }
+
+    const allowRemovals = announcement.votingAllowRemovals ?? true;
+    const participants = (announcement.votingParticipants ?? []).map(
+      (participant) => ({
+        ...participant,
+        votes:
+          typeof participant.votes === 'number' &&
+          Number.isFinite(participant.votes)
+            ? Math.max(0, Math.floor(participant.votes))
+            : 0,
+      }),
+    );
+
+    const participantMap = new Map(
+      participants.map((participant) => [participant.userId, { ...participant }]),
+    );
+
+    let changed = false;
+    for (const adjustment of args.adjustments) {
+      const participant = participantMap.get(adjustment.userId);
+      if (!participant) {
+        throw new Error('Participant not found.');
+      }
+      const add = Math.max(0, Math.floor(adjustment.add));
+      const remove = allowRemovals
+        ? Math.max(0, Math.floor(adjustment.remove))
+        : 0;
+      if (!allowRemovals && adjustment.remove > 0) {
+        throw new Error('Removing votes is disabled for this event.');
+      }
+      if (add === 0 && remove === 0) continue;
+      if (remove > participant.votes) {
+        throw new Error(
+          `${participant.firstName ?? 'Participant'} does not have enough votes to remove.`,
+        );
+      }
+      participant.votes = participant.votes + add - remove;
+      participantMap.set(adjustment.userId, participant);
+      changed = true;
+    }
+
+    if (!changed) {
+      return {
+        success: false,
+        participants,
+      };
+    }
+
+    const updatedParticipants = Array.from(participantMap.values());
+
+    await ctx.db.patch(args.id, {
+      votingParticipants: updatedParticipants,
+      updatedAt: Date.now(),
+      updatedBy:
+        identity.name ?? identity.tokenIdentifier ?? identity.subject ?? 'anonymous',
+    });
+
+    return {
+      success: true,
+      participants: updatedParticipants,
+    };
+  },
+});
+
 export const nextPublishAt = query({
   args: { now: v.number() },
   handler: async (ctx, args) => {
@@ -672,6 +1104,12 @@ export const remove = mutation({
         .withIndex('by_announcement', (q) => q.eq('announcementId', args.id))
         .collect();
       await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
+    } else if (existing.eventType === 'voting') {
+      await ctx.db.patch(args.id, {
+        votingParticipants: resetVotingParticipantVotes(
+          existing.votingParticipants,
+        ),
+      });
     }
     await ctx.db.delete(args.id);
   },
@@ -686,6 +1124,19 @@ export const archive = mutation({
     if (!identity) {
       throw new Error('Unauthorized');
     }
-    await ctx.db.patch(args.id, { status: 'archived' });
+    const existing = await ctx.db.get(args.id);
+    if (!existing) {
+      throw new Error('Activity not found');
+    }
+    const update: {
+      status: 'archived';
+      votingParticipants?: VotingParticipant[];
+    } = { status: 'archived' };
+    if (existing.eventType === 'voting') {
+      update.votingParticipants = resetVotingParticipantVotes(
+        existing.votingParticipants,
+      );
+    }
+    await ctx.db.patch(args.id, update);
   },
 });

@@ -1,11 +1,22 @@
 'use client';
 
 import * as React from 'react';
-import { useMutation } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
 import { api } from '../../../convex/_generated/api';
-import type { Doc } from '../../../convex/_generated/dataModel';
+import type { Doc, Id } from '../../../convex/_generated/dataModel';
+import { SchedulingSection } from './announcement-form/sections/SchedulingSection';
+import { PollOptionsSection } from './announcement-form/sections/PollOptionsSection';
+import { PollSettingsSection } from './announcement-form/sections/PollSettingsSection';
+import { AutomationSection } from './announcement-form/sections/AutomationSection';
+import { ImageUploadSection } from './announcement-form/sections/ImageUploadSection';
+import { VotingSettingsSection } from './announcement-form/sections/VotingSettingsSection';
+import {
+  GROUP_OPTIONS,
+  type Group,
+  type Portfolio,
+  getPortfoliosForGroup,
+} from '@/lib/org';
 
 export type ActivityType = 'announcements' | 'poll' | 'voting';
 type AnnouncementDoc = Doc<'announcements'>;
@@ -15,6 +26,64 @@ const ACTIVITY_LABELS: Record<ActivityType, string> = {
   poll: 'Poll',
   voting: 'Voting',
 };
+const MAX_IMAGES = 5;
+const LEADERBOARD_OPTIONS: Array<{
+  value: VotingLeaderboardMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'all',
+    label: 'Single leaderboard',
+    description: 'Rank everyone together regardless of group.',
+  },
+  {
+    value: 'group',
+    label: 'Per group',
+    description: 'Each group gets its own leaderboard.',
+  },
+  {
+    value: 'group_portfolio',
+    label: 'Per group & portfolio',
+    description:
+      'Create leaderboards for every group and their individual portfolios.',
+  },
+];
+
+type VotingParticipant = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  group?: Group | null;
+  portfolio?: Portfolio | null;
+  votes: number;
+};
+
+type VotingRosterEntry = VotingParticipant & {
+  group: Group | null;
+  portfolio: Portfolio | null;
+};
+
+type VotingLeaderboardMode = 'all' | 'group' | 'group_portfolio';
+
+const GROUP_KEYS = GROUP_OPTIONS.map((option) => option.value) as Group[];
+const PORTFOLIO_KEYS = GROUP_OPTIONS.flatMap(
+  (option) => option.portfolios,
+) as Portfolio[];
+
+function initGroupSelections(defaultValue: boolean): Record<Group, boolean> {
+  return GROUP_KEYS.reduce((acc, group) => {
+    acc[group] = defaultValue;
+    return acc;
+  }, {} as Record<Group, boolean>);
+}
+
+function initPortfolioSelections(defaultValue: boolean): Record<Portfolio, boolean> {
+  return PORTFOLIO_KEYS.reduce((acc, portfolio) => {
+    acc[portfolio] = defaultValue;
+    return acc;
+  }, {} as Record<Portfolio, boolean>);
+}
 
 export function AnnouncementForm({
   activityType = 'announcements',
@@ -26,6 +95,7 @@ export function AnnouncementForm({
   const router = useRouter();
   const createAnnouncement = useMutation(api.announcements.create);
   const updateAnnouncement = useMutation(api.announcements.update);
+  const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
@@ -49,6 +119,32 @@ export function AnnouncementForm({
   const [pollHasClose, setPollHasClose] = React.useState(false);
   const [pollCloseDate, setPollCloseDate] = React.useState('');
   const [pollCloseTime, setPollCloseTime] = React.useState('');
+  const [imageIds, setImageIds] = React.useState<Id<'_storage'>[]>([]);
+  const [uploadingImages, setUploadingImages] = React.useState(false);
+const [votingRoster, setVotingRoster] = React.useState<VotingRosterEntry[]>([]);
+const [votingGroupSelections, setVotingGroupSelections] = React.useState<
+  Record<Group, boolean>
+>(() => initGroupSelections(true));
+const [votingPortfolioSelections, setVotingPortfolioSelections] = React.useState<
+  Record<Portfolio, boolean>
+>(() => initPortfolioSelections(true));
+const [votingAllowUngrouped, setVotingAllowUngrouped] = React.useState(false);
+const [votingAllowRemovals, setVotingAllowRemovals] = React.useState(true);
+const [votingLockedGroups, setVotingLockedGroups] = React.useState<
+  Record<Group, boolean>
+>(() => initGroupSelections(false));
+const [votingLockedPortfolios, setVotingLockedPortfolios] = React.useState<
+  Record<Portfolio, boolean>
+>(() => initPortfolioSelections(false));
+const [votingLockedUngrouped, setVotingLockedUngrouped] = React.useState(false);
+const [votingAddVotePrice, setVotingAddVotePrice] = React.useState('');
+const [votingRemoveVotePrice, setVotingRemoveVotePrice] = React.useState('');
+const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingLeaderboardMode>('all');
+  const [votingUsersLoading, setVotingUsersLoading] = React.useState(false);
+  const [votingUsersError, setVotingUsersError] = React.useState<string | null>(
+    null,
+  );
+  const [votingRosterRequested, setVotingRosterRequested] = React.useState(false);
 
   const todayLocalISO = React.useMemo(() => {
     const now = new Date();
@@ -82,6 +178,271 @@ export function AnnouncementForm({
     setPollOptions((prev) => prev.filter((_, idx) => idx !== index));
   }, []);
 
+  const handleImageUpload = React.useCallback(
+    async (fileList: FileList | null) => {
+      if (!fileList || fileList.length === 0) return;
+      setError(null);
+
+      const files = Array.from(fileList);
+      if (imageIds.length + files.length > MAX_IMAGES) {
+        setError(`You can upload up to ${MAX_IMAGES} images.`);
+        return;
+      }
+
+      const invalidFile = files.find(
+        (file) => !file.type.toLowerCase().startsWith('image/'),
+      );
+      if (invalidFile) {
+        setError('Only image files are supported.');
+        return;
+      }
+
+      setUploadingImages(true);
+      try {
+        const uploadedIds: Id<'_storage'>[] = [];
+        for (const file of files) {
+          const uploadUrl = await generateUploadUrl();
+          const response = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+          if (!response.ok) {
+            throw new Error('Failed to upload image.');
+          }
+          const { storageId } = await response.json();
+          if (!storageId) {
+            throw new Error('Upload response missing storageId.');
+          }
+          uploadedIds.push(storageId as Id<'_storage'>);
+        }
+        setImageIds((prev) => [...prev, ...uploadedIds]);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Failed to upload images.';
+        setError(message);
+      } finally {
+        setUploadingImages(false);
+      }
+    },
+    [generateUploadUrl, imageIds.length],
+  );
+
+  const handleRemoveImage = React.useCallback((id: Id<'_storage'>) => {
+    setImageIds((prev) => prev.filter((imageId) => imageId !== id));
+  }, []);
+
+  const hasLockedVotingAssignments = React.useMemo(
+    () =>
+      Object.values(votingLockedGroups).some(Boolean) ||
+      Object.values(votingLockedPortfolios).some(Boolean),
+    [votingLockedGroups, votingLockedPortfolios],
+  );
+
+  const handleToggleVotingGroup = React.useCallback(
+    (group: Group, checked: boolean) => {
+      if (votingLockedGroups[group] && !checked) {
+        return;
+      }
+      setVotingGroupSelections((prev) => ({ ...prev, [group]: checked }));
+      setVotingPortfolioSelections((prev) => {
+        const updated = { ...prev };
+        getPortfoliosForGroup(group).forEach((portfolio) => {
+          updated[portfolio] = checked;
+        });
+        return updated;
+      });
+    },
+    [votingLockedGroups],
+  );
+
+  const handleToggleVotingPortfolio = React.useCallback(
+    (portfolio: Portfolio, checked: boolean) => {
+      if (votingLockedPortfolios[portfolio] && !checked) {
+        return;
+      }
+      setVotingPortfolioSelections((prev) => ({ ...prev, [portfolio]: checked }));
+      setVotingGroupSelections((prev) => {
+        const next = { ...prev };
+        const owningGroup = GROUP_OPTIONS.find((option) =>
+          option.portfolios.includes(portfolio),
+        )?.value;
+        if (owningGroup) {
+          next[owningGroup] = true;
+        }
+        return next;
+      });
+    },
+    [votingLockedPortfolios],
+  );
+
+  const handleToggleVotingUngrouped = React.useCallback(
+    (checked: boolean) => {
+      if (votingLockedUngrouped && !checked) {
+        return;
+      }
+      setVotingAllowUngrouped(checked);
+    },
+    [votingLockedUngrouped],
+  );
+
+  const handleToggleVotingAllowRemovals = React.useCallback(
+    (checked: boolean) => {
+      setVotingAllowRemovals(checked);
+    },
+    [],
+  );
+
+  const handleToggleVotingSelectAll = React.useCallback(
+    (checked: boolean) => {
+      if (!checked && hasLockedVotingAssignments) {
+        return;
+      }
+      setVotingGroupSelections(initGroupSelections(checked));
+      setVotingPortfolioSelections(initPortfolioSelections(checked));
+    },
+    [hasLockedVotingAssignments],
+  );
+
+  const handleVotingLeaderboardModeChange = React.useCallback(
+    (value: string) => {
+      if (value === 'group' || value === 'group_portfolio' || value === 'all') {
+        setVotingLeaderboardMode(value);
+      } else {
+        setVotingLeaderboardMode('all');
+      }
+    },
+    [],
+  );
+
+  const fetchVotingParticipants = React.useCallback(async () => {
+    setVotingRosterRequested(true);
+    setVotingUsersLoading(true);
+    setVotingUsersError(null);
+    try {
+      const response = await fetch('/api/admin/users');
+      if (!response.ok) {
+        throw new Error(
+          response.status === 403
+            ? 'You do not have permission to load users.'
+            : 'Failed to load users. Please try again.',
+        );
+      }
+      const data = (await response.json()) as {
+        users?: VotingRosterEntry[];
+      };
+      const roster = Array.isArray(data.users) ? data.users : [];
+      setVotingRoster(
+        roster.map((entry) => ({
+          userId: entry.userId,
+          firstName: entry.firstName,
+          lastName: entry.lastName,
+          group: entry.group ?? null,
+          portfolio: entry.portfolio ?? null,
+          votes: typeof entry.votes === 'number' ? entry.votes : 0,
+        })),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to load users. Please try again.';
+      setVotingUsersError(message);
+      setVotingRoster([]);
+    } finally {
+      setVotingUsersLoading(false);
+    }
+  }, []);
+
+  const handlePublishDateChange = React.useCallback(
+    (nextDate: string) => {
+      setDate(nextDate);
+      if (autoDeleteEnabled) {
+        setDeleteDate('');
+        setDeleteTime('');
+      }
+      if (autoArchiveEnabled) {
+        setArchiveDate('');
+        setArchiveTime('');
+      }
+    },
+    [autoDeleteEnabled, autoArchiveEnabled],
+  );
+
+  const handlePublishTimeChange = React.useCallback(
+    (nextTime: string) => {
+      setTime(nextTime);
+      if (autoDeleteEnabled) {
+        setDeleteDate('');
+        setDeleteTime('');
+      }
+      if (autoArchiveEnabled) {
+        setArchiveDate('');
+        setArchiveTime('');
+      }
+    },
+    [autoDeleteEnabled, autoArchiveEnabled],
+  );
+
+  const earliestAutomationDate = React.useMemo(() => {
+    if (!date) return todayLocalISO;
+    return date < todayLocalISO ? todayLocalISO : date;
+  }, [date, todayLocalISO]);
+
+  const minAutoDeleteDate = earliestAutomationDate;
+  const minAutoArchiveDate = earliestAutomationDate;
+
+  const handleTogglePollClose = React.useCallback(
+    (enabled: boolean) => {
+      setPollHasClose(enabled);
+      if (enabled) {
+        const defaultDate = earliestAutomationDate;
+        setPollCloseDate((prev) => prev || defaultDate);
+        setPollCloseTime((prev) => prev || time || '');
+      } else {
+        setPollCloseDate('');
+        setPollCloseTime('');
+      }
+    },
+    [earliestAutomationDate, time],
+  );
+
+  const handleToggleAutoDelete = React.useCallback(
+    (enabled: boolean) => {
+      setAutoDeleteEnabled(enabled);
+      if (enabled) {
+        setAutoArchiveEnabled(false);
+        setArchiveDate('');
+        setArchiveTime('');
+        const defaultDeleteDate = earliestAutomationDate;
+        setDeleteDate((prev) => prev || defaultDeleteDate);
+        setDeleteTime((prev) => prev || time || '');
+      } else {
+        setDeleteDate('');
+        setDeleteTime('');
+      }
+    },
+    [earliestAutomationDate, time],
+  );
+
+  const handleToggleAutoArchive = React.useCallback(
+    (enabled: boolean) => {
+      setAutoArchiveEnabled(enabled);
+      if (enabled) {
+        setAutoDeleteEnabled(false);
+        setDeleteDate('');
+        setDeleteTime('');
+        const defaultArchiveDate = earliestAutomationDate;
+        setArchiveDate((prev) => prev || defaultArchiveDate);
+        setArchiveTime((prev) => prev || time || '');
+      } else {
+        setArchiveDate('');
+        setArchiveTime('');
+      }
+    },
+    [earliestAutomationDate, time],
+  );
+
   const applyExistingValues = React.useCallback((activity: AnnouncementDoc) => {
     setTitle(activity.title);
     setDescription(activity.description);
@@ -90,6 +451,7 @@ export function AnnouncementForm({
     const timeStr = `${String(publishDate.getHours()).padStart(2, '0')}:${String(publishDate.getMinutes()).padStart(2, '0')}`;
     setDate(isoDate);
     setTime(timeStr);
+    setImageIds(activity.imageIds ?? []);
 
     if (typeof activity.autoDeleteAt === 'number') {
       const deleteAt = new Date(activity.autoDeleteAt);
@@ -158,6 +520,91 @@ export function AnnouncementForm({
       setPollCloseDate('');
       setPollCloseTime('');
     }
+
+    if (activity.eventType === 'voting') {
+      const nextGroupSelections = initGroupSelections(false);
+      const lockedGroups = initGroupSelections(false);
+      const storedGroups = Array.isArray(activity.votingAllowedGroups)
+        ? activity.votingAllowedGroups
+        : null;
+      if (storedGroups && storedGroups.length > 0) {
+        storedGroups.forEach((group) => {
+          if (GROUP_KEYS.includes(group as Group)) {
+            nextGroupSelections[group as Group] = true;
+            lockedGroups[group as Group] = true;
+          }
+        });
+        setVotingGroupSelections({ ...nextGroupSelections });
+        setVotingLockedGroups({ ...lockedGroups });
+      } else {
+        const allGroups = initGroupSelections(true);
+        setVotingGroupSelections(allGroups);
+        setVotingLockedGroups({ ...allGroups });
+      }
+
+      const nextPortfolioSelections = initPortfolioSelections(false);
+      const lockedPortfolios = initPortfolioSelections(false);
+      const storedPortfolios = Array.isArray(activity.votingAllowedPortfolios)
+        ? activity.votingAllowedPortfolios
+        : null;
+      if (storedPortfolios && storedPortfolios.length > 0) {
+        storedPortfolios.forEach((portfolio) => {
+          if (PORTFOLIO_KEYS.includes(portfolio as Portfolio)) {
+            nextPortfolioSelections[portfolio as Portfolio] = true;
+            lockedPortfolios[portfolio as Portfolio] = true;
+          }
+        });
+        setVotingPortfolioSelections({ ...nextPortfolioSelections });
+        setVotingLockedPortfolios({ ...lockedPortfolios });
+      } else {
+        const allPortfolios = initPortfolioSelections(true);
+        setVotingPortfolioSelections(allPortfolios);
+        setVotingLockedPortfolios({ ...allPortfolios });
+      }
+
+      const allowUngroupedValue =
+        typeof activity.votingAllowUngrouped === 'boolean'
+          ? activity.votingAllowUngrouped
+          : false;
+      setVotingAllowUngrouped(allowUngroupedValue);
+      setVotingLockedUngrouped(Boolean(allowUngroupedValue));
+      const allowRemovalsValue =
+        typeof activity.votingAllowRemovals === 'boolean'
+          ? activity.votingAllowRemovals
+          : true;
+      setVotingAllowRemovals(allowRemovalsValue);
+      setVotingLeaderboardMode(
+        (activity.votingLeaderboardMode as VotingLeaderboardMode | undefined) &&
+          ['all', 'group', 'group_portfolio'].includes(
+            activity.votingLeaderboardMode as VotingLeaderboardMode,
+          )
+          ? (activity.votingLeaderboardMode as VotingLeaderboardMode)
+          : 'all',
+      );
+      setVotingAddVotePrice(
+        typeof activity.votingAddVotePrice === 'number'
+          ? activity.votingAddVotePrice.toString()
+          : '',
+      );
+      setVotingRemoveVotePrice(
+        typeof activity.votingRemoveVotePrice === 'number' && allowRemovalsValue
+          ? activity.votingRemoveVotePrice.toString()
+          : '',
+      );
+      setVotingUsersError(null);
+    } else {
+      setVotingGroupSelections(initGroupSelections(true));
+      setVotingPortfolioSelections(initPortfolioSelections(true));
+      setVotingAllowUngrouped(false);
+      setVotingAllowRemovals(true);
+      setVotingLockedGroups(initGroupSelections(false));
+      setVotingLockedPortfolios(initPortfolioSelections(false));
+      setVotingLockedUngrouped(false);
+      setVotingAddVotePrice('');
+      setVotingRemoveVotePrice('');
+      setVotingUsersError(null);
+      setVotingLeaderboardMode('all');
+    }
   }, [ensureMinimumPollOptions]);
 
   const isEditing = Boolean(existingActivity);
@@ -167,12 +614,60 @@ export function AnnouncementForm({
   const activeType =
     (existingActivity?.eventType as ActivityType | undefined) ?? activityType;
   const isPoll = activeType === 'poll';
+  const isVoting = activeType === 'voting';
   const activityLabel = ACTIVITY_LABELS[activeType];
   const buttonLabel = isEditing
     ? 'Save and Publish'
     : isScheduled
       ? `Schedule ${activityLabel}`
       : `Publish ${activityLabel}`;
+
+  const eligibleVotingParticipants = React.useMemo(() => {
+    if (!isVoting) return [] as VotingParticipant[];
+    return votingRoster
+      .filter((entry) => {
+        if (!entry.group) {
+          return votingAllowUngrouped;
+        }
+        const groupSelection = votingGroupSelections[entry.group];
+        const portfoliosForGroup = getPortfoliosForGroup(entry.group);
+        if (portfoliosForGroup.length === 0) {
+          return Boolean(groupSelection);
+        }
+        if (entry.portfolio) {
+          const portfolioSelection =
+            votingPortfolioSelections[entry.portfolio];
+          if (typeof portfolioSelection === 'boolean') {
+            return portfolioSelection;
+          }
+        }
+        return Boolean(groupSelection);
+      })
+      .map((entry) => ({
+        userId: entry.userId,
+        firstName: entry.firstName,
+        lastName: entry.lastName,
+        group: entry.group,
+        portfolio: entry.portfolio,
+        votes: typeof entry.votes === 'number' ? entry.votes : 0,
+      }));
+  }, [
+    isVoting,
+    votingRoster,
+    votingGroupSelections,
+    votingPortfolioSelections,
+    votingAllowUngrouped,
+  ]);
+
+  const votingAllSelected = React.useMemo(() => {
+    const allGroupsSelected = GROUP_KEYS.every(
+      (group) => votingGroupSelections[group],
+    );
+    const allPortfoliosSelected = PORTFOLIO_KEYS.every(
+      (portfolio) => votingPortfolioSelections[portfolio],
+    );
+    return allGroupsSelected && allPortfoliosSelected;
+  }, [votingGroupSelections, votingPortfolioSelections]);
 
   React.useEffect(() => {
     setDate((prev) => prev || todayLocalISO);
@@ -201,6 +696,34 @@ export function AnnouncementForm({
       setPollCloseTime('');
     }
   }, [isPoll]);
+
+  React.useEffect(() => {
+    if (!isVoting) {
+      setVotingRoster([]);
+      setVotingGroupSelections(initGroupSelections(true));
+      setVotingPortfolioSelections(initPortfolioSelections(true));
+      setVotingAllowUngrouped(false);
+      setVotingAllowRemovals(true);
+      setVotingLockedGroups(initGroupSelections(false));
+      setVotingLockedPortfolios(initPortfolioSelections(false));
+      setVotingLockedUngrouped(false);
+      setVotingAddVotePrice('');
+      setVotingRemoveVotePrice('');
+      setVotingUsersError(null);
+      setVotingUsersLoading(false);
+      setVotingRosterRequested(false);
+      setVotingLeaderboardMode('all');
+      return;
+    }
+    if (!votingRosterRequested && !votingUsersLoading) {
+      void fetchVotingParticipants();
+    }
+  }, [
+    isVoting,
+    votingUsersLoading,
+    fetchVotingParticipants,
+    votingRosterRequested,
+  ]);
 
   React.useEffect(() => {
     if (!isPoll) return;
@@ -260,6 +783,7 @@ export function AnnouncementForm({
     setDescription('');
     setDate(todayLocalISO);
     setTime('');
+    setImageIds([]);
     setAutoDeleteEnabled(false);
     setDeleteDate('');
     setDeleteTime('');
@@ -273,6 +797,19 @@ export function AnnouncementForm({
     setPollHasClose(false);
     setPollCloseDate('');
     setPollCloseTime('');
+    setVotingRoster([]);
+    setVotingGroupSelections(initGroupSelections(true));
+    setVotingPortfolioSelections(initPortfolioSelections(true));
+    setVotingAllowUngrouped(false);
+    setVotingAllowRemovals(true);
+    setVotingLockedGroups(initGroupSelections(false));
+    setVotingLockedPortfolios(initPortfolioSelections(false));
+    setVotingLockedUngrouped(false);
+    setVotingAddVotePrice('');
+    setVotingRemoveVotePrice('');
+    setVotingUsersError(null);
+    setVotingRosterRequested(false);
+    setVotingLeaderboardMode('all');
   }, [todayLocalISO]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -350,12 +887,25 @@ export function AnnouncementForm({
       return;
     }
 
+    if (imageIds.length > MAX_IMAGES) {
+      setError(`You can upload up to ${MAX_IMAGES} images.`);
+      return;
+    }
+
     let pollQuestionPayload: string | undefined;
     let pollOptionsPayload: string[] | undefined;
     let pollAnonymousPayload: boolean | undefined;
     let pollAllowAdditionalOptionsPayload: boolean | undefined;
     let pollMaxSelectionsPayload: number | undefined;
     let pollClosesAtPayload: number | undefined;
+    let votingParticipantsPayload: VotingParticipant[] | undefined;
+    let votingAddVotePricePayload: number | undefined;
+    let votingRemoveVotePricePayload: number | undefined;
+    let votingAllowedGroupsPayload: string[] | undefined;
+    let votingAllowedPortfoliosPayload: string[] | undefined;
+    let votingAllowUngroupedPayload: boolean | undefined;
+    let votingAllowRemovalsPayload: boolean | undefined;
+    let votingLeaderboardModePayload: VotingLeaderboardMode | undefined;
     if (isPoll) {
       const question = title.trim();
       if (!question) {
@@ -400,6 +950,56 @@ export function AnnouncementForm({
       }
     }
 
+    if (isVoting) {
+      const normalizedParticipants = eligibleVotingParticipants
+        .map((participant) => ({
+          userId: participant.userId,
+          firstName: participant.firstName.trim(),
+          lastName: participant.lastName.trim(),
+          group: participant.group ?? null,
+          portfolio: participant.portfolio ?? null,
+        }))
+        .filter(
+          (participant) =>
+            participant.userId &&
+            (participant.firstName.length > 0 || participant.lastName.length > 0),
+        );
+      if (normalizedParticipants.length === 0) {
+        setError('Voting events need at least one eligible user.');
+        return;
+      }
+      const addPrice = parseFloat(votingAddVotePrice);
+      if (Number.isNaN(addPrice) || addPrice < 0) {
+        setError('Enter a valid price to add a vote.');
+        return;
+      }
+      const allowRemovals = votingAllowRemovals;
+      votingAllowRemovalsPayload = allowRemovals;
+      let removePrice: number | undefined;
+      if (allowRemovals) {
+        const parsedRemove = parseFloat(votingRemoveVotePrice);
+        if (Number.isNaN(parsedRemove) || parsedRemove < 0) {
+          setError('Enter a valid price to remove a vote.');
+          return;
+        }
+        removePrice = parsedRemove;
+      }
+      votingParticipantsPayload = normalizedParticipants;
+      votingAddVotePricePayload = Math.round(addPrice * 100) / 100;
+      votingRemoveVotePricePayload =
+        typeof removePrice === 'number'
+          ? Math.round(removePrice * 100) / 100
+          : undefined;
+      votingAllowedGroupsPayload = GROUP_KEYS.filter(
+        (group) => votingGroupSelections[group],
+      );
+      votingAllowedPortfoliosPayload = PORTFOLIO_KEYS.filter(
+        (portfolio) => votingPortfolioSelections[portfolio],
+      );
+      votingAllowUngroupedPayload = votingAllowUngrouped;
+      votingLeaderboardModePayload = votingLeaderboardMode;
+    }
+
     setSubmitting(true);
     try {
       if (isEditing && existingActivity) {
@@ -416,7 +1016,16 @@ export function AnnouncementForm({
           pollAllowAdditionalOptions: pollAllowAdditionalOptionsPayload,
           pollMaxSelections: pollMaxSelectionsPayload,
           pollClosesAt: pollClosesAtPayload ?? null,
+          votingParticipants: votingParticipantsPayload,
+          votingAddVotePrice: votingAddVotePricePayload,
+          votingRemoveVotePrice: votingRemoveVotePricePayload,
+          votingAllowedGroups: votingAllowedGroupsPayload,
+          votingAllowedPortfolios: votingAllowedPortfoliosPayload,
+          votingAllowUngrouped: votingAllowUngroupedPayload,
+          votingAllowRemovals: votingAllowRemovalsPayload,
+          votingLeaderboardMode: votingLeaderboardModePayload,
           eventType: activeType,
+          imageIds,
         });
         setSuccess(
           status === 'published'
@@ -436,7 +1045,16 @@ export function AnnouncementForm({
           pollAllowAdditionalOptions: pollAllowAdditionalOptionsPayload,
           pollMaxSelections: pollMaxSelectionsPayload,
           pollClosesAt: pollClosesAtPayload ?? null,
+          votingParticipants: votingParticipantsPayload,
+          votingAddVotePrice: votingAddVotePricePayload,
+          votingRemoveVotePrice: votingRemoveVotePricePayload,
+          votingAllowedGroups: votingAllowedGroupsPayload,
+          votingAllowedPortfolios: votingAllowedPortfoliosPayload,
+          votingAllowUngrouped: votingAllowUngroupedPayload,
+          votingAllowRemovals: votingAllowRemovalsPayload,
+          votingLeaderboardMode: votingLeaderboardModePayload,
           eventType: activeType,
+          imageIds,
         });
         resetForm();
         setSuccess(
@@ -445,8 +1063,10 @@ export function AnnouncementForm({
             : `${activityLabel} scheduled successfully.`
         );
       }
-    } catch (err: any) {
-      setError(err?.message ?? 'Something went wrong');
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Something went wrong';
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -516,13 +1136,6 @@ export function AnnouncementForm({
     });
   }, [autoDeleteEnabled, deleteDate, deleteTime]);
 
-  const earliestAutomationDate = React.useMemo(() => {
-    if (!date) return todayLocalISO;
-    return date < todayLocalISO ? todayLocalISO : date;
-  }, [date, todayLocalISO]);
-
-  const minAutoDeleteDate = earliestAutomationDate;
-
   const autoArchiveSummary = React.useMemo(() => {
     if (!autoArchiveEnabled || !archiveDate || !archiveTime) return null;
     const [y, m, d] = archiveDate.split('-').map(Number);
@@ -533,8 +1146,6 @@ export function AnnouncementForm({
       timeStyle: 'short',
     });
   }, [autoArchiveEnabled, archiveDate, archiveTime]);
-
-  const minAutoArchiveDate = earliestAutomationDate;
 
   const minPollCloseDate = React.useMemo(() => {
     return date || todayLocalISO;
@@ -755,6 +1366,21 @@ export function AnnouncementForm({
     date === todayLocalISO &&
     availableTimeSlotsCore.length === 0;
 
+  const imagePreviewUrls = useQuery(
+    api.storage.getImageUrls,
+    imageIds.length ? { ids: imageIds } : 'skip',
+  );
+
+  const imagePreviewMap = React.useMemo(() => {
+    const map = new Map<string, string>();
+    imagePreviewUrls?.forEach((entry) => {
+      map.set(entry.id, entry.url);
+    });
+    return map;
+  }, [imagePreviewUrls]);
+
+  const canAddMoreImages = imageIds.length < MAX_IMAGES;
+
   const publishStatusMessage = React.useMemo(() => {
     if (!showSchedulingControls) {
       return isEditing
@@ -797,14 +1423,20 @@ export function AnnouncementForm({
       aria-label={`${isEditing ? 'Edit' : 'Create'} ${activityLabel.toLowerCase()} form`}
       onSubmit={onSubmit}
     >
-      <div className={`grid gap-4 ${showSchedulingControls ? 'sm:grid-cols-2' : ''}`}>
+      <div
+        className={`grid gap-4 ${showSchedulingControls ? 'sm:grid-cols-2' : ''}`}
+      >
         <label className='flex flex-col gap-2 text-sm text-foreground'>
           Title
           <input
             type='text'
             name='title'
             placeholder={
-              isPoll ? 'Poll question (max 100 characters)' : 'Announcement Title...'
+              isPoll
+                ? 'Poll question...' :
+              isVoting
+                ? 'Voting Event Title...'
+                : 'Announcement Title...'
             }
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -814,69 +1446,29 @@ export function AnnouncementForm({
           />
         </label>
 
-        {showSchedulingControls && (
-          <div className='grid grid-cols-2 gap-4'>
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Publish Date
-              <input
-                type='date'
-                name='publishDate'
-                value={date}
-                min={todayLocalISO}
-                onChange={(e) => {
-                  const nextDate = e.target.value;
-                  setDate(nextDate);
-                  if (autoDeleteEnabled) {
-                    setDeleteDate('');
-                    setDeleteTime('');
-                  }
-                  if (autoArchiveEnabled) {
-                    setArchiveDate('');
-                    setArchiveTime('');
-                  }
-                }}
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-              />
-            </label>
-
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Publish Time (15 min slots)
-              <select
-                name='publishTime'
-                value={time}
-                onChange={(e) => {
-                  const nextTime = e.target.value;
-                  setTime(nextTime);
-                  if (autoDeleteEnabled) {
-                    setDeleteDate('');
-                    setDeleteTime('');
-                  }
-                  if (autoArchiveEnabled) {
-                    setArchiveDate('');
-                    setArchiveTime('');
-                  }
-                }}
-                required={date !== todayLocalISO}
-                disabled={noSlotsLeftToday}
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70'
-              >
-                <option value=''>--</option>
-                {noSlotsLeftToday ? (
-                  <option value='' disabled>
-                    No slots remain today — pick another date
-                  </option>
-                ) : (
-                  displayTimeSlots.map((slot) => (
-                    <option key={slot} value={slot}>
-                      {slot}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-          </div>
-        )}
+        <SchedulingSection
+          showSchedulingControls={showSchedulingControls}
+          date={date}
+          time={time}
+          todayLocalISO={todayLocalISO}
+          displayTimeSlots={displayTimeSlots}
+          noSlotsLeftToday={noSlotsLeftToday}
+          onDateChange={handlePublishDateChange}
+          onTimeChange={handlePublishTimeChange}
+        />
       </div>
+
+      {!isVoting && (
+        <ImageUploadSection
+          imageIds={imageIds}
+          canAddMore={canAddMoreImages}
+          uploadingImages={uploadingImages}
+          maxImages={MAX_IMAGES}
+          imagePreviewMap={imagePreviewMap}
+          onFileSelect={handleImageUpload}
+          onRemoveImage={handleRemoveImage}
+        />
+      )}
 
       <label className='flex flex-col gap-2 text-sm text-foreground'>
         Description
@@ -886,319 +1478,93 @@ export function AnnouncementForm({
           placeholder='Details...'
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          required={!isPoll}
+          required={!isPoll && !isVoting}
           className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
         />
       </label>
 
-      {isPoll && (
-        <>
-          <div className='space-y-3 rounded-2xl border border-border bg-card/70 p-4'>
-            <p className='text-sm font-medium text-foreground'>Poll Options</p>
-            {pollOptions.map((option, index) => (
-              <div className='flex items-center gap-2' key={`poll-option-${index}`}>
-                <input
-                  type='text'
-                  value={option}
-                  onChange={(e) => handlePollOptionChange(index, e.target.value)}
-                  placeholder={`Option ${index + 1}`}
-                  className='flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                />
-                {index >= 2 && (
-                  <button
-                    type='button'
-                    onClick={() => handleRemovePollOption(index)}
-                    className='inline-flex items-center justify-center rounded-md border border-border bg-secondary p-2 text-foreground hover:opacity-90'
-                    aria-label={`Delete poll option ${index + 1}`}
-                  >
-                    <Trash2 className='h-4 w-4 text-destructive' aria-hidden='true' />
-                  </button>
-                )}
-              </div>
-            ))}
-            <button
-              type='button'
-              onClick={handleAddPollOption}
-              className='inline-flex items-center justify-center rounded-md border border-dashed border-border px-3 py-2 text-sm font-medium text-foreground hover:opacity-90'
-            >
-              Add Option
-            </button>
-          </div>
+      <VotingSettingsSection
+        isVoting={isVoting}
+        addVotePrice={votingAddVotePrice}
+        removeVotePrice={votingRemoveVotePrice}
+        onChangeAddPrice={setVotingAddVotePrice}
+        onChangeRemovePrice={setVotingRemoveVotePrice}
+        groupSelections={votingGroupSelections}
+        portfolioSelections={votingPortfolioSelections}
+        allowUngrouped={votingAllowUngrouped}
+        allowRemovals={votingAllowRemovals}
+        lockedGroups={votingLockedGroups}
+        lockedPortfolios={votingLockedPortfolios}
+        lockedUngrouped={votingLockedUngrouped}
+        hasLockedSelections={hasLockedVotingAssignments}
+        leaderboardMode={votingLeaderboardMode}
+        leaderboardOptions={LEADERBOARD_OPTIONS}
+        onToggleGroup={handleToggleVotingGroup}
+        onTogglePortfolio={handleToggleVotingPortfolio}
+        onToggleUngrouped={handleToggleVotingUngrouped}
+        onToggleAllowRemovals={handleToggleVotingAllowRemovals}
+        onToggleSelectAll={handleToggleVotingSelectAll}
+        onChangeLeaderboardMode={handleVotingLeaderboardModeChange}
+        allSelected={votingAllSelected}
+        loading={votingUsersLoading}
+        error={votingUsersError}
+      />
 
-          <div className='space-y-3 rounded-2xl border border-border bg-card/70 p-4'>
-            <p className='text-sm font-medium text-foreground'>Poll Settings</p>
-            <label className='flex items-center gap-2 text-sm text-foreground'>
-              <input
-                type='checkbox'
-                checked={pollAnonymous}
-                onChange={(event) => setPollAnonymous(event.target.checked)}
-                className='h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-              />
-              Anonymous voting
-            </label>
-            <p className='text-xs text-muted-foreground'>
-              When enabled, only admins can see the vote totals. Everyone else sees only their own selections.
-            </p>
+      <PollOptionsSection
+        isPoll={isPoll}
+        pollOptions={pollOptions}
+        onChangeOption={handlePollOptionChange}
+        onAddOption={handleAddPollOption}
+        onRemoveOption={handleRemovePollOption}
+      />
 
-            <label className='flex items-center gap-2 text-sm text-foreground'>
-              <input
-                type='checkbox'
-                checked={pollAllowAdditionalOptions}
-                onChange={(event) =>
-                  setPollAllowAdditionalOptions(event.target.checked)
-                }
-                className='h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-              />
-              Allow additional options from users
-            </label>
-            <p className='text-xs text-muted-foreground'>
-              If enabled, users can submit their own option when voting.
-            </p>
+      <PollSettingsSection
+        isPoll={isPoll}
+        pollAnonymous={pollAnonymous}
+        pollAllowAdditionalOptions={pollAllowAdditionalOptions}
+        pollMaxSelections={pollMaxSelections}
+        pollOptionsCount={
+          pollOptions.filter((option) => option.trim().length > 0).length
+        }
+        pollHasClose={pollHasClose}
+        pollCloseDate={pollCloseDate}
+        pollCloseTime={pollCloseTime}
+        minPollCloseDate={minPollCloseDate}
+        displayPollCloseTimeSlots={displayPollCloseTimeSlots}
+        noPollCloseSlotsLeftToday={noPollCloseSlotsLeftToday}
+        onToggleAnonymous={setPollAnonymous}
+        onToggleAllowAdditionalOptions={setPollAllowAdditionalOptions}
+        onChangeMaxSelections={setPollMaxSelections}
+        onTogglePollClose={handleTogglePollClose}
+        onChangePollCloseDate={setPollCloseDate}
+        onChangePollCloseTime={setPollCloseTime}
+      />
 
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Number of selections
-              <input
-                type='number'
-                min={1}
-                max={Math.max(1, pollOptions.filter((option) => option.trim().length > 0).length)}
-                value={pollMaxSelections}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  setPollMaxSelections(Number.isNaN(value) ? 1 : value);
-                }}
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-              />
-            </label>
-            <p className='text-xs text-muted-foreground'>
-              Users can select up to this many options when voting.
-            </p>
-
-            <label className='flex items-center gap-2 text-sm text-foreground'>
-              <input
-                type='checkbox'
-                checked={pollHasClose}
-                onChange={(event) => {
-                  const enabled = event.target.checked;
-                  setPollHasClose(enabled);
-                  if (enabled) {
-                    const defaultDate = earliestAutomationDate;
-                    setPollCloseDate((prev) => prev || defaultDate);
-                    setPollCloseTime((prev) => prev || time || '');
-                  } else {
-                    setPollCloseDate('');
-                    setPollCloseTime('');
-                  }
-                }}
-                className='h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-              />
-              Set poll end time
-            </label>
-            <p className='text-xs text-muted-foreground'>
-              After this time passes, the poll becomes read-only and no additional votes can be submitted.
-            </p>
-
-            {pollHasClose && (
-              <div className='grid grid-cols-2 gap-4'>
-                <label className='flex flex-col gap-2 text-sm text-foreground'>
-                  End Date
-                  <input
-                    type='date'
-                    value={pollCloseDate}
-                    min={minPollCloseDate}
-                    onChange={(event) => setPollCloseDate(event.target.value)}
-                    className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                  />
-                </label>
-                <label className='flex flex-col gap-2 text-sm text-foreground'>
-                  End Time (15 min slots)
-                  <select
-                    value={pollCloseTime}
-                    onChange={(event) => setPollCloseTime(event.target.value)}
-                    disabled={noPollCloseSlotsLeftToday}
-                    className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70'
-                  >
-                    <option value=''>--</option>
-                    {noPollCloseSlotsLeftToday ? (
-                      <option value='' disabled>
-                        No times remain today — pick another date
-                      </option>
-                    ) : (
-                      displayPollCloseTimeSlots.map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </label>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      <div className='space-y-3 rounded-2xl border border-border bg-card/70 p-4'>
-        <label className='flex items-center gap-3 text-sm font-medium text-foreground'>
-          <input
-            type='checkbox'
-            checked={autoDeleteEnabled}
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              setAutoDeleteEnabled(enabled);
-              if (enabled) {
-                setAutoArchiveEnabled(false);
-                setArchiveDate('');
-                setArchiveTime('');
-                const defaultDeleteDate = earliestAutomationDate;
-                setDeleteDate((prev) => prev || defaultDeleteDate);
-                setDeleteTime((prev) => prev || time || '');
-              } else {
-                setDeleteDate('');
-                setDeleteTime('');
-              }
-            }}
-            className='h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-          />
-          Auto Delete
-        </label>
-        <p className='text-xs text-muted-foreground'>
-          Automatically remove the activity at a future date.
-        </p>
-
-        {autoDeleteEnabled && (
-          <div className='grid grid-cols-2 gap-4'>
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Delete Date
-              <input
-                type='date'
-                name='deleteDate'
-                value={deleteDate}
-                min={minAutoDeleteDate}
-                onChange={(e) => setDeleteDate(e.target.value)}
-                required
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-              />
-            </label>
-
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Delete Time (15 min slots)
-              <select
-                name='deleteTime'
-                value={deleteTime}
-                onChange={(e) => setDeleteTime(e.target.value)}
-                required
-                disabled={noDeleteSlotsLeftToday}
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70'
-              >
-                <option value=''>--</option>
-                {noDeleteSlotsLeftToday ? (
-                  <option value='' disabled>
-                    No delete slots remain today — pick another date
-                  </option>
-                ) : (
-                  displayDeleteTimeSlots.map((slot) => (
-                    <option key={slot} value={slot}>
-                      {slot}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-          </div>
-        )}
-
-        {autoDeleteEnabled && (
-          <p className='text-xs text-muted-foreground'>
-            {autoDeleteSummary
-              ? `Will delete on ${autoDeleteSummary}.`
-              : 'Pick a delete date and time to enable auto removal.'}
-          </p>
-        )}
-      </div>
-
-      <div className='space-y-3 rounded-2xl border border-border bg-card/70 p-4'>
-        <label className='flex items-center gap-3 text-sm font-medium text-foreground'>
-          <input
-            type='checkbox'
-            checked={autoArchiveEnabled}
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              setAutoArchiveEnabled(enabled);
-              if (enabled) {
-                setAutoDeleteEnabled(false);
-                setDeleteDate('');
-                setDeleteTime('');
-                const defaultArchiveDate = earliestAutomationDate;
-                setArchiveDate((prev) => prev || defaultArchiveDate);
-                setArchiveTime((prev) => prev || time || '');
-              } else {
-                setArchiveDate('');
-                setArchiveTime('');
-              }
-            }}
-            className='h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-          />
-          Auto Archive
-        </label>
-        <p className='text-xs text-muted-foreground'>
-          Archive the activity automatically instead of deleting it.
-        </p>
-
-        {autoArchiveEnabled && (
-          <div className='grid grid-cols-2 gap-4'>
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Archive Date
-              <input
-                type='date'
-                name='archiveDate'
-                value={archiveDate}
-                min={minAutoArchiveDate}
-                onChange={(e) => setArchiveDate(e.target.value)}
-                required
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-              />
-            </label>
-
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Archive Time (15 min slots)
-              <select
-                name='archiveTime'
-                value={archiveTime}
-                onChange={(e) => setArchiveTime(e.target.value)}
-                required
-                disabled={noArchiveSlotsLeftToday}
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70'
-              >
-                <option value=''>--</option>
-                {noArchiveSlotsLeftToday ? (
-                  <option value='' disabled>
-                    No archive slots remain today — pick another date
-                  </option>
-                ) : (
-                  displayArchiveTimeSlots.map((slot) => (
-                    <option key={slot} value={slot}>
-                      {slot}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-          </div>
-        )}
-
-        {autoArchiveEnabled && (
-          <p className='text-xs text-muted-foreground'>
-            {autoArchiveSummary
-              ? `Will archive on ${autoArchiveSummary}.`
-              : 'Pick an archive date and time to auto archive.'}
-          </p>
-        )}
-      </div>
+      <AutomationSection
+        autoDeleteEnabled={autoDeleteEnabled}
+        autoArchiveEnabled={autoArchiveEnabled}
+        deleteDate={deleteDate}
+        deleteTime={deleteTime}
+        archiveDate={archiveDate}
+        archiveTime={archiveTime}
+        minAutoDeleteDate={minAutoDeleteDate}
+        minAutoArchiveDate={minAutoArchiveDate}
+        displayDeleteTimeSlots={displayDeleteTimeSlots}
+        displayArchiveTimeSlots={displayArchiveTimeSlots}
+        noDeleteSlotsLeftToday={noDeleteSlotsLeftToday}
+        noArchiveSlotsLeftToday={noArchiveSlotsLeftToday}
+        autoDeleteSummary={autoDeleteSummary}
+        autoArchiveSummary={autoArchiveSummary}
+        onToggleAutoDelete={handleToggleAutoDelete}
+        onToggleAutoArchive={handleToggleAutoArchive}
+        onChangeDeleteDate={setDeleteDate}
+        onChangeDeleteTime={setDeleteTime}
+        onChangeArchiveDate={setArchiveDate}
+        onChangeArchiveTime={setArchiveTime}
+      />
 
       <div className='flex items-center justify-between gap-3'>
-        <p className='text-xs text-muted-foreground'>
-          {publishStatusMessage}
-        </p>
+        <p className='text-xs text-muted-foreground'>{publishStatusMessage}</p>
         <div className='flex gap-2'>
           <button
             type='button'

@@ -5,7 +5,14 @@ import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { MoreVertical } from 'lucide-react';
+import { AnnouncementModal } from '@/components/announcements/announcement-modal';
 import { PollModal } from '@/components/poll/poll-modal';
+import { VotingModal } from '@/components/voting/voting-modal';
+import {
+  formatCreator,
+  formatDate,
+  formatEventType,
+} from '@/lib/announcements';
 import { api } from '../../../convex/_generated/api';
 import type { Doc, Id } from '../../../convex/_generated/dataModel';
 
@@ -65,6 +72,10 @@ export default function DashboardPage() {
     React.useState<boolean | null>(null);
   const [activePollId, setActivePollId] =
     React.useState<AnnouncementId | null>(null);
+  const [viewingAnnouncement, setViewingAnnouncement] =
+    React.useState<Announcement | null>(null);
+  const [viewingVoting, setViewingVoting] =
+    React.useState<Announcement | null>(null);
   const isLoading = activities === undefined;
   const hasActivities = (activities?.length ?? 0) > 0;
   const isAdmin =
@@ -134,6 +145,17 @@ export default function DashboardPage() {
     setActivePollId(id);
   }, []);
 
+  const handleViewAnnouncement = React.useCallback(
+    (announcement: Announcement) => {
+      setViewingAnnouncement(announcement);
+    },
+    [],
+  );
+
+  const handleOpenVoting = React.useCallback((announcement: Announcement) => {
+    setViewingVoting(announcement);
+  }, []);
+
   return (
     <section className='mx-auto w-full max-w-5xl px-4 py-16'>
       <header className='mb-10 sm:mb-12'>
@@ -183,6 +205,8 @@ export default function DashboardPage() {
               deletingId={deletingId}
               archivingId={archivingId}
               onOpenPoll={handleOpenPoll}
+              onOpenVoting={handleOpenVoting}
+              onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
       </div>
@@ -193,6 +217,20 @@ export default function DashboardPage() {
           onClose={() => setActivePollId(null)}
           isAdmin={isAdmin}
           canVote={Boolean(user)}
+        />
+      )}
+
+      {viewingAnnouncement && (
+        <AnnouncementModal
+          announcement={viewingAnnouncement}
+          onClose={() => setViewingAnnouncement(null)}
+        />
+      )}
+
+      {viewingVoting && (
+        <VotingModal
+          event={viewingVoting}
+          onClose={() => setViewingVoting(null)}
         />
       )}
     </section>
@@ -208,6 +246,8 @@ type ActivityCardProps = {
   onArchive: (id: AnnouncementId) => Promise<void>;
   archivingId: AnnouncementId | null;
   onOpenPoll?: (id: AnnouncementId) => void;
+  onOpenVoting?: (announcement: Announcement) => void;
+  onViewAnnouncement: (announcement: Announcement) => void;
 };
 
 function ActivityCard({
@@ -219,6 +259,8 @@ function ActivityCard({
   onArchive,
   archivingId,
   onOpenPoll,
+  onOpenVoting,
+  onViewAnnouncement,
 }: ActivityCardProps) {
   const publishedDate = React.useMemo(
     () => formatDate(activity.publishAt),
@@ -239,6 +281,7 @@ function ActivityCard({
   }, [activity.autoArchiveAt]);
 
   const isPollCard = activity.eventType === 'poll';
+  const isVotingCard = activity.eventType === 'voting';
 
   return (
     <article className='rounded-xl border border-border bg-card p-6 shadow-sm transition hover:shadow-md'>
@@ -270,13 +313,17 @@ function ActivityCard({
               isDeleting={deletingId === activity._id}
               onArchive={onArchive}
               isArchiving={archivingId === activity._id}
+              canArchive={!isVotingCard}
             />
           )}
         </div>
       </header>
 
       <h2 className='mt-4 text-2xl font-semibold text-foreground'>{activity.title}</h2>
-      <DescriptionPreview text={activity.description} />
+      <DescriptionPreview
+        text={activity.description}
+        imageCount={activity.imageIds?.length ?? 0}
+      />
 
       <footer className='mt-5 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground'>
         <div className='flex flex-col gap-1'>
@@ -309,20 +356,49 @@ function ActivityCard({
               View Poll
             </button>
           )}
+          {isVotingCard && onOpenVoting && (
+            <button
+              type='button'
+              onClick={() => onOpenVoting(activity)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View leaderboard
+            </button>
+          )}
+          {!isPollCard && !isVotingCard && (
+            <button
+              type='button'
+              onClick={() => onViewAnnouncement(activity)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View announcement
+            </button>
+          )}
         </div>
       </footer>
     </article>
   );
 }
 
-function DescriptionPreview({ text }: { text: string }) {
+function DescriptionPreview({
+  text,
+  imageCount = 0,
+}: {
+  text: string;
+  imageCount?: number;
+}) {
   const formattedText = React.useMemo(
     () => text.replace(/\r\n/g, '\n'),
     [text],
   );
+  const attachmentNotice = React.useMemo(() => {
+    if (!imageCount) return null;
+    const label = imageCount === 1 ? 'image' : 'images';
+    return `(${imageCount} ${label} attached)`;
+  }, [imageCount]);
 
   return (
-    <div className='mt-4'>
+    <div className='mt-4 space-y-1'>
       <p
         className='text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap wrap-break-word'
         style={{
@@ -334,6 +410,9 @@ function DescriptionPreview({ text }: { text: string }) {
       >
         {formattedText}
       </p>
+      {attachmentNotice && (
+        <p className='text-xs italic text-muted-foreground'>{attachmentNotice}</p>
+      )}
     </div>
   );
 }
@@ -356,31 +435,6 @@ function DashboardSkeleton() {
   );
 }
 
-function formatDate(timestamp: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp));
-}
-
-function formatEventType(type: Announcement['eventType']) {
-  return type
-    .split(/[-_]/g)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function formatCreator(createdBy?: string | null) {
-  if (!createdBy || createdBy === 'anonymous') return 'Anonymous';
-  if (createdBy.includes(':')) {
-    return createdBy.split(':')[0];
-  }
-  if (createdBy.includes('|')) {
-    return createdBy.split('|')[0];
-  }
-  return createdBy;
-}
-
 type ActivityMenuProps = {
   activityId: AnnouncementId;
   onEdit: (id: AnnouncementId) => void;
@@ -388,6 +442,7 @@ type ActivityMenuProps = {
   isDeleting: boolean;
   onArchive: (id: AnnouncementId) => Promise<void>;
   isArchiving: boolean;
+  canArchive: boolean;
 };
 
 function ActivityMenu({
@@ -397,6 +452,7 @@ function ActivityMenu({
   isDeleting,
   onArchive,
   isArchiving,
+  canArchive,
 }: ActivityMenuProps) {
   const [open, setOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -442,6 +498,7 @@ function ActivityMenu({
   };
 
   const handleArchive = async () => {
+    if (!canArchive) return;
     await onArchive(activityId);
     closeMenu();
   };
@@ -471,14 +528,16 @@ function ActivityMenu({
           >
             Edit
           </button>
-          <button
-            type='button'
-            onClick={handleArchive}
-            disabled={isArchiving}
-            className='flex w-full items-center justify-between rounded-sm px-3 py-2 text-sm text-muted-foreground transition hover:bg-secondary disabled:opacity-60'
-          >
-            {isArchiving ? 'Archiving...' : 'Archive'}
-          </button>
+          {canArchive && (
+            <button
+              type='button'
+              onClick={handleArchive}
+              disabled={isArchiving}
+              className='flex w-full items-center justify-between rounded-sm px-3 py-2 text-sm text-muted-foreground transition hover:bg-secondary disabled:opacity-60'
+            >
+              {isArchiving ? 'Archiving...' : 'Archive'}
+            </button>
+          )}
           <button
             type='button'
             onClick={handleDelete}

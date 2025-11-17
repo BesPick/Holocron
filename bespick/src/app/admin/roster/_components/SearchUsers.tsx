@@ -10,7 +10,7 @@ export const SearchUsers = () => {
     <div className='space-y-3'>
       <h2 className='text-xl font-semibold text-foreground'>Find a user</h2>
       <p className='text-sm text-muted-foreground'>
-        Search by name or email to view and manage a user&apos;s role.
+        Search by name or email to view and manage a user&apos;s role and data.
       </p>
       <form
         onSubmit={(e) => {

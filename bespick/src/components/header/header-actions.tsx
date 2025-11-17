@@ -12,6 +12,7 @@ import {
   Archive,
   CalendarClock,
   CirclePlus,
+  CreditCard,
   Menu,
   Users,
   X,
@@ -30,6 +31,7 @@ export function HeaderActions() {
   const navItems = useMemo(() => {
     const items = [
       { href: '/archive', label: 'Archive', icon: Archive },
+      { href: '/boost', label: 'Boost', icon: CreditCard },
     ];
 
     if (isAdmin) {

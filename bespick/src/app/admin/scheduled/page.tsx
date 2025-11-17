@@ -5,7 +5,12 @@ import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { MoreVertical } from 'lucide-react';
-
+import { AnnouncementModal } from '@/components/announcements/announcement-modal';
+import {
+  formatCreator,
+  formatDate,
+  formatEventType,
+} from '@/lib/announcements';
 import { api } from '../../../../convex/_generated/api';
 import type { Doc, Id } from '../../../../convex/_generated/dataModel';
 
@@ -52,6 +57,14 @@ function ScheduledContent() {
   const [isHeaderDismissed, setIsHeaderDismissed] = React.useState<
     boolean | null
   >(null);
+  const [viewingAnnouncement, setViewingAnnouncement] =
+    React.useState<Announcement | null>(null);
+  const handleViewAnnouncement = React.useCallback(
+    (announcement: Announcement) => {
+      setViewingAnnouncement(announcement);
+    },
+    [],
+  );
 
   React.useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -157,9 +170,17 @@ function ScheduledContent() {
               onDelete={handleDelete}
               onEdit={handleEdit}
               deletingId={deletingId}
+              onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
       </div>
+
+      {viewingAnnouncement && (
+        <AnnouncementModal
+          announcement={viewingAnnouncement}
+          onClose={() => setViewingAnnouncement(null)}
+        />
+      )}
     </section>
   );
 }
@@ -170,6 +191,7 @@ type ScheduledCardProps = {
   onEdit: (id: AnnouncementId) => void;
   onDelete: (id: AnnouncementId) => Promise<void>;
   deletingId: AnnouncementId | null;
+  onViewAnnouncement: (announcement: Announcement) => void;
 };
 
 function ScheduledCard({
@@ -178,7 +200,9 @@ function ScheduledCard({
   onDelete,
   onEdit,
   deletingId,
+  onViewAnnouncement,
 }: ScheduledCardProps) {
+  const isPollCard = activity.eventType === 'poll';
   const scheduledFor = React.useMemo(
     () =>
       new Intl.DateTimeFormat(undefined, {
@@ -232,9 +256,20 @@ function ScheduledCard({
             </p>
           )}
         </div>
-        <span className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
-          Scheduled
-        </span>
+        <div className='flex items-center gap-2'>
+          <span className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
+            Scheduled
+          </span>
+          {!isPollCard && (
+            <button
+              type='button'
+              onClick={() => onViewAnnouncement(activity)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View announcement
+            </button>
+          )}
+        </div>
       </footer>
     </article>
   );
@@ -249,7 +284,7 @@ function DescriptionPreview({ text }: { text: string }) {
   return (
     <div className='mt-4'>
       <p
-        className='text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap break-words'
+        className='text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap wrap-break-word'
         style={{
           display: '-webkit-box',
           WebkitLineClamp: 2,
@@ -373,29 +408,4 @@ function ScheduledSkeleton() {
       ))}
     </div>
   );
-}
-
-function formatEventType(type: Announcement['eventType']) {
-  return type
-    .split(/[-_]/g)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function formatCreator(createdBy?: string | null) {
-  if (!createdBy || createdBy === 'anonymous') return 'Anonymous';
-  if (createdBy.includes(':')) {
-    return createdBy.split(':')[0];
-  }
-  if (createdBy.includes('|')) {
-    return createdBy.split('|')[0];
-  }
-  return createdBy;
-}
-
-function formatDate(timestamp: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp));
 }

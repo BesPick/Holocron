@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 
 import { checkRole } from '@/server/auth/check-role';
 
+import { isValidGroup, isValidPortfolioForGroup } from '@/lib/org';
+
 import { SearchUsers } from './_components/SearchUsers';
 import { UserRoleCard } from './_components/UserRoleCard';
 
@@ -26,7 +28,10 @@ export default async function AdminRosterPage({
 
   const client = await clerkClient();
 
-  const users = query ? (await client.users.getUserList({ query })).data : [];
+  const listOptions = query
+    ? { query, limit: 100 }
+    : { limit: 100 };
+  const users = (await client.users.getUserList(listOptions)).data;
 
   const primaryEmail = (user: (typeof users)[number]) =>
     user.emailAddresses.find((email) => email.id === user.primaryEmailAddressId)
@@ -40,7 +45,7 @@ export default async function AdminRosterPage({
         </h1>
         <p className='mt-2 text-sm text-muted-foreground'>
           Manage user roles and permissions. Only members with the admin role
-          can access this view.
+          can access this view. Moderator role has no function currently.
         </p>
       </header>
 
@@ -53,23 +58,35 @@ export default async function AdminRosterPage({
           <p className='rounded-xl border border-dashed border-border bg-secondary/50 px-4 py-6 text-center text-sm text-muted-foreground'>
             {query
               ? 'No users match your search just yet.'
-              : 'Search for a user to view and manage their roles.'}
+              : 'Search for a user to view and manage their roles data.'}
           </p>
         ) : (
-          users.map((user) => (
-            <UserRoleCard
-              key={user.id}
-              user={{
-                id: user.id,
-                fullName:
-                  `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
-                  user.username ||
-                  'Unnamed User',
-                email: primaryEmail(user),
-                role: (user.publicMetadata.role as string) ?? null,
-              }}
-            />
-          ))
+          users.map((user) => {
+            const rawGroup = user.publicMetadata.group;
+            const normalizedGroup = isValidGroup(rawGroup) ? rawGroup : null;
+            const rawPortfolio = user.publicMetadata.portfolio;
+            const normalizedPortfolio =
+              normalizedGroup &&
+              isValidPortfolioForGroup(normalizedGroup, rawPortfolio)
+                ? rawPortfolio
+                : null;
+            return (
+              <UserRoleCard
+                key={user.id}
+                user={{
+                  id: user.id,
+                  fullName:
+                    `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
+                    user.username ||
+                    'Unnamed User',
+                  email: primaryEmail(user),
+                  role: (user.publicMetadata.role as string) ?? null,
+                  group: normalizedGroup,
+                  portfolio: normalizedPortfolio,
+                }}
+              />
+            );
+          })
         )}
       </section>
     </div>

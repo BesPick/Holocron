@@ -3,6 +3,12 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 
+import {
+  GROUP_OPTIONS,
+  getPortfoliosForGroup,
+  type Group,
+  type Portfolio,
+} from '@/lib/org';
 import { updateUserRole } from '../../../../server/actions/roster';
 
 type UserRoleCardProps = {
@@ -11,6 +17,8 @@ type UserRoleCardProps = {
     fullName: string;
     email: string;
     role: string | null;
+    group: Group | null;
+    portfolio: Portfolio | null;
   };
 };
 
@@ -21,15 +29,15 @@ type ToastState = {
 
 export function UserRoleCard({ user }: UserRoleCardProps) {
   const [currentRole, setCurrentRole] = useState<string | null>(user.role);
+  const [currentGroup, setCurrentGroup] = useState<Group | null>(user.group);
+  const [currentPortfolio, setCurrentPortfolio] = useState<Portfolio | null>(
+    user.portfolio,
+  );
   const [toast, setToast] = useState<ToastState | null>(null);
   const [isPending, startTransition] = useTransition();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const roleLabel = currentRole ?? 'No role assigned';
-
-  useEffect(() => {
-    setCurrentRole(user.role);
-  }, [user.role]);
 
   useEffect(() => {
     return () => {
@@ -47,12 +55,35 @@ export function UserRoleCard({ user }: UserRoleCardProps) {
     timeoutRef.current = setTimeout(() => setToast(null), 3000);
   };
 
-  const handleRoleChange = (role: string | null) => {
+  const submitUpdate = ({
+    role,
+    group,
+    portfolio,
+  }: {
+    role?: string | null;
+    group?: Group | null;
+    portfolio?: Portfolio | null;
+  }) => {
     startTransition(async () => {
-      const result = await updateUserRole({ id: user.id, role });
+      const payload = {
+        id: user.id,
+        role: role === undefined ? currentRole ?? null : role,
+        group:
+          group === undefined
+            ? currentGroup
+            : (group as Group | null),
+        portfolio:
+          portfolio === undefined
+            ? currentPortfolio
+            : (portfolio as Portfolio | null),
+      };
+
+      const result = await updateUserRole(payload);
 
       if (result.success) {
         setCurrentRole(result.role);
+        setCurrentGroup(result.group);
+        setCurrentPortfolio(result.portfolio);
         showToast({ message: result.message, variant: 'success' });
       } else {
         showToast({ message: result.message, variant: 'error' });
@@ -60,8 +91,37 @@ export function UserRoleCard({ user }: UserRoleCardProps) {
     });
   };
 
+  const handleRoleChange = (role: string | null) => {
+    submitUpdate({ role });
+  };
+
+  const handleGroupChange = (value: string) => {
+    const nextGroup = value ? (value as Group) : null;
+    const availablePortfolios = nextGroup
+      ? getPortfoliosForGroup(nextGroup)
+      : [];
+    const nextPortfolio =
+      nextGroup &&
+      currentPortfolio &&
+      availablePortfolios.includes(currentPortfolio)
+        ? currentPortfolio
+        : null;
+    submitUpdate({ group: nextGroup, portfolio: nextPortfolio });
+  };
+
+  const handlePortfolioChange = (value: string) => {
+    const nextPortfolio = value ? (value as Portfolio) : null;
+    submitUpdate({ portfolio: nextPortfolio });
+  };
+
+  const availablePortfolios = currentGroup
+    ? getPortfoliosForGroup(currentGroup)
+    : [];
+  const portfolioSelectDisabled =
+    !currentGroup || availablePortfolios.length === 0 || isPending;
+
   const buttonClasses =
-    'inline-flex items-center justify-center rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground transition hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60';
+    'inline-flex items-center justify-center rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium transition hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60';
 
   return (
     <>
@@ -82,7 +142,7 @@ export function UserRoleCard({ user }: UserRoleCardProps) {
           <button
             type='button'
             onClick={() => handleRoleChange('admin')}
-            className={buttonClasses}
+            className={`${buttonClasses} text-foreground`}
             disabled={isPending || currentRole === 'admin'}
           >
             {currentRole === 'admin' ? 'Already Admin' : 'Make Admin'}
@@ -91,7 +151,7 @@ export function UserRoleCard({ user }: UserRoleCardProps) {
           <button
             type='button'
             onClick={() => handleRoleChange('moderator')}
-            className={buttonClasses}
+            className={`${buttonClasses} text-foreground`}
             disabled={isPending || currentRole === 'moderator'}
           >
             {currentRole === 'moderator'
@@ -102,11 +162,56 @@ export function UserRoleCard({ user }: UserRoleCardProps) {
           <button
             type='button'
             onClick={() => handleRoleChange(null)}
-            className={buttonClasses}
+            className={`${buttonClasses} text-danger`}
             disabled={isPending || currentRole === null}
           >
-            {currentRole === null ? 'No Role Assigned' : 'Remove Role'}
+            {currentRole === null
+              ? 'Remove Role'
+              : 'Remove ' +
+                (currentRole.charAt(0).toUpperCase() + currentRole.slice(1)) +
+                ' Role'}
           </button>
+        </div>
+
+        <div className='mt-6 grid gap-4 sm:grid-cols-2'>
+          <label className='flex flex-col gap-2 text-sm text-foreground'>
+            Group
+            <select
+              value={currentGroup ?? ''}
+              onChange={(event) => handleGroupChange(event.target.value)}
+              disabled={isPending}
+              className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+            >
+              <option value=''>No group assigned</option>
+              {GROUP_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className='flex flex-col gap-2 text-sm text-foreground'>
+            Portfolio
+            <select
+              value={currentPortfolio ?? ''}
+              onChange={(event) => handlePortfolioChange(event.target.value)}
+              disabled={portfolioSelectDisabled}
+              className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+            >
+              <option value=''>No portfolio assigned</option>
+              {availablePortfolios.map((portfolioOption) => (
+                <option key={portfolioOption} value={portfolioOption}>
+                  {portfolioOption}
+                </option>
+              ))}
+            </select>
+            <span className='text-xs text-muted-foreground'>
+              {availablePortfolios.length === 0
+                ? 'Select a group with portfolios to enable this field.'
+                : ''}
+            </span>
+          </label>
         </div>
       </article>
 
