@@ -45,6 +45,7 @@ export default defineSchema({
     votingAllowedGroups: v.optional(v.array(v.string())),
     votingAllowedPortfolios: v.optional(v.array(v.string())),
     votingAllowUngrouped: v.optional(v.boolean()),
+    votingAllowRemovals: v.optional(v.boolean()),
     votingLeaderboardMode: v.optional(v.string()),
     imageIds: v.optional(v.array(v.id('_storage'))),
   })

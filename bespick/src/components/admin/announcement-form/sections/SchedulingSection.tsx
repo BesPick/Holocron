@@ -40,7 +40,7 @@ export function SchedulingSection({
       </label>
 
       <label className='flex flex-col gap-2 text-sm text-foreground'>
-        Publish Time (15 min slots)
+        Publish Time
         <select
           name='publishTime'
           value={time}

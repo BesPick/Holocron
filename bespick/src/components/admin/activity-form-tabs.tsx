@@ -23,12 +23,12 @@ const ACTIVITY_OPTIONS: Array<{
   {
     value: 'poll',
     label: 'Poll',
-    description: 'Gauge sentiment quickly by asking lightweight questions.',
+    description: 'Gauge sentiment and gather opinions quickly with a question.',
   },
   {
     value: 'voting',
     label: 'Voting',
-    description: 'Let the team choose between options to make decisions.',
+    description: 'Vote to fight it out on the leaderboard.',
   },
 ];
 
@@ -38,17 +38,48 @@ export function ActivityFormTabs() {
   const searchParams = useSearchParams();
   const editIdParam = searchParams.get('edit');
   const editId = editIdParam as Id<'announcements'> | null;
-
-  if (editId) {
-    return (
-      <EditActivityLoader
-        id={editId}
-      />
-    );
-  }
-
   const [activeType, setActiveType] =
     React.useState<ActivityType>('announcements');
+  const isEditing = Boolean(editId);
+  const activity = useQuery(
+    api.announcements.get,
+    editId ? { id: editId } : 'skip',
+  ) as AnnouncementDoc | null | undefined;
+
+  if (isEditing) {
+    if (activity === undefined) {
+      return (
+        <section className='rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-sm'>
+          Loading activity...
+        </section>
+      );
+    }
+
+    if (!activity) {
+      return (
+        <section className='rounded-2xl border border-destructive/40 bg-destructive/5 p-6 text-sm text-destructive shadow-sm'>
+          Activity not found or has been removed.
+        </section>
+      );
+    }
+
+    return (
+      <section className='space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm backdrop-blur'>
+        <div>
+          <p className='text-sm font-medium text-muted-foreground'>
+            Editing {activity.eventType}
+          </p>
+          <h2 className='text-2xl font-semibold text-foreground'>
+            {activity.title}
+          </h2>
+        </div>
+        <AnnouncementForm
+          activityType={activity.eventType as ActivityType}
+          existingActivity={activity}
+        />
+      </section>
+    );
+  }
 
   return (
     <div className='space-y-6'>
@@ -79,45 +110,5 @@ export function ActivityFormTabs() {
         <AnnouncementForm activityType={activeType} />
       </section>
     </div>
-  );
-}
-
-function EditActivityLoader({ id }: { id: Id<'announcements'> }) {
-  const activity = useQuery(api.announcements.get, { id }) as
-    | AnnouncementDoc
-    | null
-    | undefined;
-
-  if (activity === undefined) {
-    return (
-      <section className='rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-sm'>
-        Loading activity...
-      </section>
-    );
-  }
-
-  if (!activity) {
-    return (
-      <section className='rounded-2xl border border-destructive/40 bg-destructive/5 p-6 text-sm text-destructive shadow-sm'>
-        Activity not found or has been removed.
-      </section>
-    );
-  }
-
-  return (
-    <section className='space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm backdrop-blur'>
-      <div>
-        <p className='text-sm font-medium text-muted-foreground'>
-          Editing {activity.eventType}
-        </p>
-        <h2 className='text-2xl font-semibold text-foreground'>
-          {activity.title}
-        </h2>
-      </div>
-      <AnnouncementForm
-        activityType={activity.eventType as ActivityType}
-        existingActivity={activity}
-      />
-    </section>
   );
 }

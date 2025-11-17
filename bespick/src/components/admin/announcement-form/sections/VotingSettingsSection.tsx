@@ -19,11 +19,17 @@ type VotingSettingsSectionProps = {
   groupSelections: Record<Group, boolean>;
   portfolioSelections: Record<Portfolio, boolean>;
   allowUngrouped: boolean;
+  allowRemovals: boolean;
+  lockedGroups: Record<Group, boolean>;
+  lockedPortfolios: Record<Portfolio, boolean>;
+  lockedUngrouped: boolean;
+  hasLockedSelections: boolean;
   leaderboardMode: string;
   leaderboardOptions: LeaderboardOption[];
   onToggleGroup: (group: Group, checked: boolean) => void;
   onTogglePortfolio: (portfolio: Portfolio, checked: boolean) => void;
   onToggleUngrouped: (checked: boolean) => void;
+  onToggleAllowRemovals: (checked: boolean) => void;
   onToggleSelectAll: (checked: boolean) => void;
   onChangeLeaderboardMode: (value: string) => void;
   allSelected: boolean;
@@ -40,11 +46,17 @@ export function VotingSettingsSection({
   groupSelections,
   portfolioSelections,
   allowUngrouped,
+  allowRemovals,
+  lockedGroups,
+  lockedPortfolios,
+  lockedUngrouped,
+  hasLockedSelections,
   leaderboardMode,
   leaderboardOptions,
   onToggleGroup,
   onTogglePortfolio,
   onToggleUngrouped,
+  onToggleAllowRemovals,
   onToggleSelectAll,
   onChangeLeaderboardMode,
   allSelected,
@@ -53,6 +65,9 @@ export function VotingSettingsSection({
 }: VotingSettingsSectionProps) {
   if (!isVoting) return null;
 
+  const disableSelectAll = hasLockedSelections && allSelected;
+  const disableUngroupedToggle = lockedUngrouped;
+
   return (
     <section className='space-y-4 rounded-2xl border border-border bg-card/40 p-4'>
       <div className='flex flex-col gap-1'>
@@ -60,8 +75,8 @@ export function VotingSettingsSection({
           Voting settings
         </h3>
         <p className='text-sm text-muted-foreground'>
-          Set the prices teammates will pay to add or remove votes and choose
-          which groups can participate.
+          Set prices for adding or removing votes and choose
+          who can participate.
         </p>
       </div>
 
@@ -71,27 +86,37 @@ export function VotingSettingsSection({
           <input
             type='number'
             min='0'
-            step='0.01'
+            step='0.25'
             inputMode='decimal'
             value={addVotePrice}
             onChange={(event) => onChangeAddPrice(event.target.value)}
-            placeholder='e.g. 5'
+            placeholder='Add Price'
             className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
           />
         </label>
-        <label className='flex flex-col gap-2 text-sm text-foreground'>
-          Price to remove a vote
-          <input
-            type='number'
-            min='0'
-            step='0.01'
-            inputMode='decimal'
-            value={removeVotePrice}
-            onChange={(event) => onChangeRemovePrice(event.target.value)}
-            placeholder='e.g. 10'
-            className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-          />
+        <div className='flex flex-col gap-2 text-sm text-foreground'>
+          <label className='flex items-center justify-between text-sm font-medium text-foreground'>
+            <span>Allow removing votes</span>
+            <input
+              type='checkbox'
+              checked={allowRemovals}
+              onChange={(event) => onToggleAllowRemovals(event.target.checked)}
+              className='h-4 w-4 rounded border-border accent-primary'
+            />
           </label>
+          {allowRemovals && (
+            <input
+              type='number'
+              min='0'
+              step='0.25'
+              inputMode='decimal'
+              value={removeVotePrice}
+              onChange={(event) => onChangeRemovePrice(event.target.value)}
+              placeholder='Remove Price'
+              className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+            />
+          )}
+        </div>
       </div>
 
       <div className='space-y-2 rounded-xl border border-border bg-background/60 p-4'>
@@ -128,6 +153,7 @@ export function VotingSettingsSection({
             type='checkbox'
             checked={allSelected}
             onChange={(event) => onToggleSelectAll(event.target.checked)}
+            disabled={disableSelectAll}
             className='h-4 w-4 rounded border-border accent-primary'
           />
           <span>Select everyone</span>
@@ -136,6 +162,7 @@ export function VotingSettingsSection({
         <div className='grid gap-4 sm:grid-cols-2'>
           {GROUP_OPTIONS.map((group) => {
             const checked = groupSelections[group.value];
+            const locked = Boolean(lockedGroups[group.value]);
             return (
               <div
                 key={group.value}
@@ -146,6 +173,7 @@ export function VotingSettingsSection({
                     type='checkbox'
                     checked={checked}
                     onChange={(event) => onToggleGroup(group.value, event.target.checked)}
+                    disabled={locked}
                     className='h-4 w-4 rounded border-border accent-primary'
                   />
                   {group.label}
@@ -161,22 +189,26 @@ export function VotingSettingsSection({
                     </summary>
                     <div className='border-t border-border/40 px-3 py-3'>
                       <div className='flex flex-wrap gap-2'>
-                        {group.portfolios.map((portfolio) => (
-                          <label
-                            key={portfolio}
-                            className='flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-foreground'
-                          >
-                            <input
-                              type='checkbox'
-                              checked={portfolioSelections[portfolio]}
-                              onChange={(event) =>
-                                onTogglePortfolio(portfolio, event.target.checked)
-                              }
-                              className='h-4 w-4 rounded border-border accent-primary'
-                            />
-                            {portfolio}
-                          </label>
-                        ))}
+                        {group.portfolios.map((portfolio) => {
+                          const lockedPortfolio = Boolean(lockedPortfolios[portfolio]);
+                          return (
+                            <label
+                              key={portfolio}
+                              className='flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-foreground'
+                            >
+                              <input
+                                type='checkbox'
+                                checked={portfolioSelections[portfolio]}
+                                onChange={(event) =>
+                                  onTogglePortfolio(portfolio, event.target.checked)
+                                }
+                                disabled={lockedPortfolio}
+                                className='h-4 w-4 rounded border-border accent-primary'
+                              />
+                              {portfolio}
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
                   </details>
@@ -191,6 +223,7 @@ export function VotingSettingsSection({
             type='checkbox'
             checked={allowUngrouped}
             onChange={(event) => onToggleUngrouped(event.target.checked)}
+            disabled={disableUngroupedToggle}
             className='h-4 w-4 rounded border-border accent-primary'
           />
           Include teammates without a group assignment

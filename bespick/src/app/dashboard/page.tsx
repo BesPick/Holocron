@@ -313,6 +313,7 @@ function ActivityCard({
               isDeleting={deletingId === activity._id}
               onArchive={onArchive}
               isArchiving={archivingId === activity._id}
+              canArchive={!isVotingCard}
             />
           )}
         </div>
@@ -361,7 +362,7 @@ function ActivityCard({
               onClick={() => onOpenVoting(activity)}
               className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
             >
-              View Voting
+              View leaderboard
             </button>
           )}
           {!isPollCard && !isVotingCard && (
@@ -441,6 +442,7 @@ type ActivityMenuProps = {
   isDeleting: boolean;
   onArchive: (id: AnnouncementId) => Promise<void>;
   isArchiving: boolean;
+  canArchive: boolean;
 };
 
 function ActivityMenu({
@@ -450,6 +452,7 @@ function ActivityMenu({
   isDeleting,
   onArchive,
   isArchiving,
+  canArchive,
 }: ActivityMenuProps) {
   const [open, setOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -495,6 +498,7 @@ function ActivityMenu({
   };
 
   const handleArchive = async () => {
+    if (!canArchive) return;
     await onArchive(activityId);
     closeMenu();
   };
@@ -524,14 +528,16 @@ function ActivityMenu({
           >
             Edit
           </button>
-          <button
-            type='button'
-            onClick={handleArchive}
-            disabled={isArchiving}
-            className='flex w-full items-center justify-between rounded-sm px-3 py-2 text-sm text-muted-foreground transition hover:bg-secondary disabled:opacity-60'
-          >
-            {isArchiving ? 'Archiving...' : 'Archive'}
-          </button>
+          {canArchive && (
+            <button
+              type='button'
+              onClick={handleArchive}
+              disabled={isArchiving}
+              className='flex w-full items-center justify-between rounded-sm px-3 py-2 text-sm text-muted-foreground transition hover:bg-secondary disabled:opacity-60'
+            >
+              {isArchiving ? 'Archiving...' : 'Archive'}
+            </button>
+          )}
           <button
             type='button'
             onClick={handleDelete}

@@ -128,7 +128,15 @@ const [votingGroupSelections, setVotingGroupSelections] = React.useState<
 const [votingPortfolioSelections, setVotingPortfolioSelections] = React.useState<
   Record<Portfolio, boolean>
 >(() => initPortfolioSelections(true));
-const [votingAllowUngrouped, setVotingAllowUngrouped] = React.useState(true);
+const [votingAllowUngrouped, setVotingAllowUngrouped] = React.useState(false);
+const [votingAllowRemovals, setVotingAllowRemovals] = React.useState(true);
+const [votingLockedGroups, setVotingLockedGroups] = React.useState<
+  Record<Group, boolean>
+>(() => initGroupSelections(false));
+const [votingLockedPortfolios, setVotingLockedPortfolios] = React.useState<
+  Record<Portfolio, boolean>
+>(() => initPortfolioSelections(false));
+const [votingLockedUngrouped, setVotingLockedUngrouped] = React.useState(false);
 const [votingAddVotePrice, setVotingAddVotePrice] = React.useState('');
 const [votingRemoveVotePrice, setVotingRemoveVotePrice] = React.useState('');
 const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingLeaderboardMode>('all');
@@ -224,40 +232,77 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     setImageIds((prev) => prev.filter((imageId) => imageId !== id));
   }, []);
 
-  const handleToggleVotingGroup = React.useCallback((group: Group, checked: boolean) => {
-    setVotingGroupSelections((prev) => ({ ...prev, [group]: checked }));
-    setVotingPortfolioSelections((prev) => {
-      const updated = { ...prev };
-      getPortfoliosForGroup(group).forEach((portfolio) => {
-        updated[portfolio] = checked;
-      });
-      return updated;
-    });
-  }, []);
+  const hasLockedVotingAssignments = React.useMemo(
+    () =>
+      Object.values(votingLockedGroups).some(Boolean) ||
+      Object.values(votingLockedPortfolios).some(Boolean),
+    [votingLockedGroups, votingLockedPortfolios],
+  );
 
-  const handleToggleVotingPortfolio = React.useCallback((portfolio: Portfolio, checked: boolean) => {
-    setVotingPortfolioSelections((prev) => ({ ...prev, [portfolio]: checked }));
-    setVotingGroupSelections((prev) => {
-      const next = { ...prev };
-      const owningGroup = GROUP_OPTIONS.find((option) =>
-        option.portfolios.includes(portfolio),
-      )?.value;
-      if (owningGroup) {
-        next[owningGroup] = true;
+  const handleToggleVotingGroup = React.useCallback(
+    (group: Group, checked: boolean) => {
+      if (votingLockedGroups[group] && !checked) {
+        return;
       }
-      return next;
-    });
-  }, []);
+      setVotingGroupSelections((prev) => ({ ...prev, [group]: checked }));
+      setVotingPortfolioSelections((prev) => {
+        const updated = { ...prev };
+        getPortfoliosForGroup(group).forEach((portfolio) => {
+          updated[portfolio] = checked;
+        });
+        return updated;
+      });
+    },
+    [votingLockedGroups],
+  );
 
-  const handleToggleVotingUngrouped = React.useCallback((checked: boolean) => {
-    setVotingAllowUngrouped(checked);
-  }, []);
+  const handleToggleVotingPortfolio = React.useCallback(
+    (portfolio: Portfolio, checked: boolean) => {
+      if (votingLockedPortfolios[portfolio] && !checked) {
+        return;
+      }
+      setVotingPortfolioSelections((prev) => ({ ...prev, [portfolio]: checked }));
+      setVotingGroupSelections((prev) => {
+        const next = { ...prev };
+        const owningGroup = GROUP_OPTIONS.find((option) =>
+          option.portfolios.includes(portfolio),
+        )?.value;
+        if (owningGroup) {
+          next[owningGroup] = true;
+        }
+        return next;
+      });
+    },
+    [votingLockedPortfolios],
+  );
 
-  const handleToggleVotingSelectAll = React.useCallback((checked: boolean) => {
-    setVotingGroupSelections(initGroupSelections(checked));
-    setVotingPortfolioSelections(initPortfolioSelections(checked));
-    setVotingAllowUngrouped(checked);
-  }, []);
+  const handleToggleVotingUngrouped = React.useCallback(
+    (checked: boolean) => {
+      if (votingLockedUngrouped && !checked) {
+        return;
+      }
+      setVotingAllowUngrouped(checked);
+    },
+    [votingLockedUngrouped],
+  );
+
+  const handleToggleVotingAllowRemovals = React.useCallback(
+    (checked: boolean) => {
+      setVotingAllowRemovals(checked);
+    },
+    [],
+  );
+
+  const handleToggleVotingSelectAll = React.useCallback(
+    (checked: boolean) => {
+      if (!checked && hasLockedVotingAssignments) {
+        return;
+      }
+      setVotingGroupSelections(initGroupSelections(checked));
+      setVotingPortfolioSelections(initPortfolioSelections(checked));
+    },
+    [hasLockedVotingAssignments],
+  );
 
   const handleVotingLeaderboardModeChange = React.useCallback(
     (value: string) => {
@@ -478,6 +523,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
 
     if (activity.eventType === 'voting') {
       const nextGroupSelections = initGroupSelections(false);
+      const lockedGroups = initGroupSelections(false);
       const storedGroups = Array.isArray(activity.votingAllowedGroups)
         ? activity.votingAllowedGroups
         : null;
@@ -485,14 +531,19 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         storedGroups.forEach((group) => {
           if (GROUP_KEYS.includes(group as Group)) {
             nextGroupSelections[group as Group] = true;
+            lockedGroups[group as Group] = true;
           }
         });
         setVotingGroupSelections({ ...nextGroupSelections });
+        setVotingLockedGroups({ ...lockedGroups });
       } else {
-        setVotingGroupSelections(initGroupSelections(true));
+        const allGroups = initGroupSelections(true);
+        setVotingGroupSelections(allGroups);
+        setVotingLockedGroups({ ...allGroups });
       }
 
       const nextPortfolioSelections = initPortfolioSelections(false);
+      const lockedPortfolios = initPortfolioSelections(false);
       const storedPortfolios = Array.isArray(activity.votingAllowedPortfolios)
         ? activity.votingAllowedPortfolios
         : null;
@@ -500,14 +551,28 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         storedPortfolios.forEach((portfolio) => {
           if (PORTFOLIO_KEYS.includes(portfolio as Portfolio)) {
             nextPortfolioSelections[portfolio as Portfolio] = true;
+            lockedPortfolios[portfolio as Portfolio] = true;
           }
         });
         setVotingPortfolioSelections({ ...nextPortfolioSelections });
+        setVotingLockedPortfolios({ ...lockedPortfolios });
       } else {
-        setVotingPortfolioSelections(initPortfolioSelections(true));
+        const allPortfolios = initPortfolioSelections(true);
+        setVotingPortfolioSelections(allPortfolios);
+        setVotingLockedPortfolios({ ...allPortfolios });
       }
 
-      setVotingAllowUngrouped(Boolean(activity.votingAllowUngrouped ?? true));
+      const allowUngroupedValue =
+        typeof activity.votingAllowUngrouped === 'boolean'
+          ? activity.votingAllowUngrouped
+          : false;
+      setVotingAllowUngrouped(allowUngroupedValue);
+      setVotingLockedUngrouped(Boolean(allowUngroupedValue));
+      const allowRemovalsValue =
+        typeof activity.votingAllowRemovals === 'boolean'
+          ? activity.votingAllowRemovals
+          : true;
+      setVotingAllowRemovals(allowRemovalsValue);
       setVotingLeaderboardMode(
         (activity.votingLeaderboardMode as VotingLeaderboardMode | undefined) &&
           ['all', 'group', 'group_portfolio'].includes(
@@ -522,7 +587,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
           : '',
       );
       setVotingRemoveVotePrice(
-        typeof activity.votingRemoveVotePrice === 'number'
+        typeof activity.votingRemoveVotePrice === 'number' && allowRemovalsValue
           ? activity.votingRemoveVotePrice.toString()
           : '',
       );
@@ -530,7 +595,11 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     } else {
       setVotingGroupSelections(initGroupSelections(true));
       setVotingPortfolioSelections(initPortfolioSelections(true));
-      setVotingAllowUngrouped(true);
+      setVotingAllowUngrouped(false);
+      setVotingAllowRemovals(true);
+      setVotingLockedGroups(initGroupSelections(false));
+      setVotingLockedPortfolios(initPortfolioSelections(false));
+      setVotingLockedUngrouped(false);
       setVotingAddVotePrice('');
       setVotingRemoveVotePrice('');
       setVotingUsersError(null);
@@ -597,8 +666,8 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     const allPortfoliosSelected = PORTFOLIO_KEYS.every(
       (portfolio) => votingPortfolioSelections[portfolio],
     );
-    return allGroupsSelected && allPortfoliosSelected && votingAllowUngrouped;
-  }, [votingGroupSelections, votingPortfolioSelections, votingAllowUngrouped]);
+    return allGroupsSelected && allPortfoliosSelected;
+  }, [votingGroupSelections, votingPortfolioSelections]);
 
   React.useEffect(() => {
     setDate((prev) => prev || todayLocalISO);
@@ -633,7 +702,11 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
       setVotingRoster([]);
       setVotingGroupSelections(initGroupSelections(true));
       setVotingPortfolioSelections(initPortfolioSelections(true));
-      setVotingAllowUngrouped(true);
+      setVotingAllowUngrouped(false);
+      setVotingAllowRemovals(true);
+      setVotingLockedGroups(initGroupSelections(false));
+      setVotingLockedPortfolios(initPortfolioSelections(false));
+      setVotingLockedUngrouped(false);
       setVotingAddVotePrice('');
       setVotingRemoveVotePrice('');
       setVotingUsersError(null);
@@ -727,7 +800,11 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     setVotingRoster([]);
     setVotingGroupSelections(initGroupSelections(true));
     setVotingPortfolioSelections(initPortfolioSelections(true));
-    setVotingAllowUngrouped(true);
+    setVotingAllowUngrouped(false);
+    setVotingAllowRemovals(true);
+    setVotingLockedGroups(initGroupSelections(false));
+    setVotingLockedPortfolios(initPortfolioSelections(false));
+    setVotingLockedUngrouped(false);
     setVotingAddVotePrice('');
     setVotingRemoveVotePrice('');
     setVotingUsersError(null);
@@ -827,6 +904,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     let votingAllowedGroupsPayload: string[] | undefined;
     let votingAllowedPortfoliosPayload: string[] | undefined;
     let votingAllowUngroupedPayload: boolean | undefined;
+    let votingAllowRemovalsPayload: boolean | undefined;
     let votingLeaderboardModePayload: VotingLeaderboardMode | undefined;
     if (isPoll) {
       const question = title.trim();
@@ -891,18 +969,27 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         return;
       }
       const addPrice = parseFloat(votingAddVotePrice);
-      const removePrice = parseFloat(votingRemoveVotePrice);
       if (Number.isNaN(addPrice) || addPrice < 0) {
         setError('Enter a valid price to add a vote.');
         return;
       }
-      if (Number.isNaN(removePrice) || removePrice < 0) {
-        setError('Enter a valid price to remove a vote.');
-        return;
+      const allowRemovals = votingAllowRemovals;
+      votingAllowRemovalsPayload = allowRemovals;
+      let removePrice: number | undefined;
+      if (allowRemovals) {
+        const parsedRemove = parseFloat(votingRemoveVotePrice);
+        if (Number.isNaN(parsedRemove) || parsedRemove < 0) {
+          setError('Enter a valid price to remove a vote.');
+          return;
+        }
+        removePrice = parsedRemove;
       }
       votingParticipantsPayload = normalizedParticipants;
       votingAddVotePricePayload = Math.round(addPrice * 100) / 100;
-      votingRemoveVotePricePayload = Math.round(removePrice * 100) / 100;
+      votingRemoveVotePricePayload =
+        typeof removePrice === 'number'
+          ? Math.round(removePrice * 100) / 100
+          : undefined;
       votingAllowedGroupsPayload = GROUP_KEYS.filter(
         (group) => votingGroupSelections[group],
       );
@@ -935,6 +1022,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
           votingAllowedGroups: votingAllowedGroupsPayload,
           votingAllowedPortfolios: votingAllowedPortfoliosPayload,
           votingAllowUngrouped: votingAllowUngroupedPayload,
+          votingAllowRemovals: votingAllowRemovalsPayload,
           votingLeaderboardMode: votingLeaderboardModePayload,
           eventType: activeType,
           imageIds,
@@ -963,6 +1051,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
           votingAllowedGroups: votingAllowedGroupsPayload,
           votingAllowedPortfolios: votingAllowedPortfoliosPayload,
           votingAllowUngrouped: votingAllowUngroupedPayload,
+          votingAllowRemovals: votingAllowRemovalsPayload,
           votingLeaderboardMode: votingLeaderboardModePayload,
           eventType: activeType,
           imageIds,
@@ -1344,7 +1433,9 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
             name='title'
             placeholder={
               isPoll
-                ? 'Poll question (max 100 characters)'
+                ? 'Poll question...' :
+              isVoting
+                ? 'Voting Event Title...'
                 : 'Announcement Title...'
             }
             value={title}
@@ -1367,6 +1458,18 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         />
       </div>
 
+      {!isVoting && (
+        <ImageUploadSection
+          imageIds={imageIds}
+          canAddMore={canAddMoreImages}
+          uploadingImages={uploadingImages}
+          maxImages={MAX_IMAGES}
+          imagePreviewMap={imagePreviewMap}
+          onFileSelect={handleImageUpload}
+          onRemoveImage={handleRemoveImage}
+        />
+      )}
+
       <label className='flex flex-col gap-2 text-sm text-foreground'>
         Description
         <textarea
@@ -1375,7 +1478,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
           placeholder='Details...'
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          required={!isPoll}
+          required={!isPoll && !isVoting}
           className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
         />
       </label>
@@ -1389,26 +1492,22 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         groupSelections={votingGroupSelections}
         portfolioSelections={votingPortfolioSelections}
         allowUngrouped={votingAllowUngrouped}
+        allowRemovals={votingAllowRemovals}
+        lockedGroups={votingLockedGroups}
+        lockedPortfolios={votingLockedPortfolios}
+        lockedUngrouped={votingLockedUngrouped}
+        hasLockedSelections={hasLockedVotingAssignments}
         leaderboardMode={votingLeaderboardMode}
         leaderboardOptions={LEADERBOARD_OPTIONS}
         onToggleGroup={handleToggleVotingGroup}
         onTogglePortfolio={handleToggleVotingPortfolio}
         onToggleUngrouped={handleToggleVotingUngrouped}
+        onToggleAllowRemovals={handleToggleVotingAllowRemovals}
         onToggleSelectAll={handleToggleVotingSelectAll}
         onChangeLeaderboardMode={handleVotingLeaderboardModeChange}
         allSelected={votingAllSelected}
         loading={votingUsersLoading}
         error={votingUsersError}
-      />
-
-      <ImageUploadSection
-        imageIds={imageIds}
-        canAddMore={canAddMoreImages}
-        uploadingImages={uploadingImages}
-        maxImages={MAX_IMAGES}
-        imagePreviewMap={imagePreviewMap}
-        onFileSelect={handleImageUpload}
-        onRemoveImage={handleRemoveImage}
       />
 
       <PollOptionsSection

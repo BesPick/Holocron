@@ -47,6 +47,16 @@ function normalizeVotingParticipants(
   return normalized;
 }
 
+function resetVotingParticipantVotes(
+  participants: VotingParticipant[] | null | undefined,
+) {
+  if (!Array.isArray(participants)) return [];
+  return participants.map((participant) => ({
+    ...participant,
+    votes: 0,
+  }));
+}
+
 function normalizePrice(
   value: number | null | undefined,
   label: string,
@@ -100,6 +110,7 @@ export const create = mutation({
     votingAllowedGroups: v.optional(v.array(v.string())),
     votingAllowedPortfolios: v.optional(v.array(v.string())),
     votingAllowUngrouped: v.optional(v.boolean()),
+    votingAllowRemovals: v.optional(v.boolean()),
     votingLeaderboardMode: v.optional(v.string()),
     eventType: v.optional(
       v.union(
@@ -124,7 +135,7 @@ export const create = mutation({
         ? args.eventType
         : 'announcements';
 
-    if (!cleanedDescription && eventType !== 'poll') {
+    if (!cleanedDescription && eventType === 'announcements') {
       throw new Error('Description is required');
     }
 
@@ -203,6 +214,7 @@ export const create = mutation({
     let votingAllowedGroups: string[] | null = null;
     let votingAllowedPortfolios: string[] | null = null;
     let votingAllowUngrouped = false;
+    let votingAllowRemovals = true;
     let votingLeaderboardMode: VotingLeaderboardMode = 'all';
     if (eventType === 'voting') {
       const participants = normalizeVotingParticipants(
@@ -216,10 +228,18 @@ export const create = mutation({
         args.votingAddVotePrice,
         'Price to add a vote',
       );
-      votingRemoveVotePrice = normalizePrice(
-        args.votingRemoveVotePrice,
-        'Price to remove a vote',
-      );
+      votingAllowRemovals =
+        typeof args.votingAllowRemovals === 'boolean'
+          ? args.votingAllowRemovals
+          : true;
+      if (votingAllowRemovals) {
+        votingRemoveVotePrice = normalizePrice(
+          args.votingRemoveVotePrice,
+          'Price to remove a vote',
+        );
+      } else {
+        votingRemoveVotePrice = null;
+      }
       const allowedGroups = Array.isArray(args.votingAllowedGroups)
         ? Array.from(new Set(args.votingAllowedGroups))
         : [];
@@ -283,6 +303,8 @@ export const create = mutation({
           : undefined,
       votingAllowUngrouped:
         eventType === 'voting' ? votingAllowUngrouped : undefined,
+      votingAllowRemovals:
+        eventType === 'voting' ? votingAllowRemovals : undefined,
       votingLeaderboardMode:
         eventType === 'voting' ? votingLeaderboardMode : undefined,
       imageIds: normalizedImageIds.length ? normalizedImageIds : undefined,
@@ -383,6 +405,7 @@ export const update = mutation({
     votingAllowedGroups: v.optional(v.array(v.string())),
     votingAllowedPortfolios: v.optional(v.array(v.string())),
     votingAllowUngrouped: v.optional(v.boolean()),
+    votingAllowRemovals: v.optional(v.boolean()),
     votingLeaderboardMode: v.optional(v.string()),
     eventType: v.optional(
       v.union(
@@ -407,7 +430,7 @@ export const update = mutation({
       args.eventType === 'poll' || args.eventType === 'voting'
         ? args.eventType
         : existing.eventType;
-    if (!cleanedDescription && eventType !== 'poll') {
+    if (!cleanedDescription && eventType === 'announcements') {
       throw new Error('Description is required');
     }
 
@@ -501,6 +524,7 @@ export const update = mutation({
     let votingAllowedGroups: string[] | null = null;
     let votingAllowedPortfolios: string[] | null = null;
     let votingAllowUngrouped = existing.votingAllowUngrouped ?? false;
+    let votingAllowRemovals = existing.votingAllowRemovals ?? true;
     let votingLeaderboardMode: VotingLeaderboardMode = normalizeLeaderboardMode(
       existing.votingLeaderboardMode,
       'all',
@@ -508,9 +532,38 @@ export const update = mutation({
     let votingAddVotePrice: number | null = null;
     let votingRemoveVotePrice: number | null = null;
     if (eventType === 'voting') {
-      const participantsInput =
-        args.votingParticipants ?? existing.votingParticipants ?? [];
-      const participants = normalizeVotingParticipants(participantsInput);
+      const existingParticipants = normalizeVotingParticipants(
+        existing.votingParticipants ?? [],
+      );
+      const incomingParticipants = normalizeVotingParticipants(
+        args.votingParticipants,
+      );
+      const participantMap = new Map(
+        existingParticipants.map((participant) => [participant.userId, participant]),
+      );
+      if (incomingParticipants.length > 0) {
+        for (const participant of incomingParticipants) {
+          const existingParticipant = participantMap.get(participant.userId);
+          if (existingParticipant) {
+            participantMap.set(participant.userId, {
+              ...existingParticipant,
+              firstName: participant.firstName || existingParticipant.firstName,
+              lastName: participant.lastName || existingParticipant.lastName,
+              group:
+                typeof participant.group === 'string'
+                  ? participant.group
+                  : existingParticipant.group ?? null,
+              portfolio:
+                typeof participant.portfolio === 'string'
+                  ? participant.portfolio
+                  : existingParticipant.portfolio ?? null,
+            });
+          } else {
+            participantMap.set(participant.userId, participant);
+          }
+        }
+      }
+      const participants = Array.from(participantMap.values());
       if (participants.length === 0) {
         throw new Error('Voting events require at least one participant.');
       }
@@ -521,12 +574,20 @@ export const update = mutation({
           : existing.votingAddVotePrice,
         'Price to add a vote',
       );
-      votingRemoveVotePrice = normalizePrice(
-        typeof args.votingRemoveVotePrice === 'number'
-          ? args.votingRemoveVotePrice
-          : existing.votingRemoveVotePrice,
-        'Price to remove a vote',
-      );
+      votingAllowRemovals =
+        typeof args.votingAllowRemovals === 'boolean'
+          ? args.votingAllowRemovals
+          : votingAllowRemovals;
+      if (votingAllowRemovals) {
+        votingRemoveVotePrice = normalizePrice(
+          typeof args.votingRemoveVotePrice === 'number'
+            ? args.votingRemoveVotePrice
+            : existing.votingRemoveVotePrice,
+          'Price to remove a vote',
+        );
+      } else {
+        votingRemoveVotePrice = null;
+      }
       const allowedGroupsInput =
         args.votingAllowedGroups ?? existing.votingAllowedGroups ?? [];
       const allowedPortfoliosInput =
@@ -620,6 +681,10 @@ export const update = mutation({
         eventType === 'voting'
           ? votingAllowUngrouped
           : undefined,
+      votingAllowRemovals:
+        eventType === 'voting'
+          ? votingAllowRemovals
+          : undefined,
       votingLeaderboardMode:
         eventType === 'voting'
           ? votingLeaderboardMode ?? existing.votingLeaderboardMode ?? 'all'
@@ -657,7 +722,16 @@ export const publishDue = mutation({
     );
 
     await Promise.all(
-      deleteDue.map((announcement) => ctx.db.delete(announcement._id)),
+      deleteDue.map(async (announcement) => {
+        if (announcement.eventType === 'voting') {
+          await ctx.db.patch(announcement._id, {
+            votingParticipants: resetVotingParticipantVotes(
+              announcement.votingParticipants,
+            ),
+          });
+        }
+        await ctx.db.delete(announcement._id);
+      }),
     );
 
     const archiveDue = candidates.filter(
@@ -668,9 +742,18 @@ export const publishDue = mutation({
     );
 
     await Promise.all(
-      archiveDue.map((announcement) =>
-        ctx.db.patch(announcement._id, { status: 'archived' }),
-      ),
+      archiveDue.map((announcement) => {
+        const update: {
+          status: 'archived';
+          votingParticipants?: VotingParticipant[];
+        } = { status: 'archived' };
+        if (announcement.eventType === 'voting') {
+          update.votingParticipants = resetVotingParticipantVotes(
+            announcement.votingParticipants,
+          );
+        }
+        return ctx.db.patch(announcement._id, update);
+      }),
     );
 
     return {
@@ -927,6 +1010,7 @@ export const purchaseVotes = mutation({
       throw new Error('Voting event not found.');
     }
 
+    const allowRemovals = announcement.votingAllowRemovals ?? true;
     const participants = (announcement.votingParticipants ?? []).map(
       (participant) => ({
         ...participant,
@@ -949,7 +1033,12 @@ export const purchaseVotes = mutation({
         throw new Error('Participant not found.');
       }
       const add = Math.max(0, Math.floor(adjustment.add));
-      const remove = Math.max(0, Math.floor(adjustment.remove));
+      const remove = allowRemovals
+        ? Math.max(0, Math.floor(adjustment.remove))
+        : 0;
+      if (!allowRemovals && adjustment.remove > 0) {
+        throw new Error('Removing votes is disabled for this event.');
+      }
       if (add === 0 && remove === 0) continue;
       if (remove > participant.votes) {
         throw new Error(
@@ -1015,6 +1104,12 @@ export const remove = mutation({
         .withIndex('by_announcement', (q) => q.eq('announcementId', args.id))
         .collect();
       await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
+    } else if (existing.eventType === 'voting') {
+      await ctx.db.patch(args.id, {
+        votingParticipants: resetVotingParticipantVotes(
+          existing.votingParticipants,
+        ),
+      });
     }
     await ctx.db.delete(args.id);
   },
@@ -1029,6 +1124,19 @@ export const archive = mutation({
     if (!identity) {
       throw new Error('Unauthorized');
     }
-    await ctx.db.patch(args.id, { status: 'archived' });
+    const existing = await ctx.db.get(args.id);
+    if (!existing) {
+      throw new Error('Activity not found');
+    }
+    const update: {
+      status: 'archived';
+      votingParticipants?: VotingParticipant[];
+    } = { status: 'archived' };
+    if (existing.eventType === 'voting') {
+      update.votingParticipants = resetVotingParticipantVotes(
+        existing.votingParticipants,
+      );
+    }
+    await ctx.db.patch(args.id, update);
   },
 });
