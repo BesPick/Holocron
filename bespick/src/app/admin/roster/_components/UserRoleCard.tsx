@@ -27,8 +27,12 @@ type ToastState = {
   variant: 'success' | 'error';
 };
 
+const normalizeRole = (role: string | null) => (role === 'admin' ? role : null);
+
 export function UserRoleCard({ user }: UserRoleCardProps) {
-  const [currentRole, setCurrentRole] = useState<string | null>(user.role);
+  const [currentRole, setCurrentRole] = useState<string | null>(
+    normalizeRole(user.role),
+  );
   const [currentGroup, setCurrentGroup] = useState<Group | null>(user.group);
   const [currentPortfolio, setCurrentPortfolio] = useState<Portfolio | null>(
     user.portfolio,
@@ -146,17 +150,6 @@ export function UserRoleCard({ user }: UserRoleCardProps) {
             disabled={isPending || currentRole === 'admin'}
           >
             {currentRole === 'admin' ? 'Already Admin' : 'Make Admin'}
-          </button>
-
-          <button
-            type='button'
-            onClick={() => handleRoleChange('moderator')}
-            className={`${buttonClasses} text-foreground`}
-            disabled={isPending || currentRole === 'moderator'}
-          >
-            {currentRole === 'moderator'
-              ? 'Already Moderator'
-              : 'Make Moderator'}
           </button>
 
           <button

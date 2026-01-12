@@ -50,7 +50,7 @@ export function AuthShell({
         <div className='hidden flex-col justify-between bg-linear-to-br from-primary via-primary to-primary/80 p-10 text-primary-foreground md:flex'>
           <div className='space-y-5'>
             <span className='inline-flex w-fit items-center gap-2 rounded-full bg-primary-foreground/15 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-primary-foreground'>
-              BESPICK
+              BESPIN Morale
             </span>
             <h1 className='text-3xl font-semibold leading-tight'>{heading}</h1>
             <p className='text-sm text-primary-foreground/80'>{subheading}</p>

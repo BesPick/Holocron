@@ -3,7 +3,7 @@ import { Sparkles, ShieldCheck, Clock3 } from 'lucide-react';
 import { PayPalCheckout } from '@/components/boost/paypal-checkout';
 
 export const metadata = {
-  title: 'Boost | BESPICK',
+  title: 'Boost | BESPIN Morale',
 };
 
 export default function PaymentsPage() {
@@ -14,7 +14,7 @@ export default function PaymentsPage() {
           Morale Fund
         </p>
         <h1 className='mt-4 text-4xl font-semibold text-foreground sm:text-5xl'>
-          Fuel upcoming BESPICK experiences
+          Fuel upcoming BESPIN Morale experiences
         </h1>
         <p className='mt-4 text-base text-muted-foreground sm:text-lg'>
           Every contribution feeds directly into morale events, recognition

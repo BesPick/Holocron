@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useQuery } from 'convex/react';
 import { X } from 'lucide-react';
-import { api } from '../../../convex/_generated/api';
-import type { Doc } from '../../../convex/_generated/dataModel';
+import { api } from '@/lib/api';
+import { useApiQuery } from '@/lib/apiClient';
+import type { Doc } from '@/types/db';
 import {
   formatCreator,
   formatDate,
@@ -27,7 +27,7 @@ export function AnnouncementModal({
     () => (announcement.description ?? '').replace(/\r\n/g, '\n'),
     [announcement.description],
   );
-  const imageUrls = useQuery(
+  const imageUrls = useApiQuery(
     api.storage.getImageUrls,
     announcement.imageIds && announcement.imageIds.length
       ? { ids: announcement.imageIds }

@@ -19,6 +19,8 @@ export type UpdateUserRoleResult = {
   message: string;
 };
 
+const normalizeRole = (role: string | null) => (role === 'admin' ? role : null);
+
 export async function updateUserRole({
   id,
   role,
@@ -44,9 +46,11 @@ export async function updateUserRole({
     const client = await clerkClient();
     const user = await client.users.getUser(id);
     const existingRole = (user.publicMetadata.role as string | null) ?? null;
+    const normalizedExistingRole = normalizeRole(existingRole);
     const existingGroup = (user.publicMetadata.group as Group | null) ?? null;
     const existingPortfolio =
       (user.publicMetadata.portfolio as Portfolio | null) ?? null;
+    const normalizedRole = normalizeRole(role);
 
     const normalizedGroup =
       group === undefined
@@ -81,7 +85,7 @@ export async function updateUserRole({
 
     const nextMetadata = {
       ...user.publicMetadata,
-      role,
+      role: normalizedRole,
       group: normalizedGroup,
       portfolio: normalizedPortfolio,
     } as Record<string, unknown>;
@@ -90,15 +94,17 @@ export async function updateUserRole({
       publicMetadata: nextMetadata,
     });
 
-    const nextRole = (response.publicMetadata.role as string | null) ?? null;
+    const nextRole = normalizeRole(
+      (response.publicMetadata.role as string | null) ?? null,
+    );
     const nextGroup = (response.publicMetadata.group as Group | null) ?? null;
     const nextPortfolio =
       (response.publicMetadata.portfolio as Portfolio | null) ?? null;
 
     const successMessage =
-      role !== undefined && role !== existingRole
-        ? role
-          ? `Role updated to ${role}.`
+      normalizedRole !== normalizedExistingRole
+        ? normalizedRole
+          ? `Role updated to ${normalizedRole}.`
           : 'Role removed successfully.'
         : 'Roster updated successfully.';
 

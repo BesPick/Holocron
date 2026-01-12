@@ -6,7 +6,7 @@ import { AuthShell, authAppearance } from '@/components/auth/auth-shell';
 export default function SignUpPage() {
   return (
     <AuthShell
-      heading='Join the BESPICK crew'
+      heading='Join the BESPIN Morale crew'
       subheading='Create your account to stay in the morale team loop.'
       footer={
         <p>

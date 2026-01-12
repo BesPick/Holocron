@@ -7,10 +7,10 @@ import {
   type PayPalButtonsComponentProps,
   type ReactPayPalScriptOptions,
 } from '@paypal/react-paypal-js';
-import { useMutation, useQuery } from 'convex/react';
 import { X, Search, Info, CheckCircle2, ShieldAlert } from 'lucide-react';
-import type { Doc } from '../../../convex/_generated/dataModel';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@/lib/api';
+import { useApiMutation, useApiQuery } from '@/lib/apiClient';
+import type { Doc } from '@/types/db';
 import { formatDate, formatEventType } from '@/lib/announcements';
 import { GROUP_OPTIONS } from '@/lib/org';
 
@@ -124,7 +124,11 @@ const createCurrencyFormatter = (currency: string) =>
   });
 
 export function VotingModal({ event, onClose }: VotingModalProps) {
-  const liveEvent = useQuery(api.announcements.get, { id: event._id });
+  const liveEvent = useApiQuery(
+    api.announcements.get,
+    { id: event._id },
+    { liveKeys: ['announcements', 'voting'] },
+  );
   const currentEvent = liveEvent ?? event;
   const eventId = currentEvent._id;
   const eventDescription = currentEvent.description;
@@ -165,7 +169,7 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
     setStatusState(null);
     setErrorMessage(message);
   }, []);
-  const purchaseVotes = useMutation(api.announcements.purchaseVotes);
+  const purchaseVotes = useApiMutation(api.announcements.purchaseVotes);
   const adjustmentsRef = React.useRef<VoteAdjustmentPayload[]>([]);
   React.useEffect(() => {
     if (liveEvent === null) {
@@ -360,6 +364,46 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
     });
   }, [participants, normalizedSearch]);
 
+  const applyAdjustmentsLocal = React.useCallback(
+    (current: Announcement['votingParticipants'] | undefined, adjustments: VoteAdjustmentPayload[]) => {
+      const list = (current ?? []).map((participant) => ({
+        ...participant,
+        votes:
+          typeof participant.votes === 'number' && Number.isFinite(participant.votes)
+            ? Math.max(0, Math.floor(participant.votes))
+            : 0,
+      }));
+      const map = new Map(list.map((participant) => [participant.userId, { ...participant }]));
+      let changed = false;
+      for (const adjustment of adjustments) {
+        const participant = map.get(adjustment.userId);
+        if (!participant) {
+          throw new Error('Participant not found.');
+        }
+        const add = Math.max(0, Math.floor(adjustment.add));
+        const remove = allowRemovals
+          ? Math.max(0, Math.floor(adjustment.remove))
+          : 0;
+        if (!allowRemovals && adjustment.remove > 0) {
+          throw new Error('Removing votes is disabled for this event.');
+        }
+        if (add === 0 && remove === 0) continue;
+        if (remove > participant.votes) {
+          throw new Error(
+            `${participant.firstName ?? 'Participant'} does not have enough votes to remove.`,
+          );
+        }
+        const nextVotes = Math.max(0, participant.votes + add - remove);
+        if (nextVotes !== participant.votes) {
+          map.set(participant.userId, { ...participant, votes: nextVotes });
+          changed = true;
+        }
+      }
+      return { participants: Array.from(map.values()), changed };
+    },
+    [allowRemovals],
+  );
+
   const applyVoteAdjustments = React.useCallback(
     async (
       adjustments: VoteAdjustmentPayload[],
@@ -367,7 +411,14 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
       if (!adjustments.length) {
         return { success: false, message: 'Select at least one vote change.' };
       }
+      const previousParticipants = participants;
       try {
+        const optimistic = applyAdjustmentsLocal(previousParticipants, adjustments);
+        if (!optimistic.changed) {
+          return { success: false, message: 'No changes to submit.' };
+        }
+        setParticipants(optimistic.participants);
+
         const result = await purchaseVotes({
           id: eventId,
           adjustments,
@@ -386,14 +437,16 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
           setSelections({});
           return { success: true };
         }
-        return { success: false, message: 'No changes to submit.' };
+        setParticipants(previousParticipants);
+        return { success: false, message: result.message ?? 'No changes to submit.' };
       } catch (error) {
+        setParticipants(previousParticipants);
         const message =
           error instanceof Error ? error.message : 'Failed to submit votes.';
         return { success: false, message };
       }
     },
-    [purchaseVotes, eventId],
+    [applyAdjustmentsLocal, purchaseVotes, eventId, participants],
   );
 
   const paypalButtonsProps = React.useMemo<PayPalButtonsComponentProps>(() => {
@@ -492,7 +545,7 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
           setErrorMessage(null);
           setStatusMessage(
             captureId
-              ? `Payment captured successfully (Ref: ${captureId}). Votes updated.`
+              ? `Payment captured successfully. Votes updated.`
               : 'Payment captured successfully. Votes updated.',
           );
           setStatusState('success');

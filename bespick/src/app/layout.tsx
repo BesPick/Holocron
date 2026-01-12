@@ -6,10 +6,9 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { HeaderActions } from '@/components/header/header-actions';
 import './globals.css';
 import { shadcn } from '@clerk/themes';
-import ConvexProviderWrapper from './providers/ConvexProvider';
 
 export const metadata = {
-  title: 'BESPICK',
+  title: 'BESPIN Morale',
   description: 'BESPIN Morale Team',
 };
 
@@ -89,17 +88,15 @@ export default function RootLayout({
                   className='text-lg font-semibold tracking-tight transition hover:text-primary hover:scale-110 sm:text-xl'
                   aria-label='Go to home'
                 >
-                  BESPICK
+                  BESPIN Morale
                 </Link>
                 <div className='relative flex items-center'>
                   <HeaderActions />
                 </div>
               </div>
             </header>
-            <ConvexProviderWrapper>
-              {/* Main content */}
-              <main className='flex-1 pt-16'>{children}</main>
-            </ConvexProviderWrapper>
+            {/* Main content */}
+            <main className='flex-1 pt-16'>{children}</main>
           </div>
         </body>
       </html>

@@ -2,7 +2,7 @@ import type { Group, Portfolio } from '@/lib/org';
 
 export {};
 
-export type Roles = 'admin' | 'moderator' | '';
+export type Roles = 'admin' | '';
 
 declare global {
   interface CustomJwtSessionClaims {

@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { MoreVertical } from 'lucide-react';
@@ -11,8 +10,9 @@ import {
   formatDate,
   formatEventType,
 } from '@/lib/announcements';
-import { api } from '../../../../convex/_generated/api';
-import type { Doc, Id } from '../../../../convex/_generated/dataModel';
+import { api } from '@/lib/api';
+import { useApiMutation, useApiQuery } from '@/lib/apiClient';
+import type { Doc, Id } from '@/types/db';
 
 type Announcement = Doc<'announcements'>;
 type AnnouncementId = Id<'announcements'>;
@@ -84,17 +84,28 @@ function ScheduledContent() {
     }
   }, []);
 
-  const scheduledActivities = useQuery(api.announcements.listScheduled, {
-    now,
-  });
-  const deleteAnnouncement = useMutation(api.announcements.remove);
+  const scheduledActivities = useApiQuery(
+    api.announcements.listScheduled,
+    { now },
+    { liveKeys: ['announcements'] },
+  );
+  const deleteAnnouncement = useApiMutation(api.announcements.remove);
 
   const [deletingId, setDeletingId] = React.useState<AnnouncementId | null>(
     null
   );
+  const [localActivities, setLocalActivities] =
+    React.useState<Announcement[] | null>(null);
 
+  React.useEffect(() => {
+    if (scheduledActivities) {
+      setLocalActivities(scheduledActivities);
+    }
+  }, [scheduledActivities]);
+
+  const activities = localActivities ?? scheduledActivities ?? [];
   const isLoading = scheduledActivities === undefined;
-  const hasActivities = (scheduledActivities?.length ?? 0) > 0;
+  const hasActivities = activities.length > 0;
   const canManage = true;
 
   const handleDelete = React.useCallback(
@@ -106,6 +117,11 @@ function ScheduledContent() {
       try {
         setDeletingId(id);
         await deleteAnnouncement({ id });
+        setLocalActivities((prev) =>
+          (prev ?? scheduledActivities ?? []).filter(
+            (activity) => activity._id !== id,
+          ),
+        );
       } catch (error) {
         console.error(error);
         window.alert('Failed to delete activity.');
@@ -155,14 +171,14 @@ function ScheduledContent() {
 
       <div className='space-y-4'>
         {isLoading && <ScheduledSkeleton />}
-        {!isLoading && !hasActivities && (
+        {!isLoading && activities.length === 0 && (
           <p className='rounded-lg border border-dashed border-border/60 bg-card/40 px-4 py-10 text-center text-sm text-muted-foreground'>
             No scheduled activities yet.
           </p>
         )}
         {!isLoading &&
-          hasActivities &&
-          scheduledActivities!.map((activity) => (
+          activities.length > 0 &&
+          activities.map((activity) => (
             <ScheduledCard
               key={activity._id}
               activity={activity}

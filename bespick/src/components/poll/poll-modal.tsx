@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useMutation, useQuery } from 'convex/react';
 import { Loader2, X } from 'lucide-react';
-import type { Id } from '../../../convex/_generated/dataModel';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@/lib/api';
+import { useApiMutation, useApiQuery } from '@/lib/apiClient';
+import type { Id } from '@/types/db';
 
 type PollModalProps = {
   pollId: Id<'announcements'>;
@@ -19,12 +19,12 @@ export function PollModal({
   isAdmin,
   canVote,
 }: PollModalProps) {
-  const poll = useQuery(api.announcements.getPoll, { id: pollId });
-  const imageUrls = useQuery(
+  const poll = useApiQuery(api.announcements.getPoll, { id: pollId }, { liveKeys: ['announcements', 'pollVotes'] });
+  const imageUrls = useApiQuery(
     api.storage.getImageUrls,
     poll?.imageIds && poll.imageIds.length ? { ids: poll.imageIds } : 'skip',
   );
-  const votePoll = useMutation(api.announcements.votePoll);
+  const votePoll = useApiMutation(api.announcements.votePoll);
 
   const [previewImage, setPreviewImage] = React.useState<string | null>(null);
   const [selections, setSelections] = React.useState<string[]>([]);
@@ -32,17 +32,23 @@ export function PollModal({
   const [submitting, setSubmitting] = React.useState(false);
   const [localError, setLocalError] = React.useState<string | null>(null);
   const [showBreakdown, setShowBreakdown] = React.useState(false);
+  const [localPoll, setLocalPoll] = React.useState<typeof poll | null>(null);
 
   React.useEffect(() => {
     if (!poll) return;
     setSelections(poll.currentUserSelections ?? []);
   }, [poll]);
 
+  React.useEffect(() => {
+    setLocalPoll(poll ?? null);
+  }, [poll]);
+
   const breakdownArgs =
     isAdmin && showBreakdown ? { id: pollId } : 'skip';
-  const pollBreakdown = useQuery(
+  const pollBreakdown = useApiQuery(
     api.announcements.getPollVoteBreakdown,
     breakdownArgs,
+    { liveKeys: ['pollVotes'] },
   );
 
   React.useEffect(() => {
@@ -56,10 +62,11 @@ export function PollModal({
     return () => document.removeEventListener('keydown', handleKey);
   }, [previewImage]);
 
-  const showResults = !poll?.pollAnonymous || isAdmin;
-  const maxSelections = poll?.pollMaxSelections ?? 1;
-  const pollClosed = Boolean(poll?.isClosed);
-  const pollArchived = Boolean(poll?.isArchived);
+  const displayPoll = localPoll ?? poll;
+  const showResults = !displayPoll?.pollAnonymous || isAdmin;
+  const maxSelections = displayPoll?.pollMaxSelections ?? 1;
+  const pollClosed = Boolean(displayPoll?.isClosed);
+  const pollArchived = Boolean(displayPoll?.isArchived);
   const votingDisabled = pollClosed || pollArchived;
 
   const toggleSelection = React.useCallback(
@@ -82,29 +89,45 @@ export function PollModal({
   );
 
   const handleSubmit = React.useCallback(async () => {
-    if (!poll) return;
+    if (!displayPoll) return;
     if (votingDisabled) {
       setLocalError('This poll is read-only.');
       return;
     }
     setLocalError(null);
     const trimmedNewOption =
-      poll.pollAllowAdditionalOptions && newOption.trim().length > 0
+      displayPoll.pollAllowAdditionalOptions && newOption.trim().length > 0
         ? newOption.trim()
         : '';
-    const submissionSelections = trimmedNewOption.length
-      ? Array.from(new Set([...selections, trimmedNewOption]))
-      : selections;
+    const normalizedNewOption =
+      trimmedNewOption.length > 0 ? trimmedNewOption : null;
+    if (trimmedNewOption.length > 0) {
+      const exists = displayPoll.options.some(
+        (option) =>
+          option.value.toLowerCase() === trimmedNewOption.toLowerCase(),
+      );
+      if (exists) {
+        setLocalError('That option already exists.');
+        return;
+      }
+    }
+    const baseSelections =
+      normalizedNewOption && maxSelections === 1
+        ? [normalizedNewOption]
+        : selections;
+    const submissionSelections = normalizedNewOption
+      ? Array.from(new Set([...baseSelections, normalizedNewOption]))
+      : baseSelections;
 
     if (submissionSelections.length === 0) {
       setLocalError('Select at least one option.');
       return;
     }
 
-    if (submissionSelections.length > poll.pollMaxSelections) {
+    if (submissionSelections.length > displayPoll.pollMaxSelections) {
       setLocalError(
-        `You can select up to ${poll.pollMaxSelections} option${
-          poll.pollMaxSelections > 1 ? 's' : ''
+        `You can select up to ${displayPoll.pollMaxSelections} option${
+          displayPoll.pollMaxSelections > 1 ? 's' : ''
         }.`,
       );
       return;
@@ -116,6 +139,46 @@ export function PollModal({
         id: pollId,
         selections: submissionSelections,
         newOption: trimmedNewOption || undefined,
+      });
+      setSelections(submissionSelections);
+      setLocalPoll((current) => {
+        if (!current) return current;
+        const optionMap = new Map(
+          current.options.map((option) => [option.value.toLowerCase(), option]),
+        );
+        const previousSelections = current.currentUserSelections ?? [];
+        const previousSet = new Set(previousSelections.map((s) => s.toLowerCase()));
+        const nextSet = new Set(submissionSelections.map((s) => s.toLowerCase()));
+
+        // Ensure new option exists locally
+        if (
+          trimmedNewOption.length > 0 &&
+          !optionMap.has(trimmedNewOption.toLowerCase())
+        ) {
+          optionMap.set(trimmedNewOption.toLowerCase(), {
+            value: trimmedNewOption,
+            votes: 0,
+          });
+        }
+
+        const updatedOptions = Array.from(optionMap.values()).map((option) => {
+          const key = option.value.toLowerCase();
+          const wasSelected = previousSet.has(key);
+          const isSelected = nextSet.has(key);
+          let votes = option.votes;
+          if (wasSelected && !isSelected) votes = Math.max(0, votes - 1);
+          if (!wasSelected && isSelected) votes = votes + 1;
+          return { ...option, votes };
+        });
+
+        const voteDelta =
+          submissionSelections.length - (previousSelections?.length ?? 0);
+        return {
+          ...current,
+          options: updatedOptions,
+          totalVotes: Math.max(0, current.totalVotes + voteDelta),
+          currentUserSelections: submissionSelections,
+        };
       });
       setNewOption('');
     } catch (error) {
@@ -134,7 +197,7 @@ export function PollModal({
     votingDisabled,
   ]);
 
-  if (!poll) {
+  if (!displayPoll) {
     return (
       <div
         className='fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4'
@@ -153,7 +216,7 @@ export function PollModal({
     );
   }
 
-  const totalVotes = poll.totalVotes;
+  const totalVotes = displayPoll.totalVotes;
 
   return (
     <>
@@ -164,7 +227,7 @@ export function PollModal({
         onClick={onClose}
       >
         <div
-          className='w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl'
+          className='w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto'
           onClick={(event) => event.stopPropagation()}
         >
           <div className='flex items-start justify-between gap-4'>
@@ -173,11 +236,11 @@ export function PollModal({
                 Poll
               </p>
               <h2 className='mt-1 text-2xl font-semibold text-foreground'>
-                {poll.question}
+                {displayPoll.question}
               </h2>
-              {poll.description && (
+              {displayPoll.description && (
                 <p className='mt-2 text-sm text-muted-foreground'>
-                  {poll.description}
+                  {displayPoll.description}
                 </p>
               )}
               {imageUrls && imageUrls.length > 0 && (
@@ -205,7 +268,7 @@ export function PollModal({
                   ? 'Select one option.'
                   : `Select up to ${maxSelections} options.`}
               </p>
-              {poll.pollAnonymous && !isAdmin && (
+              {displayPoll.pollAnonymous && !isAdmin && (
                 <p className='mt-1 text-xs text-amber-500'>
                   This poll is anonymous. Only your selections will be visible.
                 </p>
@@ -232,7 +295,7 @@ export function PollModal({
           </div>
 
           <div className='mt-6 space-y-3'>
-            {poll.options.map((option) => {
+            {displayPoll.options.map((option) => {
               const isSelected = selections.includes(option.value);
               const percent =
                 totalVotes === 0
@@ -366,7 +429,7 @@ export function PollModal({
                 Voter breakdown
               </p>
               <p className='text-xs text-muted-foreground'>
-                Names reflect the most recent information shared with BESPICK.
+                Names reflect the most recent information shared with BESPIN Morale.
               </p>
               {pollBreakdown === undefined ? (
                 <div className='mt-4 flex items-center gap-2 text-sm text-muted-foreground'>

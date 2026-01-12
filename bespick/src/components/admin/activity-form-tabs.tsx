@@ -2,9 +2,9 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
-import type { Doc, Id } from '../../../convex/_generated/dataModel';
+import { api } from '@/lib/api';
+import { useApiQuery } from '@/lib/apiClient';
+import type { Doc, Id } from '@/types/db';
 import {
   AnnouncementForm,
   type ActivityType,
@@ -41,9 +41,10 @@ export function ActivityFormTabs() {
   const [activeType, setActiveType] =
     React.useState<ActivityType>('announcements');
   const isEditing = Boolean(editId);
-  const activity = useQuery(
+  const activity = useApiQuery(
     api.announcements.get,
     editId ? { id: editId } : 'skip',
+    { refreshInterval: 0 },
   ) as AnnouncementDoc | null | undefined;
 
   if (isEditing) {

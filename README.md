@@ -1,6 +1,6 @@
-# BESPICK Dashboard
+# BESPIN Morale Dashboard
 
-BESPICK is an internal communications hub for morale updates, announcements, and polls. Admins can schedule and automate posts, collect votes, and audit participation, while teammates view live and archived activities from a clean Next.js interface backed by Convex and Clerk.
+BESPIN Morale is an internal communications hub for morale updates, announcements, and polls. Admins can schedule and automate posts, collect votes, and audit participation, while teammates view live and archived activities from a clean Next.js interface backed by Convex and Clerk.
 
 ## Table of Contents
 
@@ -170,7 +170,7 @@ Duplicate `.env.example` to `.env.local` and populate:
 | `PAYPAL_CLIENT_ID` | Same PayPal client ID, used server-side when exchanging OAuth tokens. |
 | `PAYPAL_CLIENT_SECRET` | PayPal secret used on the server to request OAuth tokens. |
 | `PAYPAL_ENVIRONMENT` | `sandbox` or `live` to control which PayPal base URL is used. |
-| `PAYPAL_BRAND_NAME` | Friendly brand label shown during PayPal checkout (defaults to `BESPICK`). |
+| `PAYPAL_BRAND_NAME` | Friendly brand label shown during PayPal checkout (defaults to `BESPIN Morale`). |
 | `PAYPAL_API_BASE_URL` | Optional override if PayPal gives you a regional API domain. |
 
 > The PayPal client ID appears twice on purpose: `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is safe to expose to the browser to bootstrap the PayPal JS SDK, while `PAYPAL_CLIENT_ID` stays on the server (together with `PAYPAL_CLIENT_SECRET`) so we can exchange OAuth tokens without leaking secrets.
@@ -247,7 +247,7 @@ Call signatures and generated hooks live in `convex/_generated/api`. Regenerate 
 ## Authentication & Roles
 
 - **Clerk middleware** (`src/proxy.ts`) forces authentication for every route except `/sign-in` and `/sign-up`, and blocks `/admin/*` unless `sessionClaims.metadata.role === 'admin'`.
-- **Role values** are defined in `src/types/globals.d.ts` (`'admin' | 'moderator' | ''`). Only admins currently unlock admin routes.
+- **Role values** are defined in `src/types/globals.d.ts` (`'admin' | ''`). Only admins currently unlock admin routes.
 - **Granting roles** can be done via `/admin/roster` (which uses the `updateUserRole` server action) or directly in the Clerk dashboard by editing a user’s `publicMetadata.role`.
 - **Convex enforcement**: mutations call `ctx.auth.getUserIdentity()` and error if the user is not logged in. Client routes rely on Clerk hooks (`useUser`) for conditional rendering.
 
@@ -272,4 +272,4 @@ npm run dev
 
 The error should disappear on the next compile. Keep the dependency versions in `package.json` in sync (the template pins both to `^4.1.17`) to avoid the regression resurfacing after a fresh install.
 
-With these pieces in place, you can onboard admins, schedule polls, and keep your team up to date through BESPICK. Contributions and refinements are welcome—open an issue or PR with your proposed improvements.
+With these pieces in place, you can onboard admins, schedule polls, and keep your team up to date through BESPIN Morale. Contributions and refinements are welcome—open an issue or PR with your proposed improvements.

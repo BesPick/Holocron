@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
-import { api } from '../../../convex/_generated/api';
-import type { Doc, Id } from '../../../convex/_generated/dataModel';
+import { api } from '@/lib/api';
+import { useApiMutation, useApiQuery } from '@/lib/apiClient';
+import type { Doc, Id } from '@/types/db';
 import { SchedulingSection } from './announcement-form/sections/SchedulingSection';
 import { PollOptionsSection } from './announcement-form/sections/PollOptionsSection';
 import { PollSettingsSection } from './announcement-form/sections/PollSettingsSection';
@@ -93,9 +93,8 @@ export function AnnouncementForm({
   existingActivity?: AnnouncementDoc | null;
 }) {
   const router = useRouter();
-  const createAnnouncement = useMutation(api.announcements.create);
-  const updateAnnouncement = useMutation(api.announcements.update);
-  const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
+  const createAnnouncement = useApiMutation(api.announcements.create);
+  const updateAnnouncement = useApiMutation(api.announcements.update);
 
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
@@ -201,11 +200,11 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
       try {
         const uploadedIds: Id<'_storage'>[] = [];
         for (const file of files) {
-          const uploadUrl = await generateUploadUrl();
-          const response = await fetch(uploadUrl, {
+          const formData = new FormData();
+          formData.append('file', file);
+          const response = await fetch(api.storage.upload, {
             method: 'POST',
-            headers: { 'Content-Type': file.type },
-            body: file,
+            body: formData,
           });
           if (!response.ok) {
             throw new Error('Failed to upload image.');
@@ -225,7 +224,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         setUploadingImages(false);
       }
     },
-    [generateUploadUrl, imageIds.length],
+    [imageIds.length],
   );
 
   const handleRemoveImage = React.useCallback((id: Id<'_storage'>) => {
@@ -1366,7 +1365,7 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     date === todayLocalISO &&
     availableTimeSlotsCore.length === 0;
 
-  const imagePreviewUrls = useQuery(
+  const imagePreviewUrls = useApiQuery(
     api.storage.getImageUrls,
     imageIds.length ? { ids: imageIds } : 'skip',
   );

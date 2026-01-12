@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { Id } from '../../../../../convex/_generated/dataModel';
+import type { Id } from '@/types/db';
 
 interface ImageUploadSectionProps {
   imageIds: Id<'_storage'>[];

@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { MoreVertical } from 'lucide-react';
@@ -12,8 +11,9 @@ import {
   formatDate,
   formatEventType,
 } from '@/lib/announcements';
-import { api } from '../../../convex/_generated/api';
-import type { Doc, Id } from '../../../convex/_generated/dataModel';
+import { api } from '@/lib/api';
+import { useApiMutation, useApiQuery } from '@/lib/apiClient';
+import type { Doc, Id } from '@/types/db';
 
 type Announcement = Doc<'announcements'>;
 type AnnouncementId = Id<'announcements'>;
@@ -22,8 +22,12 @@ const ARCHIVE_HEADER_STORAGE_KEY = 'bespickArchiveHeaderDismissed';
 export default function ArchivePage() {
   const { user } = useUser();
   const router = useRouter();
-  const archivedActivities = useQuery(api.announcements.listArchived);
-  const deleteAnnouncement = useMutation(api.announcements.remove);
+  const archivedActivities = useApiQuery(
+    api.announcements.listArchived,
+    {},
+    { liveKeys: ['announcements'] },
+  );
+  const deleteAnnouncement = useApiMutation(api.announcements.remove);
   const [deletingId, setDeletingId] =
     React.useState<AnnouncementId | null>(null);
   const [isHeaderDismissed, setIsHeaderDismissed] =
@@ -32,9 +36,18 @@ export default function ArchivePage() {
     React.useState<AnnouncementId | null>(null);
   const [viewingAnnouncement, setViewingAnnouncement] =
     React.useState<Announcement | null>(null);
+  const [localActivities, setLocalActivities] =
+    React.useState<Announcement[] | null>(null);
 
+  React.useEffect(() => {
+    if (archivedActivities) {
+      setLocalActivities(archivedActivities);
+    }
+  }, [archivedActivities]);
+
+  const activities = localActivities ?? archivedActivities ?? [];
   const isLoading = archivedActivities === undefined;
-  const hasActivities = (archivedActivities?.length ?? 0) > 0;
+  const hasActivities = activities.length > 0;
   const isAdmin =
     (user?.publicMetadata?.role as string | null | undefined) === 'admin';
 
@@ -60,6 +73,11 @@ export default function ArchivePage() {
       try {
         setDeletingId(id);
         await deleteAnnouncement({ id });
+        setLocalActivities((prev) =>
+          (prev ?? archivedActivities ?? []).filter(
+            (activity) => activity._id !== id,
+          ),
+        );
       } catch (error) {
         console.error(error);
         window.alert('Failed to delete activity.');
@@ -103,7 +121,7 @@ export default function ArchivePage() {
               <span aria-hidden='true'>&times;</span>
             </button>
             <h1 className='text-4xl font-semibold tracking-tight text-foreground sm:text-5xl'>
-              BESPICK Archive
+              BESPIN Morale Archive
             </h1>
             <p className='mt-4 text-base text-muted-foreground sm:text-lg'>
               Revisit archived announcements, polls, and voting events. Items here no longer
@@ -112,21 +130,21 @@ export default function ArchivePage() {
           </div>
         ) : (
           <h1 className='text-3xl font-semibold text-foreground text-center sm:text-left'>
-            BESPICK Archive
+            BESPIN Morale Archive
           </h1>
         )}
       </header>
 
       <div className='space-y-4'>
         {isLoading && <ArchiveSkeleton />}
-        {!isLoading && !hasActivities && (
+        {!isLoading && activities.length === 0 && (
           <p className='rounded-lg border border-dashed border-border/60 bg-card/40 px-4 py-10 text-center text-sm text-muted-foreground'>
             No archived activities yet.
           </p>
         )}
         {!isLoading &&
-          hasActivities &&
-          archivedActivities!.map((activity) => (
+          activities.length > 0 &&
+          activities.map((activity) => (
             <ArchiveCard
               key={activity._id}
               activity={activity}

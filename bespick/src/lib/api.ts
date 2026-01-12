@@ -1,0 +1,25 @@
+export const api = {
+  announcements: {
+    list: 'announcements.list',
+    listArchived: 'announcements.listArchived',
+    listScheduled: 'announcements.listScheduled',
+    create: 'announcements.create',
+    update: 'announcements.update',
+    get: 'announcements.get',
+    getPoll: 'announcements.getPoll',
+    getPollVoteBreakdown: 'announcements.getPollVoteBreakdown',
+    votePoll: 'announcements.votePoll',
+    purchaseVotes: 'announcements.purchaseVotes',
+    nextPublishAt: 'announcements.nextPublishAt',
+    publishDue: 'announcements.publishDue',
+    remove: 'announcements.remove',
+    archive: 'announcements.archive',
+  },
+  storage: {
+    getImageUrls: 'storage.getImageUrls',
+    upload: '/api/storage/upload',
+  },
+  stream: '/api/stream',
+} as const;
+
+export type ApiAction = typeof api;

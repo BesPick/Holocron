@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { MoreVertical } from 'lucide-react';
@@ -13,8 +12,9 @@ import {
   formatDate,
   formatEventType,
 } from '@/lib/announcements';
-import { api } from '../../../convex/_generated/api';
-import type { Doc, Id } from '../../../convex/_generated/dataModel';
+import { api } from '@/lib/api';
+import { useApiMutation, useApiQuery } from '@/lib/apiClient';
+import type { Doc, Id } from '@/types/db';
 
 type Announcement = Doc<'announcements'>;
 type AnnouncementId = Id<'announcements'>;
@@ -31,11 +31,11 @@ export default function DashboardPage() {
     }, 60_000);
     return () => window.clearInterval(interval);
   }, []);
-  const activities = useQuery(api.announcements.list, { now });
-  const nextPublishAt = useQuery(api.announcements.nextPublishAt, { now });
-  const deleteAnnouncement = useMutation(api.announcements.remove);
-  const archiveAnnouncement = useMutation(api.announcements.archive);
-  const publishDueAnnouncements = useMutation(api.announcements.publishDue);
+  const activities = useApiQuery(api.announcements.list, { now }, { liveKeys: ['announcements'] });
+  const nextPublishAt = useApiQuery(api.announcements.nextPublishAt, { now }, { liveKeys: ['announcements'] });
+  const deleteAnnouncement = useApiMutation(api.announcements.remove);
+  const archiveAnnouncement = useApiMutation(api.announcements.archive);
+  const publishDueAnnouncements = useApiMutation(api.announcements.publishDue);
 
   React.useEffect(() => {
     if (nextPublishAt === undefined || nextPublishAt === null) return;
@@ -105,6 +105,7 @@ export default function DashboardPage() {
       try {
         setDeletingId(id);
         await deleteAnnouncement({ id });
+        setNow(Date.now());
       } catch (error) {
         console.error(error);
         window.alert('Failed to delete activity.');
@@ -131,6 +132,7 @@ export default function DashboardPage() {
       try {
         setArchivingId(id);
         await archiveAnnouncement({ id });
+        setNow(Date.now());
       } catch (error) {
         console.error(error);
         window.alert('Failed to archive activity.');
@@ -172,7 +174,7 @@ export default function DashboardPage() {
               <span aria-hidden='true'>&times;</span>
             </button>
             <h1 className='text-4xl font-semibold tracking-tight text-foreground sm:text-5xl'>
-              Welcome to BESPICK Dashboard!
+              Welcome to BESPIN Morale Dashboard!
             </h1>
             <p className='mt-4 text-base text-muted-foreground sm:text-lg'>
               Stay connected with upcoming morale events and stay up to date with the latest announcements. Browse the latest activities below.
@@ -180,7 +182,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <h1 className='text-3xl font-semibold text-foreground text-center sm:text-left'>
-            BESPICK Dashboard
+            BESPIN Morale Dashboard
           </h1>
         )}
       </header>
