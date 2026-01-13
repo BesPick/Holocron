@@ -105,7 +105,6 @@ function ScheduledContent() {
 
   const activities = localActivities ?? scheduledActivities ?? [];
   const isLoading = scheduledActivities === undefined;
-  const hasActivities = activities.length > 0;
   const canManage = true;
 
   const handleDelete = React.useCallback(
@@ -118,9 +117,7 @@ function ScheduledContent() {
         setDeletingId(id);
         await deleteAnnouncement({ id });
         setLocalActivities((prev) =>
-          (prev ?? scheduledActivities ?? []).filter(
-            (activity) => activity._id !== id,
-          ),
+          prev ? prev.filter((activity) => activity._id !== id) : prev,
         );
       } catch (error) {
         console.error(error);

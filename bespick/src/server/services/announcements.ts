@@ -6,7 +6,6 @@ import {
   AnnouncementRow,
   announcements,
   pollVotes,
-  PollVoteRow,
 } from '@/server/db/schema';
 import { deleteUploads } from '@/server/services/storage';
 import { broadcast } from '@/server/events';

@@ -11,7 +11,6 @@ const config = [
       "out/**",
       "build/**",
       "next-env.d.ts",
-      "convex/_generated/**",
     ],
   },
 ];

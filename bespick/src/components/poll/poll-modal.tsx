@@ -189,7 +189,8 @@ export function PollModal({
       setSubmitting(false);
     }
   }, [
-    poll,
+    displayPoll,
+    maxSelections,
     votePoll,
     pollId,
     newOption,

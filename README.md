@@ -1,6 +1,6 @@
 # BESPIN Morale Dashboard
 
-BESPIN Morale is an internal communications hub for morale updates, announcements, and polls. Admins can schedule and automate posts, collect votes, and audit participation, while teammates view live and archived activities from a clean Next.js interface backed by Convex and Clerk.
+BESPIN Morale is an internal communications hub for morale updates, announcements, and polls. Admins can schedule and automate posts, collect votes, and audit participation, while teammates view live and archived activities from a clean Next.js interface backed by SQLite (Drizzle) and Clerk.
 
 ## Table of Contents
 
@@ -25,12 +25,13 @@ BESPIN Morale is an internal communications hub for morale updates, announcement
   - `/admin/create` – unified form for creating or editing announcements/polls.
   - `/admin/scheduled` – list of upcoming items waiting to be published.
   - `/admin/roster` – Clerk-backed role management for the admin team.
-- **Data backend**: Convex stores activities (`announcements`) and individual ballots (`pollVotes`) and exposes typed queries/mutations that the client consumes through `convex/react`.
+- **Data backend**: SQLite (via Drizzle) stores activities (`announcements`), ballots (`poll_votes`), and uploads. The database lives at `data/bespick.sqlite`.
+- **Assignments**: Group + portfolio metadata live in Clerk `publicMetadata` and power voting leaderboards; admins can manage assignments in `/admin/roster`, and teammates can update their own group/portfolio from the profile dropdown.
 
 ## Tech Stack
 
 - **UI**: Next.js 16 (App Router) + React 19 + TypeScript + TailwindCSS utilities.
-- **State & Data**: Convex (`convex/announcements.ts`) for all CRUD, scheduling, voting, and analytics logic.
+- **State & Data**: Drizzle ORM + better-sqlite3 for CRUD, scheduling, voting, analytics, and uploads in `src/server/services`.
 - **Auth**: Clerk for sign-in, session management, and role metadata.
 - **Icons & UI polish**: `lucide-react`, `tailwind-merge`, `tailwind-variants`.
 - **Tooling**: ESLint 9, TypeScript 5, PostCSS/Tailwind 4 pipeline.
@@ -58,7 +59,7 @@ BESPIN Morale is an internal communications hub for morale updates, announcement
   - scheduling future publish times via human-friendly time-slot pickers;
   - auto-delete or auto-archive guards to prevent conflicts or invalid timestamps;
   - poll settings (anonymous, allow new options, selection limits, closing time).
-- Validation is mirrored in Convex to ensure client/server parity.
+- Validation is enforced in server services to keep business rules consistent.
 
 ### Automation & Background Tasks
 
@@ -97,28 +98,30 @@ BESPIN Morale is an internal communications hub for morale updates, announcement
 ## Architecture & Data Flow
 
 ```text
-Next.js (App Router)  <--convex/react-->  Convex Functions  <---> Convex Storage
-         |                                      |
-   Clerk Frontend                        Clerk JWT / Identity
+Next.js (App Router)  <--- API Routes/Server Actions --->  SQLite (Drizzle)
+         |
+   Clerk Frontend
 ```
 
-- Client components call `useQuery`/`useMutation` with references from `convex/_generated/api`.
-- Convex functions validate payloads with `convex/values` validators, enforce scheduling rules, and persist data to:
+- Client components call `useApiQuery`/`useApiMutation`, which route through `src/app/api/rpc/route.ts` and `src/server/actions`.
+- Server services validate payloads, enforce scheduling rules, and persist data to:
   - `announcements` table: titles, descriptions, timestamps, poll metadata, automation fields.
-  - `pollVotes` table: per-user selections plus cached `userName` for admin reporting.
+  - `poll_votes` table: per-user selections plus cached `userName` for admin reporting.
+  - `uploads` table: uploaded image filenames stored in `public/uploads`.
+- Live refresh uses an SSE stream at `src/app/api/stream/route.ts`, consumed by `src/lib/liveEvents` to re-fetch data on changes.
 - Authentication:
   - Next.js middleware (`src/proxy.ts`) blocks `/admin/*` unless the Clerk session metadata role is `admin`.
-  - Convex `ctx.auth.getUserIdentity()` ensures mutations like `votePoll`, `create`, `update`, `remove`, and `archive` are only called by authenticated users.
+  - Server actions use `src/server/auth` to ensure mutations are only called by signed-in users.
 - UI state (dismissed headers, active poll modals, etc.) is stored client-side, often persisted to `localStorage`.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js ≥ 18.18 (Next.js 16 requirement).
+- Node.js 20.11.1 (pinned in `.nvmrc` and `package.json` `engines`).
 - npm 9+ (or pnpm/bun/yarn if you prefer).
-- Clerk application (publishable + secret keys, JWT issuer).
-- Convex deployment (either hosted or local `npx convex dev`).
+- Clerk application (publishable + secret keys).
+- Optional: PayPal REST app if you want Boost contributions enabled.
 
 ### Installation
 
@@ -131,12 +134,14 @@ npm install
 ### Quick setup checklist
 
 1. Copy `.env.example` to `.env.local`.
-2. Grab the minimum secrets: Clerk publishable + secret keys, your Convex deployment slug/URL, and both PayPal client credentials (one copy goes in the `NEXT_PUBLIC_*` variables, the other in the server-only variables alongside `PAYPAL_CLIENT_SECRET`).
-3. Run `npx convex dev` in Terminal A so Convex generates types and exposes an API URL.
-4. In Terminal B, run `npm run dev` to boot the Next.js app.
+2. Run `nvm use` (or ensure Node 20.11.1 is active).
+3. Grab the minimum secrets: Clerk publishable + secret keys, plus PayPal client credentials if you plan to use Boost (one copy goes in the `NEXT_PUBLIC_*` variables, the other in the server-only variables alongside `PAYPAL_CLIENT_SECRET`).
+4. Run `npm run dev` to boot the Next.js app. The SQLite database is created at `data/bespick.sqlite` on first run.
 5. Visit `http://localhost:3000` and sign in via Clerk; admins can head straight to `/admin/create`, everyone else can test `/boost`.
 6. Leave `PAYPAL_ENVIRONMENT=sandbox` until you have verified the full checkout flow with sandbox buyer accounts, then switch to `live`.
 7. Optionally run `npm run lint` before opening a PR to catch obvious regressions.
+
+If you change Node versions, run `npm rebuild better-sqlite3` to rebuild the native module for the active runtime.
 
 ### Environment Variables
 
@@ -147,9 +152,6 @@ Duplicate `.env.example` to `.env.local` and populate:
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Frontend key from your Clerk instance. |
 | `CLERK_SECRET_KEY` | Server-side Clerk secret. |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` / `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | Routes for auth flows (defaults already match `/sign-*`). |
-| `CLERK_JWT_ISSUER_DOMAIN` | Issuer domain for JWT templates (used by Convex). |
-| `CONVEX_DEPLOYMENT` | Convex deployment identifier (e.g., `dev:my-team`). Required for CLI commands. |
-| `NEXT_PUBLIC_CONVEX_URL` | Public endpoint of your Convex deployment (e.g., `https://<slug>.convex.site`). |
 | `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | Client ID from your PayPal REST app (sandbox or live). Used in the browser so the PayPal JS SDK can initialize. |
 | `NEXT_PUBLIC_PAYPAL_CURRENCY` | Optional currency override for the PayPal JS SDK (defaults to `USD`). |
 | `PAYPAL_CLIENT_ID` | Same PayPal client ID, used server-side when exchanging OAuth tokens. |
@@ -168,16 +170,12 @@ Duplicate `.env.example` to `.env.local` and populate:
 | `npm run build` | Production build output in `.next`. |
 | `npm run start` | Run the production build locally. |
 | `npm run lint` | ESLint (includes React, TypeScript, and hook rules). |
-| `npx convex dev` | Local Convex backend (also regenerates `convex/_generated/*`). |
 
 ## Directory Layout
 
 ```text
 bespick/
-├─ convex/                # Convex schema + serverless functions
-│  ├─ _generated/         # Auto-generated Convex client bindings
-│  ├─ announcements.ts    # All queries/mutations for activities & votes
-│  └─ schema.ts           # Data model definition
+├─ data/                  # SQLite database file (created on first run)
 ├─ src/
 │  ├─ app/                # Next.js App Router routes
 │  │  ├─ dashboard/       # Main feed
@@ -188,6 +186,7 @@ bespick/
 │  ├─ server/             # Server actions (role updates, auth helpers, PayPal)
 │  └─ types/              # Global TypeScript definitions
 ├─ public/                # Static assets
+│  └─ uploads/            # User-uploaded images (created at runtime)
 └─ README.md              # You are here
 ```
 
@@ -196,13 +195,15 @@ bespick/
 - **Clerk middleware** (`src/proxy.ts`) forces authentication for every route except `/sign-in` and `/sign-up`, and blocks `/admin/*` unless `sessionClaims.metadata.role === 'admin'`.
 - **Role values** are defined in `src/types/globals.d.ts` (`'admin' | ''`). Only admins currently unlock admin routes.
 - **Granting roles** can be done via `/admin/roster` (which uses the `updateUserRole` server action) or directly in the Clerk dashboard by editing a user’s `publicMetadata.role`.
-- **Convex enforcement**: mutations call `ctx.auth.getUserIdentity()` and error if the user is not logged in. Client routes rely on Clerk hooks (`useUser`) for conditional rendering.
+- **Group & portfolio** assignments live in `publicMetadata.group` and `publicMetadata.portfolio`. Users can update their own assignments from the profile dropdown; admins can edit any user in `/admin/roster`.
+- **Server enforcement**: mutations call `src/server/auth` helpers to ensure the user is logged in. Client routes rely on Clerk hooks (`useUser`) for conditional rendering.
 
 ## Deployment Notes
 
 - **Next.js**: Deploy on Vercel (recommended) or any Node-compatible host. Ensure build environment has the same environment variables listed above.
-- **Convex**: Use `npx convex deploy` (or the Convex dashboard) to push functions/schema. Update `CONVEX_DEPLOYMENT` to the production identifier and `NEXT_PUBLIC_CONVEX_URL` to the production endpoint.
 - **Clerk**: Configure production URLs for sign-in/sign-up. Copy the live publishable + secret keys into your production environment.
+- **SQLite storage**: Persist `data/` and `public/uploads` if your host wipes the filesystem on deploy. Use a mounted volume for Docker or a persistent disk on VMs.
+- **Node version**: Use Node 20.11.1 in production to avoid native module mismatches with `better-sqlite3`.
 - **Automation**: In production, keep the dashboard (or a scheduled job) calling `announcements.publishDue` so scheduled posts, auto-deletes, and auto-archives stay accurate. A simple approach is to configure a Vercel Cron task that hits a lightweight API route invoking the mutation at a fixed cadence.
 
 With these pieces in place, you can onboard admins, schedule polls, and keep your team up to date through BESPIN Morale. Contributions and refinements are welcome — open an issue or PR with your proposed improvements.

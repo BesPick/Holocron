@@ -47,7 +47,6 @@ export default function ArchivePage() {
 
   const activities = localActivities ?? archivedActivities ?? [];
   const isLoading = archivedActivities === undefined;
-  const hasActivities = activities.length > 0;
   const isAdmin =
     (user?.publicMetadata?.role as string | null | undefined) === 'admin';
 
@@ -74,9 +73,7 @@ export default function ArchivePage() {
         setDeletingId(id);
         await deleteAnnouncement({ id });
         setLocalActivities((prev) =>
-          (prev ?? archivedActivities ?? []).filter(
-            (activity) => activity._id !== id,
-          ),
+          prev ? prev.filter((activity) => activity._id !== id) : prev,
         );
       } catch (error) {
         console.error(error);

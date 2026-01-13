@@ -22,7 +22,7 @@ import { getImageUrls } from '@/server/services/storage';
 import type { Identity } from './auth';
 import type { Id } from '@/types/db';
 
-type RpcAction =
+export type RpcAction =
   | 'announcements.list'
   | 'announcements.listArchived'
   | 'announcements.listScheduled'

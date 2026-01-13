@@ -38,8 +38,11 @@ export function useApiQuery<TArgs, TResult>(
     () => (args === 'skip' ? 'skip' : JSON.stringify(args)),
     [args],
   );
+  const liveKey = useMemo(() => liveKeys.join(','), [liveKeys]);
   const isMounted = useRef(true);
   const fetchRef = useRef<() => void>(() => {});
+  const argsRef = useRef<TArgs | null>(null);
+  const liveKeysRef = useRef<string[]>([]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -49,14 +52,23 @@ export function useApiQuery<TArgs, TResult>(
   }, []);
 
   useEffect(() => {
-    if (!enabled || args === 'skip') {
-      setData(undefined);
+    argsRef.current = args === 'skip' ? null : (args as TArgs);
+  }, [args]);
+
+  useEffect(() => {
+    liveKeysRef.current = liveKeys;
+  }, [liveKeys]);
+
+  useEffect(() => {
+    if (!enabled || argsKey === 'skip') {
       return;
     }
     let cancelled = false;
     const fetchData = async () => {
+      const currentArgs = argsRef.current;
+      if (!currentArgs) return;
       try {
-        const result = await callApi<TArgs, TResult>(action, args as TArgs);
+        const result = await callApi<TArgs, TResult>(action, currentArgs);
         if (!cancelled && isMounted.current) {
           setData(result);
         }
@@ -77,8 +89,8 @@ export function useApiQuery<TArgs, TResult>(
       };
     }
     let unsubscribe = () => {};
-    if (liveKeys.length > 0) {
-      unsubscribe = subscribeLive(liveKeys, () => {
+    if (liveKey.length > 0) {
+      unsubscribe = subscribeLive(liveKeysRef.current, () => {
         void fetchRef.current();
       });
     }
@@ -86,9 +98,9 @@ export function useApiQuery<TArgs, TResult>(
       cancelled = true;
       unsubscribe();
     };
-  }, [action, argsKey, enabled, refreshInterval, liveKeys.join(',')]);
+  }, [action, argsKey, enabled, refreshInterval, liveKey]);
 
-  return data;
+  return enabled && argsKey !== 'skip' ? data : undefined;
 }
 
 export function useApiMutation<TArgs, TResult = unknown>(action: string) {

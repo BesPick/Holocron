@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { broadcast, subscribe } from '@/server/events';
+import { subscribe } from '@/server/events';
 
 export const dynamic = 'force-dynamic';
 

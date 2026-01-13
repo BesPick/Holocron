@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOptionalIdentity } from '@/server/auth';
-import { handleAction } from '@/server/actions';
+import { handleAction, type RpcAction } from '@/server/actions';
 
 type RequestBody = {
   action: string;
@@ -17,7 +17,11 @@ export async function POST(request: Request) {
       );
     }
     const identity = await getOptionalIdentity();
-    const result = await handleAction(body.action as any, body.args, identity);
+    const result = await handleAction(
+      body.action as RpcAction,
+      body.args,
+      identity,
+    );
     return NextResponse.json({ result });
   } catch (error) {
     const message =

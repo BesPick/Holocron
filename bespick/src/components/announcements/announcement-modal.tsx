@@ -102,7 +102,7 @@ export function AnnouncementModal({
             )}
             {imageUrls && imageUrls.length > 0 && (
               <div className='mt-4 grid gap-3 sm:grid-cols-2'>
-                {imageUrls.map((image) => (
+                {imageUrls.map((image: { id: React.Key | null | undefined; url: React.SetStateAction<string | null> | Blob | undefined; }) => (
                   <button
                     type='button'
                     key={image.id}
