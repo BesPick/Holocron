@@ -1,5 +1,5 @@
 const LIVE_API_BASE = 'https://api-m.paypal.com';
-const SANDBOX_API_BASE = 'https://api-m.sandbox.paypal.com';
+const SANDBOX_API_BASE = 'https://api-mx.sandbox.paypal.com';
 
 const {
   PAYPAL_CLIENT_ID,
@@ -9,7 +9,7 @@ const {
   PAYPAL_BRAND_NAME,
 } = process.env;
 
-const BRAND_NAME = PAYPAL_BRAND_NAME ?? 'BESPIN Morale';
+const BRAND_NAME = PAYPAL_BRAND_NAME ?? 'Morale';
 
 const RESOLVED_API_BASE =
   PAYPAL_API_BASE_URL ??

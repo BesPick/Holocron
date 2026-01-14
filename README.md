@@ -170,4 +170,159 @@ bespick/
 - **Node version**: Use Node 20.11.1 in production to avoid native module mismatches with `better-sqlite3`.
 - **Automation**: In production, keep the dashboard (or a scheduled job) calling `announcements.publishDue` so scheduled posts, auto-deletes, and auto-archives stay accurate. A simple approach is to configure a Vercel Cron task that hits a lightweight API route invoking the mutation at a fixed cadence.
 
+### AWS EC2 Deployment (Holocron)
+
+This setup runs the app on an Ubuntu EC2 instance with systemd and Nginx.
+
+#### Instance setup (EC2)
+
+1. Use Ubuntu 22.04 LTS on a free-tier micro instance (t2.micro or t3.micro).
+2. Attach an Elastic IP so your DNS does not change.
+3. Security group inbound rules:
+   - SSH (22) from your IP only.
+   - HTTP (80) and HTTPS (443) from `0.0.0.0/0`.
+
+#### Server bootstrap (on the instance)
+
+```bash
+sudo apt update
+sudo apt install -y git build-essential python3 curl nginx
+```
+
+Install Node 20.11.1 via nvm:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install 20.11.1
+nvm use 20.11.1
+```
+
+Clone and build:
+
+```bash
+git clone <repo-url> holocron
+cd holocron/bespick
+npm install
+npm run build
+```
+
+If `npm run build` is killed on a tiny instance, add swap and retry:
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+npm run build
+```
+
+#### Environment updates (critical commands)
+
+Production uses `.env` on the server. `NEXT_PUBLIC_*` values are baked at build time.
+
+```bash
+nano /home/ubuntu/holocron/bespick/.env
+npm run build
+sudo systemctl restart holocron
+```
+
+Quick checks:
+
+```bash
+sudo systemctl status holocron
+sudo journalctl -u holocron -n 200 --no-pager
+```
+
+#### systemd service (holocron)
+
+Create `/etc/systemd/system/holocron.service`:
+
+```text
+[Unit]
+Description=Holocron Next.js App
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/holocron/bespick
+Environment=NODE_ENV=production
+Environment=PATH=/home/ubuntu/.nvm/versions/node/v20.11.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/ubuntu/.nvm/versions/node/v20.11.1/bin/npm start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable holocron
+sudo systemctl start holocron
+```
+
+#### Nginx reverse proxy
+
+```bash
+sudo tee /etc/nginx/sites-available/holocron >/dev/null <<'EOF'
+server {
+  listen 80;
+  server_name holocron.aodom.dev;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+EOF
+
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo ln -s /etc/nginx/sites-available/holocron /etc/nginx/sites-enabled/holocron
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+Verify locally:
+
+```bash
+curl -I http://127.0.0.1:3000
+curl -I http://127.0.0.1
+```
+
+#### SSL with Cloudflare (recommended)
+
+1. In Cloudflare DNS, create an `A` record for `holocron.aodom.dev` pointing to your Elastic IP (proxied/orange cloud).
+2. In Cloudflare SSL/TLS, set mode to `Full (strict)`.
+3. Create an Origin Certificate for `holocron.aodom.dev`, then save the cert + key on the server:
+
+```bash
+sudo mkdir -p /etc/ssl/cloudflare
+sudo tee /etc/ssl/cloudflare/holocron.aodom.dev.pem >/dev/null <<'EOF'
+# PASTE ORIGIN CERT HERE
+EOF
+sudo tee /etc/ssl/cloudflare/holocron.aodom.dev.key >/dev/null <<'EOF'
+# PASTE PRIVATE KEY HERE
+EOF
+sudo chmod 600 /etc/ssl/cloudflare/holocron.aodom.dev.key
+```
+
+Update Nginx to listen on 443 with those files and redirect HTTP -> HTTPS.
+
+#### Common AWS errors and fixes
+
+- **`ERR_CONNECTION_REFUSED` in browser**: You are opening `http://localhost` on your laptop. Use `http://<EC2_PUBLIC_IP>/` or your domain. Also confirm port 80 is open in the security group.
+- **`502 Bad Gateway` from Nginx**: The Holocron service is down or still starting. Check `sudo systemctl status holocron` and logs with `sudo journalctl -u holocron -n 200 --no-pager`.
+- **`Next.js build worker exited` / SIGKILL**: Out-of-memory during `npm run build`. Add swap (2G) and rebuild.
+- **`npm ERR! ERESOLVE`**: Dependency resolution conflict. Ensure Node 20.11.1, use the repo lockfile (`npm ci`) and do not mix yarn/pnpm.
+- **`npm ci` fails with EUSAGE**: Lockfile missing in the repo. Use `npm install` to generate it or pull the latest lockfile.
+- **PayPal `invalid_client` (401)**: Wrong credentials or environment mismatch. For sandbox, set `PAYPAL_ENVIRONMENT=sandbox` and update both server and `NEXT_PUBLIC_` client ID, then `npm run build` + restart.
+- **TLS handshake errors**: Cloudflare SSL mode mismatch. Use `Full (strict)` with an Origin Certificate or turn off proxy and use Let’s Encrypt.
+
 With these pieces in place, you can onboard admins, run morale events, and keep HostHub schedules current while the next tools come online.
