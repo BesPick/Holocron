@@ -9,7 +9,7 @@ const {
   PAYPAL_BRAND_NAME,
 } = process.env;
 
-const BRAND_NAME = PAYPAL_BRAND_NAME ?? 'BESPIN Morale';
+const BRAND_NAME = PAYPAL_BRAND_NAME ?? 'Morale';
 
 const RESOLVED_API_BASE =
   PAYPAL_API_BASE_URL ??
