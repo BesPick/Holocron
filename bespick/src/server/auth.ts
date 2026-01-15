@@ -40,11 +40,21 @@ export function getPrimaryEmail(user?: ClerkUserLike | null) {
   return email?.trim() ?? null;
 }
 
+export function getAllowedEmail(user?: ClerkUserLike | null) {
+  if (!user?.emailAddresses || user.emailAddresses.length === 0) return null;
+  const primaryEmail = getPrimaryEmail(user);
+  if (isAllowedEmail(primaryEmail)) return primaryEmail;
+  const match = user.emailAddresses.find((address) =>
+    isAllowedEmail(address.emailAddress),
+  );
+  return match?.emailAddress?.trim() ?? null;
+}
+
 export async function getOptionalIdentity(): Promise<Identity | null> {
   const user = await currentUser();
   if (!user) return null;
-  const email = getPrimaryEmail(user);
-  if (!isAllowedEmail(email)) return null;
+  const email = getAllowedEmail(user);
+  if (!email) return null;
   return {
     userId: user.id,
     name: user.fullName ?? user.username ?? null,

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@clerk/nextjs/server';
-import { getPrimaryEmail, isAllowedEmail } from '@/server/auth';
+import { getAllowedEmail } from '@/server/auth';
 
 type ToolsLayoutProps = {
   children: ReactNode;
@@ -13,8 +13,13 @@ export default async function ToolsLayout({ children }: ToolsLayoutProps) {
     redirect('/sign-in');
   }
 
-  const email = getPrimaryEmail(user);
-  if (!isAllowedEmail(email)) {
+  const email = getAllowedEmail(user);
+  if (!email) {
+    console.warn('Domain restriction triggered', {
+      userId: user.id,
+      primaryEmailAddressId: user.primaryEmailAddressId,
+      emails: user.emailAddresses.map((address) => address.emailAddress),
+    });
     redirect('/domain-restricted');
   }
 
