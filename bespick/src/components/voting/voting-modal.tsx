@@ -168,17 +168,25 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
   const paypalBuyerCountry =
     process.env.NEXT_PUBLIC_PAYPAL_BUYER_COUNTRY?.toUpperCase() ?? undefined;
   const enableVenmo = paypalCurrency === 'USD';
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    const updateMobile = () => setIsMobile(window.innerWidth < 768);
+    updateMobile();
+    window.addEventListener('resize', updateMobile);
+    return () => window.removeEventListener('resize', updateMobile);
+  }, []);
+  const allowVenmo = enableVenmo && isMobile;
   const enabledFunding = React.useMemo(() => {
     const sources = ['card'];
-    if (enableVenmo) sources.unshift('venmo');
+    if (allowVenmo) sources.unshift('venmo');
     return sources.join(',');
-  }, [enableVenmo]);
+  }, [allowVenmo]);
   const paymentButtons = React.useMemo(
     () =>
       PAYMENT_METHOD_BUTTONS.filter((button) =>
-        button.fundingSource === 'venmo' ? enableVenmo : true,
+        button.fundingSource === 'venmo' ? allowVenmo : true,
       ),
-    [enableVenmo],
+    [allowVenmo],
   );
 
   const normalizeParticipants = React.useCallback(() => {

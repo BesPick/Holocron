@@ -52,7 +52,7 @@ const PAYMENT_METHOD_BUTTONS: FundingButtonConfig[] = [
   {
     id: 'venmo',
     fundingSource: 'venmo',
-    helper: 'Venmo is only available for USD contributions.',
+    helper: 'Venmo is only available for USD contributions on mobile.',
   },
   {
     id: 'card',
@@ -239,17 +239,26 @@ export function PayPalCheckout() {
     process.env.NEXT_PUBLIC_PAYPAL_BUYER_COUNTRY?.toUpperCase() ?? undefined;
   const formatter = useMemo(() => currencyFormatter(currency), [currency]);
   const enableVenmo = currency === 'USD';
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const updateMobile = () => setIsMobile(window.innerWidth < 768);
+    updateMobile();
+    window.addEventListener('resize', updateMobile);
+    return () => window.removeEventListener('resize', updateMobile);
+  }, []);
+  const allowVenmo = enableVenmo && isMobile;
   const enabledFunding = useMemo(() => {
     const sources = ['card'];
-    if (enableVenmo) sources.unshift('venmo');
+    if (allowVenmo) sources.unshift('venmo');
     return sources.join(',');
-  }, [enableVenmo]);
+  }, [allowVenmo]);
   const paymentButtons = useMemo(
     () =>
       PAYMENT_METHOD_BUTTONS.filter((button) =>
-        button.fundingSource === 'venmo' ? enableVenmo : true,
+        button.fundingSource === 'venmo' ? allowVenmo : true,
       ),
-    [enableVenmo],
+    [allowVenmo],
   );
 
   const [selectedTier, setSelectedTier] = useState<string>(
