@@ -315,6 +315,36 @@ sudo chmod 600 /etc/ssl/cloudflare/holocron.aodom.dev.key
 
 Update Nginx to listen on 443 with those files and redirect HTTP -> HTTPS.
 
+```bash
+sudo tee /etc/nginx/sites-available/holocron >/dev/null <<'EOF'
+server {
+  listen 80;
+  server_name holocron.aodom.dev;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl;
+  server_name holocron.aodom.dev;
+
+  ssl_certificate /etc/ssl/cloudflare/holocron.aodom.dev.pem;
+  ssl_certificate_key /etc/ssl/cloudflare/holocron.aodom.dev.key;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+EOF
+
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
 #### Common AWS errors and fixes
 
 - **`ERR_CONNECTION_REFUSED` in browser**: You are opening `http://localhost` on your laptop. Use `http://<EC2_PUBLIC_IP>/` or your domain. Also confirm port 80 is open in the security group.
@@ -322,7 +352,7 @@ Update Nginx to listen on 443 with those files and redirect HTTP -> HTTPS.
 - **`Next.js build worker exited` / SIGKILL**: Out-of-memory during `npm run build`. Add swap (2G) and rebuild.
 - **`npm ERR! ERESOLVE`**: Dependency resolution conflict. Ensure Node 20.11.1, use the repo lockfile (`npm ci`) and do not mix yarn/pnpm.
 - **`npm ci` fails with EUSAGE**: Lockfile missing in the repo. Use `npm install` to generate it or pull the latest lockfile.
-- **PayPal `invalid_client` (401)**: Wrong credentials or environment mismatch. For sandbox, set `PAYPAL_ENVIRONMENT=sandbox` and update both server and `NEXT_PUBLIC_` client ID, then `npm run build` + restart.
+- **PayPal `invalid_client` (401)**: Wrong credentials or environment mismatch. For sandbox, set `PAYPAL_ENVIRONMENT=sandbox` and update both server and `NEXT_PUBLIC_` client ID, then `npm run build` and `sudo systemctl restart holocron`.
 - **TLS handshake errors**: Cloudflare SSL mode mismatch. Use `Full (strict)` with an Origin Certificate or turn off proxy and use Let’s Encrypt.
 
 With these pieces in place, you can onboard admins, run morale events, and keep HostHub schedules current while the next tools come online.
