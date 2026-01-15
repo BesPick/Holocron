@@ -3,11 +3,14 @@ import { SignUp } from '@clerk/nextjs';
 
 import { AuthShell, authAppearance } from '@/components/auth/auth-shell';
 
+const allowedDomain =
+  process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN ?? 'teambespin.us';
+
 export default function SignUpPage() {
   return (
     <AuthShell
       heading='Join the crew!'
-      subheading='Create your account to stay in the BESPIN loop.'
+      subheading={`Create your account with a ${allowedDomain} email.`}
       footer={
         <p>
           Already have an account?{' '}
