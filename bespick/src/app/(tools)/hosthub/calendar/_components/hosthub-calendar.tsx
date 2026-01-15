@@ -401,7 +401,7 @@ export function HostHubCalendar({
   };
 
   return (
-    <div className='rounded-2xl border border-border bg-card/70 p-6 shadow-sm'>
+    <div className='rounded-2xl border border-border bg-card/70 p-4 shadow-sm sm:p-6'>
       <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
         <div>
           <p className='text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground'>
@@ -473,13 +473,13 @@ export function HostHubCalendar({
         </div>
       </div>
 
-      <div className='mt-5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+      <div className='mt-5 flex gap-2 overflow-x-auto pb-1 text-xs text-muted-foreground sm:flex-wrap sm:overflow-visible'>
         {availableMonths.map((month, index) => (
           <button
             key={month.toISOString()}
             type='button'
             onClick={() => setSelectedIndex(index)}
-            className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition ${
               index === selectedIndex
                 ? 'border-primary/40 bg-primary/15 text-primary'
                 : 'border-border bg-background text-muted-foreground hover:bg-secondary/70'
@@ -490,18 +490,19 @@ export function HostHubCalendar({
         ))}
       </div>
 
-      <div className='mt-6'>
-        <div className='grid grid-cols-7 gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
-          {WEEKDAY_LABELS.map((label) => (
-            <span key={label} className='text-center'>
-              {label}
-            </span>
-          ))}
-        </div>
-        <div className='mt-2 grid grid-cols-7 gap-2 text-sm'>
-          {calendarDays.map((day) => {
-            const isToday = dateKey(day.date) === todayKey;
-            const events = day.inMonth
+      <div className='mt-6 overflow-x-auto pb-2 sm:overflow-visible'>
+        <div className='min-w-[720px] sm:min-w-0'>
+          <div className='grid grid-cols-7 gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground sm:text-xs'>
+            {WEEKDAY_LABELS.map((label) => (
+              <span key={label} className='text-center'>
+                {label}
+              </span>
+            ))}
+          </div>
+          <div className='mt-2 grid grid-cols-7 gap-2 text-xs sm:text-sm'>
+            {calendarDays.map((day) => {
+              const isToday = dateKey(day.date) === todayKey;
+              const events = day.inMonth
                 ? filteredEvents(
                     getEventsForDate(
                       day.date,
@@ -515,72 +516,105 @@ export function HostHubCalendar({
                     ),
                   )
                 : [];
-            return (
-              <button
-                key={day.date.toISOString()}
-                type='button'
-                onClick={() => handleDayClick(day)}
-                disabled={!day.inMonth}
-                className={`min-h-96px rounded-xl border px-2 py-2 text-left transition ${
-                  day.inMonth
-                    ? 'border-border bg-background text-foreground hover:bg-secondary/20'
-                    : 'border-border/60 bg-secondary/40 text-muted-foreground'
-                } ${isToday ? 'ring-2 ring-primary/40' : ''}`}
-                aria-label={`View ${formatFullDate(day.date)}`}
-              >
-                <div className='flex flex-col gap-2'>
-                  <span className='text-right text-xs font-semibold'>
-                    {day.date.getDate()}
-                  </span>
-                  {events.length > 0 ? (
-                    <div className='space-y-1 text-left text-[11px]'>
-                      {events.map((event) => {
-                        const isMine =
-                          event.assigneeId &&
-                          event.assigneeId === currentUserId;
-                        const tone = isMine
-                          ? MY_TONE
-                          : event.variant === 'standup'
-                            ? STANDUP_TONE
-                            : DEMO_TONE;
-                        return (
-                          <div
-                            key={event.id}
-                            className={`rounded-lg border px-2 py-1 ${tone.card} ${
-                              event.isCanceled ? 'opacity-60' : ''
-                            }`}
-                          >
-                            <div className='flex items-center justify-between gap-2'>
-                              <span className='font-semibold'>
-                                {event.label}
-                              </span>
-                              <span className='text-[10px]'>
-                                {event.time}
-                              </span>
-                            </div>
-                            {event.isCanceled ? (
-                              <div className='mt-1 text-[10px] uppercase text-muted-foreground'>
-                                Canceled
+              return (
+                <button
+                  key={day.date.toISOString()}
+                  type='button'
+                  onClick={() => handleDayClick(day)}
+                  disabled={!day.inMonth}
+                  className={`min-h-[84px] rounded-xl border px-1.5 py-1.5 text-left transition sm:min-h-[110px] sm:px-2 sm:py-2 ${
+                    day.inMonth
+                      ? 'border-border bg-background text-foreground hover:bg-secondary/20'
+                      : 'border-border/60 bg-secondary/40 text-muted-foreground'
+                  } ${isToday ? 'ring-2 ring-primary/40' : ''}`}
+                  aria-label={`View ${formatFullDate(day.date)}`}
+                >
+                  <div className='flex flex-col gap-2'>
+                    <span className='text-right text-[10px] font-semibold sm:text-xs'>
+                      {day.date.getDate()}
+                    </span>
+                    {events.length > 0 ? (
+                      <>
+                        <div className='space-y-1 text-left text-[10px] sm:hidden'>
+                          {events.map((event) => {
+                            const isMine =
+                              event.assigneeId &&
+                              event.assigneeId === currentUserId;
+                            const dotTone = isMine
+                              ? 'bg-primary'
+                              : event.variant === 'standup'
+                                ? 'bg-emerald-500'
+                                : 'bg-amber-500';
+                            return (
+                              <div
+                                key={event.id}
+                                className={`flex items-center gap-1 ${
+                                  event.isCanceled
+                                    ? 'text-muted-foreground line-through'
+                                    : ''
+                                }`}
+                              >
+                                <span className={`h-2 w-2 rounded-full ${dotTone}`} />
+                                <span className='font-semibold'>
+                                  {event.label}
+                                </span>
+                                <span className='text-[9px] text-muted-foreground'>
+                                  {event.time}
+                                </span>
                               </div>
-                            ) : null}
-                            {event.assignee ? (
-                              <div className='mt-1 text-[10px] text-muted-foreground'>
-                                Assigned: {event.assignee}
+                            );
+                          })}
+                        </div>
+                        <div className='hidden space-y-1 text-left text-[11px] sm:block'>
+                          {events.map((event) => {
+                            const isMine =
+                              event.assigneeId &&
+                              event.assigneeId === currentUserId;
+                            const tone = isMine
+                              ? MY_TONE
+                              : event.variant === 'standup'
+                                ? STANDUP_TONE
+                                : DEMO_TONE;
+                            return (
+                              <div
+                                key={event.id}
+                                className={`rounded-lg border px-2 py-1 ${tone.card} ${
+                                  event.isCanceled ? 'opacity-60' : ''
+                                }`}
+                              >
+                                <div className='flex items-center justify-between gap-2'>
+                                  <span className='font-semibold'>
+                                    {event.label}
+                                  </span>
+                                  <span className='text-[10px]'>
+                                    {event.time}
+                                  </span>
+                                </div>
+                                {event.isCanceled ? (
+                                  <div className='mt-1 text-[10px] uppercase text-muted-foreground'>
+                                    Canceled
+                                  </div>
+                                ) : null}
+                                {event.assignee ? (
+                                  <div className='mt-1 text-[10px] text-muted-foreground'>
+                                    Assigned: {event.assignee}
+                                  </div>
+                                ) : null}
                               </div>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : day.inMonth ? (
-                    <div className='text-left text-[11px] text-muted-foreground'>
-                      No Events
-                    </div>
-                  ) : null}
-                </div>
-              </button>
-            );
-          })}
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : day.inMonth ? (
+                      <div className='text-left text-[10px] text-muted-foreground sm:text-[11px]'>
+                        No Events
+                      </div>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

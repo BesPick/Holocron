@@ -30,8 +30,8 @@ export function MyScheduleList({ shifts }: MyScheduleListProps) {
 
   return (
     <>
-      <div className='rounded-2xl border border-border bg-card/70 p-6 shadow-sm'>
-        <div className='grid grid-cols-3 gap-3 border-b border-border pb-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
+      <div className='rounded-2xl border border-border bg-card/70 p-4 shadow-sm sm:p-6'>
+        <div className='hidden grid-cols-3 gap-3 border-b border-border pb-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground sm:grid'>
           <span>Date</span>
           <span>Time</span>
           <span>Details</span>
@@ -48,13 +48,17 @@ export function MyScheduleList({ shifts }: MyScheduleListProps) {
                 <button
                   type='button'
                   onClick={() => setActiveShiftId(shift.id)}
-                  className='grid w-full grid-cols-3 gap-3 py-4 text-left text-sm text-foreground transition hover:bg-secondary/30'
+                  className='w-full py-4 text-left text-sm text-foreground transition hover:bg-secondary/30'
                 >
-                  <span>{shift.date}</span>
-                  <span>{shift.time}</span>
-                  <span className='text-muted-foreground'>
-                    {shift.details}
-                  </span>
+                  <div className='flex flex-col gap-1 sm:grid sm:grid-cols-3 sm:gap-3'>
+                    <span className='font-medium'>{shift.date}</span>
+                    <span className='text-muted-foreground sm:text-foreground'>
+                      {shift.time}
+                    </span>
+                    <span className='text-muted-foreground'>
+                      {shift.details}
+                    </span>
+                  </div>
                 </button>
               </li>
             ))}
