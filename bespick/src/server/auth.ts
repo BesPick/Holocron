@@ -6,6 +6,16 @@ export type Identity = {
   email?: string | null;
 };
 
+type ClerkEmailAddress = {
+  id: string;
+  emailAddress: string;
+};
+
+type ClerkUserLike = {
+  primaryEmailAddressId?: string | null;
+  emailAddresses?: ClerkEmailAddress[];
+};
+
 const DEFAULT_ALLOWED_DOMAIN = 'teambespin.us';
 const allowedEmailDomain = (
   process.env.ALLOWED_EMAIL_DOMAIN ??
@@ -19,10 +29,21 @@ export function isAllowedEmail(email?: string | null) {
   return domain === allowedEmailDomain;
 }
 
+export function getPrimaryEmail(user?: ClerkUserLike | null) {
+  if (!user?.emailAddresses || user.emailAddresses.length === 0) return null;
+  const primaryId = user.primaryEmailAddressId ?? null;
+  const primary =
+    primaryId &&
+    user.emailAddresses.find((address) => address.id === primaryId);
+  const email =
+    primary?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? null;
+  return email?.trim() ?? null;
+}
+
 export async function getOptionalIdentity(): Promise<Identity | null> {
   const user = await currentUser();
   if (!user) return null;
-  const email = user.emailAddresses[0]?.emailAddress ?? null;
+  const email = getPrimaryEmail(user);
   if (!isAllowedEmail(email)) return null;
   return {
     userId: user.id,
