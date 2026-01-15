@@ -4,16 +4,37 @@ BESPIN Holocron is BESPIN's internal operations suite: a single Next.js app that
 
 ## Table of Contents
 
-1. [Vision](#vision)
-2. [Tool Suite](#tool-suite)
-3. [Tech Stack](#tech-stack)
-4. [Architecture & Data Flow](#architecture--data-flow)
-5. [Developer Notes](#developer-notes)
-6. [Getting Started](#getting-started)
-7. [Environment Variables](#environment-variables)
-8. [Directory Layout](#directory-layout)
-9. [Authentication & Roles](#authentication--roles)
-10. [Deployment Notes](#deployment-notes)
+- [Vision](#vision)
+- [Purpose & Design](#purpose--design)
+- [Tool Suite](#tool-suite)
+  - [Morale (Live)](#morale-live)
+  - [HostHub (In Development)](#hosthub-in-development)
+  - [Games (In Development)](#games-in-development)
+- [Tech Stack](#tech-stack)
+- [Architecture & Data Flow](#architecture--data-flow)
+- [Developer Notes](#developer-notes)
+- [Getting Started (Step-by-Step)](#getting-started-step-by-step)
+  - [Prerequisites](#prerequisites)
+  - [1) Clone the repo](#1-clone-the-repo)
+  - [2) Install Node 20.11.1](#2-install-node-20111)
+  - [3) Install dependencies](#3-install-dependencies)
+  - [4) Create your environment file](#4-create-your-environment-file)
+  - [5) Run the app locally](#5-run-the-app-locally)
+  - [6) Configure Clerk (required for sign-in)](#6-configure-clerk-required-for-sign-in)
+  - [7) Optional: enable PayPal Boost](#7-optional-enable-paypal-boost)
+- [Environment Variables](#environment-variables)
+- [Directory Layout](#directory-layout)
+- [Authentication & Roles](#authentication--roles)
+- [Deployment Notes](#deployment-notes)
+  - [Versioning & Release Workflow](#versioning--release-workflow)
+  - [AWS EC2 Deployment (Holocron)](#aws-ec2-deployment-holocron)
+    - [Instance setup (EC2)](#instance-setup-ec2)
+    - [Server bootstrap (on the instance)](#server-bootstrap-on-the-instance)
+    - [Environment updates (critical commands)](#environment-updates-critical-commands)
+    - [systemd service (holocron)](#systemd-service-holocron)
+    - [Nginx reverse proxy](#nginx-reverse-proxy)
+    - [SSL with Cloudflare (recommended)](#ssl-with-cloudflare-recommended)
+    - [Common AWS errors and fixes](#common-aws-errors-and-fixes)
 
 ---
 
@@ -21,8 +42,20 @@ BESPIN Holocron is BESPIN's internal operations suite: a single Next.js app that
 
 - A modular tool hub that keeps navigation, auth, and data consistent across all tools.
 - Fast internal workflows over generic dashboards; each tool is a focused control panel.
-- Lightweight infra: SQLite + Clerk metadata instead of heavyweight services.
+- Lightweight infrastructure: SQLite + Clerk metadata instead of heavyweight services.
 - A shared foundation that lets new tools ship quickly without rewriting plumbing.
+
+## Purpose & Design
+
+This project is a single web app that holds multiple internal tools under one roof.
+Instead of building separate apps for each team need (morale, scheduling, games),
+we keep one shared login, one database, and one navigation shell. That makes it
+easier to maintain and easier for teammates to use.
+
+The app is built on Next.js (a React framework). It uses Clerk for login and
+stores data in a local SQLite database file. Each tool is a "module" that lives
+in its own folder but shares the same auth and layout. In practice, you sign in
+once and then move between tools from the same header.
 
 ## Tool Suite
 
@@ -34,7 +67,7 @@ BESPIN Holocron is BESPIN's internal operations suite: a single Next.js app that
 - Boost contributions via PayPal checkout.
 - Admin workflows: create/edit, scheduled queue, roster/role management.
 
-### HostHub (Active + In Development)
+### HostHub (In Development)
 
 - Personal schedule view for upcoming standup and Demo Day assignments.
 - Calendar view for upcoming assignments across the roster.
@@ -86,7 +119,7 @@ Next.js App Router -> Server Actions / API Routes -> SQLite (Drizzle)
 - If you change Node versions, run `npm rebuild better-sqlite3` to refresh the native module.
 - Tests run with `npm run test` (Vitest). Lint with `npm run lint`.
 
-## Getting Started
+## Getting Started (Step-by-Step)
 
 ### Prerequisites
 
@@ -95,27 +128,81 @@ Next.js App Router -> Server Actions / API Routes -> SQLite (Drizzle)
 - Clerk application (publishable + secret keys).
 - Optional: PayPal REST app if you want Boost contributions enabled.
 
-### Installation
+### 1) Clone the repo
 
 ```bash
-git clone <repo-url>
+git clone <repo-url> holocron
+cd holocron
+```
+
+### 2) Install Node 20.11.1
+
+If you use nvm (recommended):
+
+```bash
+cd bespick
+nvm install 20.11.1
+nvm use 20.11.1
+node -v
+```
+
+### 3) Install dependencies
+
+```bash
 cd bespick
 npm install
 ```
 
-### Quick setup checklist
+### 4) Create your environment file
 
-1. Copy `bespick/.env.example` to `bespick/.env.local`.
-2. Run `nvm use` (or ensure Node 20.11.1 is active).
-3. Add the minimum secrets: Clerk publishable + secret keys, plus PayPal client credentials if you plan to use Boost.
-4. Run `npm run dev` to boot the Next.js app. The SQLite database is created at `bespick/data/bespick.sqlite` on first run.
-5. Visit `http://localhost:3000` to see the Holocron hub; Morale lives at `/dashboard`, HostHub at `/hosthub`.
-6. Leave `PAYPAL_ENVIRONMENT=sandbox` until you have verified the full checkout flow with sandbox buyer accounts, then switch to `live`.
-7. Optionally run `npm run lint` and `npm run test` before opening a PR.
+Create `bespick/.env.local` (this file is not committed):
+
+```bash
+cd bespick
+cat > .env.local <<'EOF'
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_your_key_here
+CLERK_SECRET_KEY=sk_your_key_here
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+
+# PayPal (optional - leave blank if you do not need Boost payments)
+NEXT_PUBLIC_PAYPAL_CLIENT_ID=
+NEXT_PUBLIC_PAYPAL_CURRENCY=USD
+NEXT_PUBLIC_PAYPAL_BUYER_COUNTRY=US
+PAYPAL_CLIENT_ID=
+PAYPAL_CLIENT_SECRET=
+PAYPAL_ENVIRONMENT=sandbox
+PAYPAL_BRAND_NAME=Morale
+EOF
+```
+
+### 5) Run the app locally
+
+```bash
+cd bespick
+npm run dev
+```
+
+Open the URL printed in the terminal (usually `http://localhost:3000`).
+If port 3000 is already in use, Next.js will pick 3001 and print it.
+
+### 6) Configure Clerk (required for sign-in)
+
+1. Create a Clerk application in the Clerk dashboard.
+2. Copy the publishable + secret keys into `.env.local`.
+3. In Clerk, add `http://localhost:3000` as an allowed origin and redirect.
+4. Start the app and create a test user via `/sign-up`.
+
+### 7) Optional: enable PayPal Boost
+
+1. Create a PayPal REST app (sandbox first).
+2. Fill in the PayPal values in `.env.local`.
+3. Keep `PAYPAL_ENVIRONMENT=sandbox` until you test the full checkout flow.
+4. Switch to `live` when you are ready for real payments.
 
 ## Environment Variables
 
-Duplicate `bespick/.env.example` to `bespick/.env.local` and populate:
+Create `bespick/.env.local` and populate (Next.js loads `.env.local` automatically):
 
 | Variable | Description |
 | --- | --- |
@@ -127,8 +214,10 @@ Duplicate `bespick/.env.example` to `bespick/.env.local` and populate:
 | `PAYPAL_CLIENT_ID` | Same PayPal client ID, used server-side when exchanging OAuth tokens. |
 | `PAYPAL_CLIENT_SECRET` | PayPal secret used on the server to request OAuth tokens. |
 | `PAYPAL_ENVIRONMENT` | `sandbox` or `live` to control which PayPal base URL is used. |
-| `PAYPAL_BRAND_NAME` | Friendly brand label shown during PayPal checkout (defaults to `BESPIN Morale`). |
+| `PAYPAL_BRAND_NAME` | Friendly brand label shown during PayPal checkout (defaults to `Morale`). |
 | `PAYPAL_API_BASE_URL` | Optional override if PayPal gives you a regional API domain. |
+| `NEXT_PUBLIC_APP_VERSION` | Optional override for the footer version string (defaults to `package.json`). |
+| `NEXT_PUBLIC_GIT_SHA` | Optional short git SHA shown in the footer. |
 
 > The PayPal client ID appears twice on purpose: `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is safe to expose to the browser to bootstrap the PayPal JS SDK, while `PAYPAL_CLIENT_ID` stays on the server (together with `PAYPAL_CLIENT_SECRET`) so we can exchange OAuth tokens without leaking secrets.
 

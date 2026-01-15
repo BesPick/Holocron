@@ -789,13 +789,6 @@ export async function publishDue(now: number) {
 
   for (const announcement of archiveDue) {
     const update: Partial<AnnouncementInsert> = { status: 'archived' };
-    if (announcement.eventType === 'voting') {
-      update.votingParticipantsJson = serializeJson(
-        resetVotingParticipantVotes(
-          parseJson<VotingParticipant[]>(announcement.votingParticipantsJson),
-        ),
-      );
-    }
     await db
       .update(announcements)
       .set(update)
@@ -1197,11 +1190,6 @@ export async function archiveAnnouncement(
     throw new Error('Activity not found');
   }
   const update: Partial<AnnouncementInsert> = { status: 'archived' };
-  if (existing.eventType === 'voting') {
-    update.votingParticipantsJson = JSON.stringify(
-      resetVotingParticipantVotes(existing.votingParticipants),
-    );
-  }
   await db.update(announcements).set(update).where(eq(announcements.id, id));
   broadcast([
     'announcements',

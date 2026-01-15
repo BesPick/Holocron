@@ -9,8 +9,29 @@ import type { Id, StorageImage } from '@/types/db';
 export const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
 
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+]);
+const ALLOWED_IMAGE_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+]);
+
+function isAllowedImage(file: File) {
+  const type = file.type?.toLowerCase();
+  if (type && ALLOWED_IMAGE_TYPES.has(type)) return true;
+  const ext = path.extname(file.name || '').toLowerCase();
+  return ext ? ALLOWED_IMAGE_EXTENSIONS.has(ext) : false;
+}
+
 function getExtension(file: File) {
-  const nameExt = path.extname(file.name);
+  const nameExt = path.extname(file.name).toLowerCase();
   if (nameExt) return nameExt;
   if (file.type.startsWith('image/')) {
     const subtype = file.type.split('/')[1];
@@ -21,6 +42,9 @@ function getExtension(file: File) {
 }
 
 export async function saveUpload(file: File) {
+  if (!isAllowedImage(file)) {
+    throw new Error('Unsupported image format. Use JPG, PNG, GIF, or WEBP.');
+  }
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const ext = getExtension(file);

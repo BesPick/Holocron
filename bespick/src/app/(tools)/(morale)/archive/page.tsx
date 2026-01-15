@@ -6,6 +6,7 @@ import { useUser } from '@clerk/nextjs';
 import { MoreVertical } from 'lucide-react';
 import { AnnouncementModal } from '@/components/announcements/announcement-modal';
 import { PollModal } from '@/components/poll/poll-modal';
+import { VotingModal } from '@/components/voting/voting-modal';
 import { MoraleSubHeader } from '@/components/header/morale-subheader';
 import {
   formatCreator,
@@ -36,6 +37,8 @@ export default function ArchivePage() {
   const [activePollId, setActivePollId] =
     React.useState<AnnouncementId | null>(null);
   const [viewingAnnouncement, setViewingAnnouncement] =
+    React.useState<Announcement | null>(null);
+  const [viewingVoting, setViewingVoting] =
     React.useState<Announcement | null>(null);
   const [localActivities, setLocalActivities] =
     React.useState<Announcement[] | null>(null);
@@ -102,6 +105,9 @@ export default function ArchivePage() {
     },
     [],
   );
+  const handleOpenVoting = React.useCallback((announcement: Announcement) => {
+    setViewingVoting(announcement);
+  }, []);
 
   return (
     <section className='mx-auto w-full max-w-5xl px-4 py-16'>
@@ -152,6 +158,7 @@ export default function ArchivePage() {
               onEdit={handleEdit}
               deletingId={deletingId}
               onOpenPoll={handleOpenPoll}
+              onOpenVoting={handleOpenVoting}
               onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
@@ -172,6 +179,13 @@ export default function ArchivePage() {
           onClose={() => setViewingAnnouncement(null)}
         />
       )}
+
+      {viewingVoting && (
+        <VotingModal
+          event={viewingVoting}
+          onClose={() => setViewingVoting(null)}
+        />
+      )}
     </section>
   );
 }
@@ -183,6 +197,7 @@ type ArchiveCardProps = {
   onDelete: (id: AnnouncementId) => Promise<void>;
   deletingId: AnnouncementId | null;
   onOpenPoll?: (id: AnnouncementId) => void;
+  onOpenVoting?: (announcement: Announcement) => void;
   onViewAnnouncement: (announcement: Announcement) => void;
 };
 
@@ -193,9 +208,11 @@ function ArchiveCard({
   onDelete,
   deletingId,
   onOpenPoll,
+  onOpenVoting,
   onViewAnnouncement,
 }: ArchiveCardProps) {
   const isPollCard = activity.eventType === 'poll';
+  const isVotingCard = activity.eventType === 'voting';
   const publishedDate = React.useMemo(
     () => formatDate(activity.publishAt),
     [activity.publishAt],
@@ -261,7 +278,16 @@ function ArchiveCard({
               View Poll
             </button>
           )}
-          {!isPollCard && (
+          {isVotingCard && onOpenVoting && (
+            <button
+              type='button'
+              onClick={() => onOpenVoting(activity)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View leaderboard
+            </button>
+          )}
+          {!isPollCard && !isVotingCard && (
             <button
               type='button'
               onClick={() => onViewAnnouncement(activity)}

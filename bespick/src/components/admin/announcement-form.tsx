@@ -31,6 +31,19 @@ const ACTIVITY_LABELS: Record<ActivityType, string> = {
   voting: 'Voting',
 };
 const MAX_IMAGES = 5;
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+]);
+const ALLOWED_IMAGE_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+]);
 const LEADERBOARD_OPTIONS: Array<{
   value: VotingLeaderboardMode;
   label: string;
@@ -199,10 +212,17 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
       }
 
       const invalidFile = files.find(
-        (file) => !file.type.toLowerCase().startsWith('image/'),
+        (file) => {
+          const type = file.type?.toLowerCase();
+          if (type && ALLOWED_IMAGE_TYPES.has(type)) return false;
+          const name = file.name ?? '';
+          const dot = name.lastIndexOf('.');
+          const ext = dot >= 0 ? name.slice(dot).toLowerCase() : '';
+          return !ALLOWED_IMAGE_EXTENSIONS.has(ext);
+        },
       );
       if (invalidFile) {
-        setError('Only image files are supported.');
+        setError('Only JPG, PNG, GIF, or WEBP images are supported.');
         return;
       }
 

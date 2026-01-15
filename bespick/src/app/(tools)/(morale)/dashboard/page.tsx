@@ -325,7 +325,7 @@ function ActivityCard({
               isDeleting={deletingId === activity._id}
               onArchive={onArchive}
               isArchiving={archivingId === activity._id}
-              canArchive={!isVotingCard}
+              canArchive={true}
             />
           )}
         </div>
