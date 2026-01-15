@@ -1,5 +1,5 @@
 const LIVE_API_BASE = 'https://api-m.paypal.com';
-const SANDBOX_API_BASE = 'https://api-mx.sandbox.paypal.com';
+const SANDBOX_API_BASE = 'https://api-m.sandbox.paypal.com';
 
 const {
   PAYPAL_CLIENT_ID,
