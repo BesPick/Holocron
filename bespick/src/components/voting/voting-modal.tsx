@@ -5,7 +5,6 @@ import {
   PayPalButtons,
   PayPalScriptProvider,
   usePayPalScriptReducer,
-  useScriptProviderContext,
   type PayPalButtonsComponentProps,
   type ReactPayPalScriptOptions,
 } from '@paypal/react-paypal-js';
@@ -990,7 +989,6 @@ function VotingPayPalPanel({
   transactionId,
 }: VotingPayPalPanelProps) {
   const [{ isPending, isRejected, isResolved }] = usePayPalScriptReducer();
-  const [{ loadingStatusErrorMessage }] = useScriptProviderContext();
   const showButtons = isResolved && !isRejected;
 
   return (
@@ -1019,9 +1017,6 @@ function VotingPayPalPanel({
           <div className='rounded-xl border border-destructive/60 bg-destructive/10 px-4 py-3 text-sm text-destructive'>
             PayPal failed to load. Disable blockers and confirm your
             client ID is valid.
-            {loadingStatusErrorMessage
-              ? ` (${loadingStatusErrorMessage})`
-              : ''}
           </div>
         )}
         {isPending && !isRejected && (
