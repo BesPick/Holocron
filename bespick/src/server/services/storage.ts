@@ -6,7 +6,9 @@ import { db } from '@/server/db/client';
 import { uploads } from '@/server/db/schema';
 import type { Id, StorageImage } from '@/types/db';
 
-export const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+export const uploadsDir = path.resolve(
+  process.env.UPLOADS_DIR ?? path.join(process.cwd(), 'public', 'uploads'),
+);
 fs.mkdirSync(uploadsDir, { recursive: true });
 
 const ALLOWED_IMAGE_TYPES = new Set([
