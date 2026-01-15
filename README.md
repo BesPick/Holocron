@@ -252,6 +252,7 @@ bespick/
 - **Granting roles** can be done via `/admin/roster` (which uses the `updateUserRole` server action) or directly in the Clerk dashboard by editing a user's `publicMetadata.role`.
 - **Group, portfolio, and rank** metadata live in `publicMetadata` and power voting and HostHub eligibility.
 - **Server enforcement**: mutations call `src/server/auth` helpers to ensure the user is logged in. Client routes rely on Clerk hooks (`useUser`) for conditional rendering.
+- **Auto-delete disallowed signups**: Configure a Clerk webhook pointing to `/api/clerk/webhook` and set `CLERK_WEBHOOK_SECRET`. New users without an allowed email domain are deleted automatically.
 
 ## Deployment Notes
 
