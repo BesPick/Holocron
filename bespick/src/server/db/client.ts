@@ -3,10 +3,14 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 
-const dataDir = path.join(process.cwd(), 'data');
+const dataDir = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(process.cwd(), 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 
-const databasePath = path.join(dataDir, 'bespick.sqlite');
+const databasePath = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.join(dataDir, 'bespick.sqlite');
 const sqlite = new Database(databasePath);
 sqlite.pragma('journal_mode = WAL');
 
