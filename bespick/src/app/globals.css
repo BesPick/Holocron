@@ -78,6 +78,39 @@
   }
 }
 
+@layer clerk {
+  .cl-rootBox,
+  .cl-cardBox,
+  .cl-card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .cl-card {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .cl-form,
+  .cl-formField,
+  .cl-formFieldRow,
+  .cl-formFieldInput,
+  .cl-input,
+  .cl-socialButtonsBlockButton,
+  .cl-formButtonPrimary,
+  .cl-identityPreview {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .cl-socialButtonsBlockButton,
+  .cl-formButtonPrimary,
+  .cl-formFieldInput,
+  .cl-input {
+    width: 100%;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

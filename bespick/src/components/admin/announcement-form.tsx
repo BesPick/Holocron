@@ -1576,21 +1576,21 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         onChangeArchiveTime={setArchiveTime}
       />
 
-      <div className='flex items-center justify-between gap-3'>
+      <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
         <p className='text-xs text-muted-foreground'>{publishStatusMessage}</p>
-        <div className='flex gap-2'>
+        <div className='flex w-full flex-col gap-2 sm:w-auto sm:flex-row'>
           <button
             type='button'
             onClick={onCancel}
             disabled={submitting}
-            className='inline-flex items-center justify-center rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:opacity-90 disabled:opacity-60'
+            className='inline-flex w-full items-center justify-center rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:opacity-90 disabled:opacity-60 sm:w-auto'
           >
             Cancel
           </button>
           <button
             type='submit'
             disabled={submitting}
-            className='inline-flex items-center justify-center rounded-md border border-border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60'
+            className='inline-flex w-full items-center justify-center rounded-md border border-border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60 sm:w-auto'
           >
             {submitting ? 'Saving...' : buttonLabel}
           </button>

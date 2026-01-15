@@ -250,7 +250,7 @@ export function PayPalCheckout() {
   };
 
   return (
-    <div className='rounded-2xl border border-border bg-card px-6 py-8 shadow-sm'>
+    <div className='rounded-2xl border border-border bg-card px-4 py-6 shadow-sm sm:px-6 sm:py-8'>
       <div className='grid gap-8 lg:grid-cols-[1.2fr_1fr]'>
         <div>
           <p className='text-sm font-semibold uppercase tracking-wide text-muted-foreground'>
@@ -293,7 +293,7 @@ export function PayPalCheckout() {
             >
               Or enter a custom amount
             </label>
-            <div className='mt-2 flex items-center gap-3'>
+            <div className='mt-2 flex flex-col gap-3 sm:flex-row sm:items-center'>
               <div className='relative flex-1'>
                 <span className='pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-muted-foreground'>
                   {currency}
@@ -314,7 +314,7 @@ export function PayPalCheckout() {
               <button
                 type='button'
                 onClick={() => handleSelectTier('custom')}
-                className={`h-12 rounded-xl px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`h-12 w-full rounded-xl px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:w-auto ${
                   isCustom
                     ? 'bg-primary text-primary-foreground shadow'
                     : 'border border-border bg-secondary/60 text-foreground hover:border-primary/50'

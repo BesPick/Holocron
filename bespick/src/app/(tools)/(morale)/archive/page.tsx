@@ -248,7 +248,7 @@ function ArchiveCard({
             </p>
           )}
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
           <span className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
             Archived
           </span>

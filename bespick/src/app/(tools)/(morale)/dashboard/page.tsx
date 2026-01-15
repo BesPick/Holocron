@@ -184,7 +184,7 @@ export default function DashboardPage() {
               <span aria-hidden={true}>&times;</span>
             </button>
             <h1 className='text-4xl font-semibold tracking-tight text-foreground sm:text-5xl'>
-              Welcome to BESPIN Morale Dashboard!
+              Welcome to the Morale Dashboard!
             </h1>
             <p className='mt-4 text-base text-muted-foreground sm:text-lg'>
               Stay connected with upcoming morale events and stay up to date with the latest announcements. Browse the latest activities below.
@@ -192,7 +192,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <h1 className='text-3xl font-semibold text-foreground text-center sm:text-left'>
-            BESPIN Morale Dashboard
+            Morale Dashboard
           </h1>
         )}
       </header>
@@ -355,7 +355,7 @@ function ActivityCard({
             </p>
           )}
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
           <span className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
             {activity.status === 'published' ? 'Live' : 'Scheduled'}
           </span>

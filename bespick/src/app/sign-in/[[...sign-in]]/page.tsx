@@ -7,7 +7,7 @@ export default function SignInPage() {
   return (
     <AuthShell
       heading='Welcome back!'
-      subheading='Sign in to jump into the dashboard and keep the morale notifs rolling.'
+      subheading='Sign in to jump into the dashboard.'
       footer={
         <p>
           Need an account?{' '}

@@ -201,7 +201,7 @@ export function UserRoleCard({ user }: UserRoleCardProps) {
             <h2 className='text-lg font-semibold text-foreground'>
               {user.fullName}
             </h2>
-            <p className='text-sm text-muted-foreground'>{user.email}</p>
+            <p className='break-words text-sm text-muted-foreground'>{user.email}</p>
           </div>
           <div className='rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary'>
             {roleLabel}

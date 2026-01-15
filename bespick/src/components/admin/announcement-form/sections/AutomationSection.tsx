@@ -62,7 +62,7 @@ export function AutomationSection({
         </p>
 
         {autoDeleteEnabled && (
-          <div className='grid grid-cols-2 gap-4'>
+          <div className='grid gap-4 sm:grid-cols-2'>
             <label className='flex flex-col gap-2 text-sm text-foreground'>
               Delete Date
               <input
@@ -127,7 +127,7 @@ export function AutomationSection({
         </p>
 
         {autoArchiveEnabled && (
-          <div className='grid grid-cols-2 gap-4'>
+          <div className='grid gap-4 sm:grid-cols-2'>
             <label className='flex flex-col gap-2 text-sm text-foreground'>
               Archive Date
               <input
