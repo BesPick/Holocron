@@ -21,7 +21,9 @@ const allowedEmailDomain = (
   process.env.ALLOWED_EMAIL_DOMAIN ??
   process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN ??
   DEFAULT_ALLOWED_DOMAIN
-).toLowerCase();
+)
+  .trim()
+  .toLowerCase();
 
 export function isAllowedEmail(email?: string | null) {
   if (!allowedEmailDomain) return true;

@@ -18,6 +18,10 @@ export default async function ToolsLayout({ children }: ToolsLayoutProps) {
     console.warn('Domain restriction triggered', {
       userId: user.id,
       primaryEmailAddressId: user.primaryEmailAddressId,
+      allowedDomain:
+        process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN ??
+        process.env.ALLOWED_EMAIL_DOMAIN ??
+        'teambespin.us',
       emails: user.emailAddresses.map((address) => address.emailAddress),
     });
     redirect('/domain-restricted');
