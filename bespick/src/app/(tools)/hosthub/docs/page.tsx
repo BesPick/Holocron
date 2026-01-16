@@ -47,13 +47,13 @@ export default async function HostHubDocsPage() {
             Policies
           </h2>
           <p className='mt-2 text-sm text-muted-foreground'>
-            Formal shift rules and expectations for HostHub operations.
+            Formal shift rules and expectations for hosts.
           </p>
           <ul className='mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground'>
-            <li>Shift coverage requirements</li>
-            <li>Swap and time-off request guidelines</li>
-            <li>On-call response standards</li>
-            <li>Escalation and handoff procedures</li>
+            <li>If you are assigned, you are responsible for coordinating and running the event.</li>
+            <li>If you are unavailable, you must find a replacement and coordinate the swap.</li>
+            <li>Notify an admin once a replacement is confirmed so the calendar can be updated.</li>
+            <li>Come prepared with any materials or context needed for the session and be early to google meetings.</li>
           </ul>
         </div>
 
@@ -175,7 +175,8 @@ export default async function HostHubDocsPage() {
               </p>
               <p className='mt-1'>
                 Coordinate with another eligible teammate, then ask an admin to
-                update the assignment. Self-service swaps are not enabled yet.
+                update the assignment. The assigned host is responsible for
+                securing a replacement if they are unavailable.
               </p>
             </div>
             <div>
@@ -201,8 +202,8 @@ export default async function HostHubDocsPage() {
                 Who do I contact with feedback or issues?
               </p>
               <p className='mt-1'>
-                Send feedback to the HostHub admins so they can review and
-                prioritize updates.
+                Send feedback to an admin so they can review and
+                prioritize updates. (andrew.odom@teambespin.us)
               </p>
             </div>
           </div>
