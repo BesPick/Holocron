@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - Added a full reset option for HostHub schedules to clear and regenerate assignments.
+- Added a HostHub in-development warning banner across HostHub pages.
 
 ## [1.1.0] - 2026-01-16
 

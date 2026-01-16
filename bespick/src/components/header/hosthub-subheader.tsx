@@ -5,7 +5,13 @@ import { usePathname } from 'next/navigation';
 import { useMemo } from 'react';
 import type { ComponentType } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { BookOpen, CalendarCheck, CalendarDays, Settings } from 'lucide-react';
+import {
+  AlertTriangle,
+  BookOpen,
+  CalendarCheck,
+  CalendarDays,
+  Settings,
+} from 'lucide-react';
 
 type NavItem = {
   href: string;
@@ -82,6 +88,12 @@ export function HostHubSubHeader() {
               );
             })}
         </nav>
+      </div>
+      <div className='mt-4 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700'>
+        <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' aria-hidden={true} />
+        <span>
+          HostHub is still in development. None of the information shown is accurate. Expect frequent changes.
+        </span>
       </div>
     </div>
   );
