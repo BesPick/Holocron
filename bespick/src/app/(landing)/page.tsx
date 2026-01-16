@@ -17,34 +17,34 @@ export default function HomePage() {
         </p>
       </header>
 
-      <Link
-        href='/hosthub'
-        className='group rounded-3xl border border-border bg-card/70 p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md'
-      >
-        <div className='flex items-center gap-3'>
-          <span className='inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary'>
-            <Server className='h-6 w-6' aria-hidden={true} />
-          </span>
-          <div>
-            <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
-              In Development
-            </p>
-            <h2 className='text-xl font-semibold text-foreground'>HostHub</h2>
-          </div>
-        </div>
-        <p className='mt-4 text-sm text-muted-foreground'>
-          Centralized host operations, scheduling, and utilities are on deck.
-          <br />
-          <span className='block' aria-hidden={true}>
-            &nbsp;
-          </span>
-        </p>
-        <span className='mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary'>
-          In development
-        </span>
-      </Link>
-
       <div className='grid gap-6 md:grid-cols-3'>
+        <Link
+          href='/hosthub'
+          className='group rounded-3xl border border-border bg-card/70 p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md'
+        >
+          <div className='flex items-center gap-3'>
+            <span className='inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary'>
+              <Server className='h-6 w-6' aria-hidden={true} />
+            </span>
+            <div>
+              <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
+                In Development
+              </p>
+              <h2 className='text-xl font-semibold text-foreground'>HostHub</h2>
+            </div>
+          </div>
+          <p className='mt-4 text-sm text-muted-foreground'>
+            Centralized host operations, scheduling, and utilities are on deck.
+            <br />
+            <span className='block' aria-hidden={true}>
+              &nbsp;
+            </span>
+          </p>
+          <span className='mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary'>
+            In development
+          </span>
+        </Link>
+
         <Link
           href='/dashboard'
           className='group rounded-3xl border border-border bg-card/70 p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md'
