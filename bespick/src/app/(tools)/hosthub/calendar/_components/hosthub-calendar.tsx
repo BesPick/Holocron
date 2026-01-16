@@ -547,7 +547,7 @@ export function HostHubCalendar({
       </div>
 
       <div className='mt-6 overflow-x-auto pb-2 sm:overflow-visible'>
-        <div className='min-w-[720px] sm:min-w-0'>
+        <div className='min-w-180 sm:min-w-0'>
           <div className='grid grid-cols-7 gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground sm:text-xs'>
             {WEEKDAY_LABELS.map((label) => (
               <span key={label} className='text-center'>
@@ -578,7 +578,7 @@ export function HostHubCalendar({
                   type='button'
                   onClick={() => handleDayClick(day)}
                   disabled={!day.inMonth}
-                  className={`min-h-[84px] rounded-xl border px-1.5 py-1.5 text-left transition sm:min-h-[110px] sm:px-2 sm:py-2 ${
+                  className={`min-h-21 rounded-xl border px-1.5 py-1.5 text-left transition sm:min-h-27.5 sm:px-2 sm:py-2 ${
                     day.inMonth
                       ? 'border-border bg-background text-foreground hover:bg-secondary/20'
                       : 'border-border/60 bg-secondary/40 text-muted-foreground'

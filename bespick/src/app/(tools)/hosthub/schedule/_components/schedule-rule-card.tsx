@@ -157,7 +157,7 @@ export function ScheduleRuleCard({
             value={defaultTime}
             onChange={(event) => setDefaultTime(event.target.value)}
             disabled={isPending}
-            className='mt-2 w-full max-w-[200px] rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+            className='mt-2 w-full max-w-50 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
           />
           <p className='mt-2 text-xs text-muted-foreground'>
             Leave blank to show TBD for this event type.
