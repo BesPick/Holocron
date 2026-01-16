@@ -19,7 +19,7 @@ function getContentType(filename: string) {
 export async function GET(
   _request: Request,
   context: {
-    params?: Promise<Record<string, string | string[] | undefined>>;
+    params: Promise<Record<string, string | string[] | undefined>>;
   },
 ) {
   const params = (await context.params) ?? {};
