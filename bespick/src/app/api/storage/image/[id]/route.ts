@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { RouteContext } from 'next';
 import { NextResponse } from 'next/server';
 import { findUploadPath } from '@/server/services/storage';
 
@@ -18,9 +19,9 @@ function getContentType(filename: string) {
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } },
+  context: RouteContext<{ id: string }>,
 ) {
-  const id = params.id;
+  const { id } = context.params;
   if (!id || path.basename(id) !== id) {
     return NextResponse.json({ error: 'Invalid image id.' }, { status: 400 });
   }
