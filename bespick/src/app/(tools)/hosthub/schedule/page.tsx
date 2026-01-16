@@ -4,6 +4,7 @@ import { HostHubSubHeader } from '@/components/header/hosthub-subheader';
 import { checkRole } from '@/server/auth/check-role';
 import { ScheduleRuleCard } from './_components/schedule-rule-card';
 import { RefreshScheduleAssignmentsCard } from './_components/refresh-schedule-card';
+import { ResetScheduleAssignmentsCard } from './_components/reset-schedule-card';
 import { getScheduleRuleConfig } from '@/server/services/hosthub-schedule';
 
 export const metadata = {
@@ -49,6 +50,7 @@ export default async function HostHubScheduleSettingsPage() {
         </div>
 
         <RefreshScheduleAssignmentsCard />
+        <ResetScheduleAssignmentsCard />
       </div>
     </section>
   );

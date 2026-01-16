@@ -216,6 +216,13 @@ export async function markScheduleRefreshPending(timestamp = Date.now()) {
     });
 }
 
+export async function clearScheduleAssignments() {
+  await db.delete(scheduleEventOverrides);
+  await db.delete(demoDayAssignments);
+  await db.delete(standupAssignments);
+  await db.delete(scheduleRefresh);
+}
+
 export async function markScheduleRefreshComplete(timestamp = Date.now()) {
   await db
     .insert(scheduleRefresh)
