@@ -35,6 +35,8 @@ export type AnnouncementDoc = {
   votingParticipants?: VotingParticipant[];
   votingAddVotePrice?: number;
   votingRemoveVotePrice?: number;
+  votingAddVoteLimit?: number | null;
+  votingRemoveVoteLimit?: number | null;
   votingAllowedGroups?: string[];
   votingAllowedPortfolios?: string[];
   votingAllowUngrouped?: boolean;

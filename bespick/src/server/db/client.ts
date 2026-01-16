@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS announcements (
   voting_participants_json TEXT,
   voting_add_vote_price REAL,
   voting_remove_vote_price REAL,
+  voting_add_vote_limit INTEGER,
+  voting_remove_vote_limit INTEGER,
   voting_allowed_groups_json TEXT,
   voting_allowed_portfolios_json TEXT,
   voting_allow_ungrouped INTEGER,
@@ -58,6 +60,17 @@ CREATE TABLE IF NOT EXISTS poll_votes (
 );
 CREATE INDEX IF NOT EXISTS idx_poll_votes_announcement ON poll_votes(announcement_id);
 CREATE INDEX IF NOT EXISTS idx_poll_votes_user ON poll_votes(announcement_id, user_id);
+
+CREATE TABLE IF NOT EXISTS voting_purchases (
+  id TEXT PRIMARY KEY,
+  announcement_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  add_votes INTEGER NOT NULL,
+  remove_votes INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_voting_purchases_announcement ON voting_purchases(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_voting_purchases_user ON voting_purchases(announcement_id, user_id);
 
 CREATE TABLE IF NOT EXISTS uploads (
   id TEXT PRIMARY KEY,
@@ -101,6 +114,24 @@ CREATE TABLE IF NOT EXISTS schedule_event_overrides (
 CREATE INDEX IF NOT EXISTS idx_schedule_event_overrides_date ON schedule_event_overrides(date);
 CREATE INDEX IF NOT EXISTS idx_schedule_event_overrides_type ON schedule_event_overrides(event_type);
 `);
+
+const announcementColumns = sqlite
+  .prepare("PRAGMA table_info('announcements')")
+  .all() as Array<{ name: string }>;
+const hasVotingAddLimit = announcementColumns.some(
+  (column) => column.name === 'voting_add_vote_limit',
+);
+if (!hasVotingAddLimit) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN voting_add_vote_limit INTEGER;');
+}
+const hasVotingRemoveLimit = announcementColumns.some(
+  (column) => column.name === 'voting_remove_vote_limit',
+);
+if (!hasVotingRemoveLimit) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN voting_remove_vote_limit INTEGER;',
+  );
+}
 
 const overrideColumns = sqlite
   .prepare("PRAGMA table_info('schedule_event_overrides')")

@@ -14,8 +14,12 @@ type VotingSettingsSectionProps = {
   isVoting: boolean;
   addVotePrice: string;
   removeVotePrice: string;
+  addVoteLimit: string;
+  removeVoteLimit: string;
   onChangeAddPrice: (value: string) => void;
   onChangeRemovePrice: (value: string) => void;
+  onChangeAddLimit: (value: string) => void;
+  onChangeRemoveLimit: (value: string) => void;
   groupSelections: Record<Group, boolean>;
   portfolioSelections: Record<Portfolio, boolean>;
   allowUngrouped: boolean;
@@ -41,8 +45,12 @@ export function VotingSettingsSection({
   isVoting,
   addVotePrice,
   removeVotePrice,
+  addVoteLimit,
+  removeVoteLimit,
   onChangeAddPrice,
   onChangeRemovePrice,
+  onChangeAddLimit,
+  onChangeRemoveLimit,
   groupSelections,
   portfolioSelections,
   allowUngrouped,
@@ -75,8 +83,7 @@ export function VotingSettingsSection({
           Voting settings
         </h3>
         <p className='text-sm text-muted-foreground'>
-          Set prices for adding or removing votes and choose who can
-          participate.
+          Set prices, per-user limits, and who can participate in the event.
         </p>
       </div>
 
@@ -93,6 +100,22 @@ export function VotingSettingsSection({
             placeholder='Add Price'
             className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
           />
+        </label>
+        <label className='flex flex-col gap-2 text-sm text-foreground'>
+          Add Vote Limit (per user)
+          <input
+            type='number'
+            min='0'
+            step='1'
+            inputMode='numeric'
+            value={addVoteLimit}
+            onChange={(event) => onChangeAddLimit(event.target.value)}
+            placeholder='Unlimited'
+            className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+          />
+          <span className='text-xs text-muted-foreground'>
+            Leave blank for unlimited.
+          </span>
         </label>
         <div className='flex flex-col gap-2 text-sm text-foreground'>
           <label className='flex items-center justify-between text-sm font-medium text-foreground'>
@@ -120,6 +143,24 @@ export function VotingSettingsSection({
             />
           )}
         </div>
+        {allowRemovals && (
+          <label className='flex flex-col gap-2 text-sm text-foreground'>
+            Remove Vote Limit (per user)
+            <input
+              type='number'
+              min='0'
+              step='1'
+              inputMode='numeric'
+              value={removeVoteLimit}
+              onChange={(event) => onChangeRemoveLimit(event.target.value)}
+              placeholder='Unlimited'
+              className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+            />
+            <span className='text-xs text-muted-foreground'>
+              Leave blank for unlimited.
+            </span>
+          </label>
+        )}
       </div>
 
       <div className='space-y-2 rounded-xl border border-border bg-background/60 p-4'>

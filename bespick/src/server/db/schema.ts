@@ -26,6 +26,10 @@ export const announcements = sqliteTable(
     votingParticipantsJson: text('voting_participants_json'),
     votingAddVotePrice: real('voting_add_vote_price'),
     votingRemoveVotePrice: real('voting_remove_vote_price'),
+    votingAddVoteLimit: integer('voting_add_vote_limit', { mode: 'number' }),
+    votingRemoveVoteLimit: integer('voting_remove_vote_limit', {
+      mode: 'number',
+    }),
     votingAllowedGroupsJson: text('voting_allowed_groups_json'),
     votingAllowedPortfoliosJson: text('voting_allowed_portfolios_json'),
     votingAllowUngrouped: integer('voting_allow_ungrouped', {
@@ -41,6 +45,27 @@ export const announcements = sqliteTable(
       table.publishAt,
     ),
     eventTypeIdx: index('idx_announcements_event_type').on(table.eventType),
+  }),
+);
+
+export const votingPurchases = sqliteTable(
+  'voting_purchases',
+  {
+    id: text('id').primaryKey(),
+    announcementId: text('announcement_id').notNull(),
+    userId: text('user_id').notNull(),
+    addVotes: integer('add_votes', { mode: 'number' }).notNull(),
+    removeVotes: integer('remove_votes', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    announcementIdx: index('idx_voting_purchases_announcement').on(
+      table.announcementId,
+    ),
+    userIdx: index('idx_voting_purchases_user').on(
+      table.announcementId,
+      table.userId,
+    ),
   }),
 );
 
@@ -123,6 +148,8 @@ export const scheduleEventOverrides = sqliteTable(
 
 export type AnnouncementRow = typeof announcements.$inferSelect;
 export type AnnouncementInsert = typeof announcements.$inferInsert;
+export type VotingPurchaseRow = typeof votingPurchases.$inferSelect;
+export type VotingPurchaseInsert = typeof votingPurchases.$inferInsert;
 export type PollVoteRow = typeof pollVotes.$inferSelect;
 export type PollVoteInsert = typeof pollVotes.$inferInsert;
 export type DemoDayAssignmentRow = typeof demoDayAssignments.$inferSelect;

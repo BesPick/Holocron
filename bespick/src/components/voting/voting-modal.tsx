@@ -205,12 +205,21 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
   const removePrice = allowRemovals
     ? Math.max(0, currentEvent.votingRemoveVotePrice ?? 0)
     : 0;
+  const addVoteLimit =
+    typeof currentEvent.votingAddVoteLimit === 'number'
+      ? Math.max(0, Math.floor(currentEvent.votingAddVoteLimit))
+      : null;
+  const removeVoteLimit =
+    typeof currentEvent.votingRemoveVoteLimit === 'number'
+      ? Math.max(0, Math.floor(currentEvent.votingRemoveVoteLimit))
+      : null;
   const [selections, setSelections] = React.useState<Record<string, VoteSelection>>({});
   const [search, setSearch] = React.useState('');
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [statusState, setStatusState] = React.useState<'success' | 'cancelled' | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [transactionId, setTransactionId] = React.useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const clearCheckoutFeedback = React.useCallback(() => {
     setStatusMessage(null);
     setStatusState(null);
@@ -327,7 +336,7 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
       userId: string,
       type: 'add' | 'remove',
       value: number,
-      limit?: number,
+      maxValue?: number,
     ) => {
       if (type === 'remove' && !allowRemovals) {
         return;
@@ -338,9 +347,7 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
         Math.floor(Number.isFinite(value) ? value : 0),
       );
       const clampedValue =
-        type === 'remove' && typeof limit === 'number'
-          ? Math.min(nextValue, limit)
-          : nextValue;
+        typeof maxValue === 'number' ? Math.min(nextValue, maxValue) : nextValue;
       setSelections((prev) => {
         const current = prev[userId] ?? { add: 0, remove: 0 };
         if (current[type] === clampedValue) return prev;
@@ -392,6 +399,31 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
       .filter((entry) => entry.add > 0 || entry.remove > 0);
   }, [selections, allowRemovals]);
 
+  const limitError = React.useMemo(() => {
+    if (typeof addVoteLimit === 'number' && totals.add > addVoteLimit) {
+      return `Add vote limit is ${addVoteLimit} per user.`;
+    }
+    if (
+      allowRemovals &&
+      typeof removeVoteLimit === 'number' &&
+      totals.remove > removeVoteLimit
+    ) {
+      return `Remove vote limit is ${removeVoteLimit} per user.`;
+    }
+    return null;
+  }, [addVoteLimit, removeVoteLimit, totals.add, totals.remove, allowRemovals]);
+
+  const limitSummary = React.useMemo(() => {
+    const parts: string[] = [];
+    if (typeof addVoteLimit === 'number') {
+      parts.push(`Add up to ${addVoteLimit}`);
+    }
+    if (allowRemovals && typeof removeVoteLimit === 'number') {
+      parts.push(`Remove up to ${removeVoteLimit}`);
+    }
+    return parts.length ? `Per-user limits: ${parts.join(', ')}.` : null;
+  }, [addVoteLimit, removeVoteLimit, allowRemovals]);
+
   const hasCart = totals.add + (allowRemovals ? totals.remove : 0) > 0;
   const totalAmount = totals.totalPrice > 0 ? totals.totalPrice.toFixed(2) : '0.00';
   const amountFormatter = React.useMemo(
@@ -404,6 +436,7 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
     if (!Number.isFinite(parsed)) return null;
     return amountFormatter.format(parsed);
   }, [amountFormatter, hasCart, totalAmount]);
+  const requiresPayment = totals.totalPrice > 0;
   const paypalOptions = React.useMemo<ReactPayPalScriptOptions>(
     () => ({
       clientId: paypalClientId ?? '',
@@ -521,7 +554,8 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
       disabled:
         !hasCart ||
         !paypalClientId ||
-        Number.parseFloat(totalAmount) <= 0,
+        Number.parseFloat(totalAmount) <= 0 ||
+        Boolean(limitError),
       forceReRender: [
         paypalClientId ?? '',
         paypalCurrency,
@@ -534,6 +568,10 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
         if (!adjustments.length) {
           showErrorMessage('Select at least one vote change before checking out.');
           throw new Error('No adjustments to purchase.');
+        }
+        if (limitError) {
+          showErrorMessage(limitError);
+          throw new Error(limitError);
         }
         adjustmentsRef.current = adjustments;
         clearCheckoutFeedback();
@@ -644,6 +682,40 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
     applyVoteAdjustments,
     showErrorMessage,
     clearCheckoutFeedback,
+    limitError,
+  ]);
+
+  const handleFreeSubmit = React.useCallback(async () => {
+    const adjustments = buildAdjustments();
+    if (!adjustments.length) {
+      showErrorMessage('Select at least one vote change before submitting.');
+      return;
+    }
+    if (limitError) {
+      showErrorMessage(limitError);
+      return;
+    }
+    clearCheckoutFeedback();
+    setTransactionId(null);
+    setIsSubmitting(true);
+    try {
+      const result = await applyVoteAdjustments(adjustments);
+      if (!result.success) {
+        showErrorMessage(result.message ?? 'Unable to submit votes.');
+      } else {
+        setErrorMessage(null);
+        setStatusMessage('Votes updated successfully.');
+        setStatusState('success');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    buildAdjustments,
+    applyVoteAdjustments,
+    limitError,
+    showErrorMessage,
+    clearCheckoutFeedback,
   ]);
 
   const checkoutFeedbackVariant = React.useMemo(() => {
@@ -737,6 +809,11 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
                   <p className='mt-2 text-xs text-muted-foreground'>
                     Enter how many votes to add{allowRemovals ? ' or remove' : ''}, then submit your purchase to update totals.
                   </p>
+                  {limitSummary && (
+                    <p className='mt-2 text-xs text-muted-foreground'>
+                      {limitSummary}
+                    </p>
+                  )}
                 </div>
 
                 <div className='flex flex-col gap-3'>
@@ -767,6 +844,25 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
                           const addCount = selections[userId]?.add ?? 0;
                           const removeCount = selections[userId]?.remove ?? 0;
                           const currentVotes = Math.max(0, participant.votes ?? 0);
+                          const remainingAddLimit =
+                            typeof addVoteLimit === 'number'
+                              ? Math.max(0, addVoteLimit - (totals.add - addCount))
+                              : null;
+                          const remainingRemoveLimit =
+                            allowRemovals && typeof removeVoteLimit === 'number'
+                              ? Math.max(
+                                  0,
+                                  removeVoteLimit - (totals.remove - removeCount),
+                                )
+                              : null;
+                          const addMax =
+                            typeof remainingAddLimit === 'number'
+                              ? remainingAddLimit
+                              : undefined;
+                          const removeMax =
+                            typeof remainingRemoveLimit === 'number'
+                              ? Math.min(currentVotes, remainingRemoveLimit)
+                              : currentVotes;
                           const fullName = getParticipantName(participant);
                           return (
                             <li
@@ -786,9 +882,9 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
                                     count={removeCount}
                                     price={removePrice}
                                     onSetCount={(value) =>
-                                      setSelectionValue(userId, 'remove', value, currentVotes)
+                                      setSelectionValue(userId, 'remove', value, removeMax)
                                     }
-                                    max={currentVotes}
+                                    max={removeMax}
                                   />
                                 )}
                                 <VoteAdjuster
@@ -796,8 +892,9 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
                                   count={addCount}
                                   price={addPrice}
                                   onSetCount={(value) =>
-                                    setSelectionValue(userId, 'add', value)
+                                    setSelectionValue(userId, 'add', value, addMax)
                                   }
+                                  max={addMax}
                                 />
                               </div>
                             </li>
@@ -820,31 +917,44 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
                 </div>
 
                 <div className='rounded-2xl border border-border bg-background/80 p-5 shadow-inner'>
-                  {!paypalClientId ? (
-                    <div className='flex flex-col items-center gap-3 text-center text-sm text-muted-foreground'>
-                      <ShieldAlert className='h-6 w-6 text-destructive' />
-                      <p>
-                        PayPal is not configured. Set{' '}
-                        <code className='rounded bg-muted px-1 py-0.5 text-[0.8em]'>
-                          NEXT_PUBLIC_PAYPAL_CLIENT_ID
-                        </code>{' '}
-                        and related env vars to enable checkout.
-                      </p>
-                    </div>
-              ) : (
-                <PayPalScriptProvider deferLoading={false} options={paypalOptions}>
-                  <VotingPayPalPanel
-                    amountLabel={amountLabel}
-                    paymentButtons={paymentButtons}
-                    paypalButtonsProps={paypalButtonsProps}
-                    checkoutFeedbackMessage={checkoutFeedbackMessage}
-                    checkoutFeedbackClass={checkoutFeedbackClass}
-                    checkoutFeedbackVariant={checkoutFeedbackVariant}
-                    transactionId={transactionId}
-                  />
-                </PayPalScriptProvider>
-              )}
-            </div>
+                  {requiresPayment ? (
+                    !paypalClientId ? (
+                      <div className='flex flex-col items-center gap-3 text-center text-sm text-muted-foreground'>
+                        <ShieldAlert className='h-6 w-6 text-destructive' />
+                        <p>
+                          PayPal is not configured. Set{' '}
+                          <code className='rounded bg-muted px-1 py-0.5 text-[0.8em]'>
+                            NEXT_PUBLIC_PAYPAL_CLIENT_ID
+                          </code>{' '}
+                          and related env vars to enable checkout.
+                        </p>
+                      </div>
+                    ) : (
+                      <PayPalScriptProvider deferLoading={false} options={paypalOptions}>
+                        <VotingPayPalPanel
+                          amountLabel={amountLabel}
+                          paymentButtons={paymentButtons}
+                          paypalButtonsProps={paypalButtonsProps}
+                          checkoutFeedbackMessage={checkoutFeedbackMessage}
+                          checkoutFeedbackClass={checkoutFeedbackClass}
+                          checkoutFeedbackVariant={checkoutFeedbackVariant}
+                          transactionId={transactionId}
+                        />
+                      </PayPalScriptProvider>
+                    )
+                  ) : (
+                    <VotingFreePanel
+                      hasCart={hasCart}
+                      isSubmitting={isSubmitting}
+                      limitError={limitError}
+                      onSubmit={handleFreeSubmit}
+                      checkoutFeedbackMessage={checkoutFeedbackMessage}
+                      checkoutFeedbackClass={checkoutFeedbackClass}
+                      checkoutFeedbackVariant={checkoutFeedbackVariant}
+                      transactionId={transactionId}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -996,6 +1106,17 @@ type LeaderboardSectionCardProps = {
   section: LeaderboardSection;
 };
 
+type VotingFreePanelProps = {
+  hasCart: boolean;
+  isSubmitting: boolean;
+  limitError: string | null;
+  onSubmit: () => void;
+  checkoutFeedbackMessage: string | null;
+  checkoutFeedbackClass: string;
+  checkoutFeedbackVariant: 'success' | 'cancelled' | 'error' | null;
+  transactionId: string | null;
+};
+
 type VotingPayPalPanelProps = {
   amountLabel: string | null;
   paymentButtons: FundingButtonConfig[];
@@ -1005,6 +1126,63 @@ type VotingPayPalPanelProps = {
   checkoutFeedbackVariant: 'success' | 'cancelled' | 'error' | null;
   transactionId: string | null;
 };
+
+function VotingFreePanel({
+  hasCart,
+  isSubmitting,
+  limitError,
+  onSubmit,
+  checkoutFeedbackMessage,
+  checkoutFeedbackClass,
+  checkoutFeedbackVariant,
+  transactionId,
+}: VotingFreePanelProps) {
+  const disabled = !hasCart || Boolean(limitError) || isSubmitting;
+  return (
+    <div className='space-y-4'>
+      <div>
+        <p className='text-sm font-medium text-muted-foreground'>Amount due</p>
+        <div className='mt-1 text-3xl font-semibold'>$0.00</div>
+      </div>
+      <div className='space-y-2 rounded-xl border border-border bg-card/60 p-4 text-sm text-muted-foreground'>
+        <div className='flex items-start gap-2'>
+          <CheckCircle2 className='h-4 w-4 shrink-0 text-primary' />
+          <p>No payment is required for these selections.</p>
+        </div>
+        <div className='flex items-start gap-2'>
+          <Info className='h-4 w-4 shrink-0 text-primary' />
+          <p>Submit your selections to update the vote totals.</p>
+        </div>
+      </div>
+      <div className='space-y-3'>
+        <button
+          type='button'
+          disabled={disabled}
+          onClick={onSubmit}
+          className='inline-flex w-full items-center justify-center rounded-md border border-border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60'
+        >
+          {isSubmitting ? 'Submitting...' : 'Submit votes'}
+        </button>
+        {!hasCart && (
+          <p className='text-xs text-muted-foreground'>
+            Select votes to enable submission.
+          </p>
+        )}
+        {limitError && (
+          <p className='text-xs text-destructive'>{limitError}</p>
+        )}
+      </div>
+      {checkoutFeedbackMessage && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${checkoutFeedbackClass}`}>
+          {checkoutFeedbackMessage}
+          {transactionId && checkoutFeedbackVariant === 'success' && (
+            <p className='mt-2 text-xs font-mono'>Reference: {transactionId}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function VotingPayPalPanel({
   amountLabel,

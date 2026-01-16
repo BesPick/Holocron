@@ -161,6 +161,8 @@ const [votingLockedPortfolios, setVotingLockedPortfolios] = React.useState<
 const [votingLockedUngrouped, setVotingLockedUngrouped] = React.useState(false);
 const [votingAddVotePrice, setVotingAddVotePrice] = React.useState('');
 const [votingRemoveVotePrice, setVotingRemoveVotePrice] = React.useState('');
+const [votingAddVoteLimit, setVotingAddVoteLimit] = React.useState('');
+const [votingRemoveVoteLimit, setVotingRemoveVoteLimit] = React.useState('');
 const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingLeaderboardMode>('all');
   const [votingUsersLoading, setVotingUsersLoading] = React.useState(false);
   const [votingUsersError, setVotingUsersError] = React.useState<string | null>(
@@ -620,6 +622,16 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
           ? activity.votingRemoveVotePrice.toString()
           : '',
       );
+      setVotingAddVoteLimit(
+        typeof activity.votingAddVoteLimit === 'number'
+          ? activity.votingAddVoteLimit.toString()
+          : '',
+      );
+      setVotingRemoveVoteLimit(
+        typeof activity.votingRemoveVoteLimit === 'number'
+          ? activity.votingRemoveVoteLimit.toString()
+          : '',
+      );
       setVotingUsersError(null);
     } else {
       setVotingGroupSelections(initGroupSelections(true));
@@ -631,6 +643,8 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
       setVotingLockedUngrouped(false);
       setVotingAddVotePrice('');
       setVotingRemoveVotePrice('');
+      setVotingAddVoteLimit('');
+      setVotingRemoveVoteLimit('');
       setVotingUsersError(null);
       setVotingLeaderboardMode('all');
     }
@@ -738,6 +752,8 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
       setVotingLockedUngrouped(false);
       setVotingAddVotePrice('');
       setVotingRemoveVotePrice('');
+      setVotingAddVoteLimit('');
+      setVotingRemoveVoteLimit('');
       setVotingUsersError(null);
       setVotingUsersLoading(false);
       setVotingRosterRequested(false);
@@ -836,6 +852,8 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     setVotingLockedUngrouped(false);
     setVotingAddVotePrice('');
     setVotingRemoveVotePrice('');
+    setVotingAddVoteLimit('');
+    setVotingRemoveVoteLimit('');
     setVotingUsersError(null);
     setVotingRosterRequested(false);
     setVotingLeaderboardMode('all');
@@ -930,6 +948,8 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
     let votingParticipantsPayload: VotingParticipant[] | undefined;
     let votingAddVotePricePayload: number | undefined;
     let votingRemoveVotePricePayload: number | undefined;
+    let votingAddVoteLimitPayload: number | null | undefined;
+    let votingRemoveVoteLimitPayload: number | null | undefined;
     let votingAllowedGroupsPayload: string[] | undefined;
     let votingAllowedPortfoliosPayload: string[] | undefined;
     let votingAllowUngroupedPayload: boolean | undefined;
@@ -1014,6 +1034,36 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         }
         removePrice = parsedRemove;
       }
+      const addLimitValue = votingAddVoteLimit.trim();
+      if (addLimitValue.length > 0) {
+        const parsedLimit = Number(addLimitValue);
+        if (
+          !Number.isFinite(parsedLimit) ||
+          parsedLimit < 0 ||
+          !Number.isInteger(parsedLimit)
+        ) {
+          setError('Enter a whole number for the add vote limit.');
+          return;
+        }
+        votingAddVoteLimitPayload = parsedLimit;
+      } else {
+        votingAddVoteLimitPayload = null;
+      }
+      const removeLimitValue = votingRemoveVoteLimit.trim();
+      if (removeLimitValue.length > 0) {
+        const parsedLimit = Number(removeLimitValue);
+        if (
+          !Number.isFinite(parsedLimit) ||
+          parsedLimit < 0 ||
+          !Number.isInteger(parsedLimit)
+        ) {
+          setError('Enter a whole number for the remove vote limit.');
+          return;
+        }
+        votingRemoveVoteLimitPayload = parsedLimit;
+      } else {
+        votingRemoveVoteLimitPayload = null;
+      }
       votingParticipantsPayload = normalizedParticipants;
       votingAddVotePricePayload = Math.round(addPrice * 100) / 100;
       votingRemoveVotePricePayload =
@@ -1049,6 +1099,8 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
           votingParticipants: votingParticipantsPayload,
           votingAddVotePrice: votingAddVotePricePayload,
           votingRemoveVotePrice: votingRemoveVotePricePayload,
+          votingAddVoteLimit: votingAddVoteLimitPayload,
+          votingRemoveVoteLimit: votingRemoveVoteLimitPayload,
           votingAllowedGroups: votingAllowedGroupsPayload,
           votingAllowedPortfolios: votingAllowedPortfoliosPayload,
           votingAllowUngrouped: votingAllowUngroupedPayload,
@@ -1078,6 +1130,8 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
           votingParticipants: votingParticipantsPayload,
           votingAddVotePrice: votingAddVotePricePayload,
           votingRemoveVotePrice: votingRemoveVotePricePayload,
+          votingAddVoteLimit: votingAddVoteLimitPayload,
+          votingRemoveVoteLimit: votingRemoveVoteLimitPayload,
           votingAllowedGroups: votingAllowedGroupsPayload,
           votingAllowedPortfolios: votingAllowedPortfoliosPayload,
           votingAllowUngrouped: votingAllowUngroupedPayload,
@@ -1520,8 +1574,12 @@ const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingL
         isVoting={isVoting}
         addVotePrice={votingAddVotePrice}
         removeVotePrice={votingRemoveVotePrice}
+        addVoteLimit={votingAddVoteLimit}
+        removeVoteLimit={votingRemoveVoteLimit}
         onChangeAddPrice={setVotingAddVotePrice}
         onChangeRemovePrice={setVotingRemoveVotePrice}
+        onChangeAddLimit={setVotingAddVoteLimit}
+        onChangeRemoveLimit={setVotingRemoveVoteLimit}
         groupSelections={votingGroupSelections}
         portfolioSelections={votingPortfolioSelections}
         allowUngrouped={votingAllowUngrouped}

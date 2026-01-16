@@ -6,8 +6,12 @@ import { db } from '@/server/db/client';
 import { uploads } from '@/server/db/schema';
 import type { Id, StorageImage } from '@/types/db';
 
+const dataDir = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(process.cwd(), 'data');
+const defaultUploadsDir = path.join(dataDir, 'uploads');
 export const uploadsDir = path.resolve(
-  process.env.UPLOADS_DIR ?? path.join(process.cwd(), 'public', 'uploads'),
+  process.env.UPLOADS_DIR ?? defaultUploadsDir,
 );
 fs.mkdirSync(uploadsDir, { recursive: true });
 const runtimeUploadsDir = path.resolve(process.cwd(), 'public', 'uploads');
@@ -62,7 +66,7 @@ export async function saveUpload(file: File) {
     filename: file.name || id,
     createdAt: Date.now(),
   });
-  return { id: id as Id<'_storage'>, url: `/uploads/${id}` };
+  return { id: id as Id<'_storage'>, url: `/api/storage/image/${id}` };
 }
 
 export async function getImageUrls(
@@ -70,15 +74,22 @@ export async function getImageUrls(
 ): Promise<StorageImage[]> {
   const urls: StorageImage[] = [];
   for (const id of ids) {
-    for (const dir of uploadSearchDirs) {
-      const filePath = path.join(dir, id);
-      if (fs.existsSync(filePath)) {
-        urls.push({ id, url: `/uploads/${id}` });
-        break;
-      }
+    const filePath = findUploadPath(id);
+    if (filePath) {
+      urls.push({ id, url: `/api/storage/image/${id}` });
     }
   }
   return urls;
+}
+
+export function findUploadPath(id: string): string | null {
+  for (const dir of uploadSearchDirs) {
+    const filePath = path.join(dir, id);
+    if (fs.existsSync(filePath)) {
+      return filePath;
+    }
+  }
+  return null;
 }
 
 export async function deleteUploads(ids: Id<'_storage'>[]) {

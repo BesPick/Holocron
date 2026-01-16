@@ -6,6 +6,7 @@ import {
   AnnouncementRow,
   announcements,
   pollVotes,
+  votingPurchases,
 } from '@/server/db/schema';
 import { deleteUploads } from '@/server/services/storage';
 import { broadcast } from '@/server/events';
@@ -32,6 +33,8 @@ export type CreateAnnouncementArgs = {
   votingParticipants?: VotingParticipant[];
   votingAddVotePrice?: number;
   votingRemoveVotePrice?: number;
+  votingAddVoteLimit?: number | null;
+  votingRemoveVoteLimit?: number | null;
   votingAllowedGroups?: string[];
   votingAllowedPortfolios?: string[];
   votingAllowUngrouped?: boolean;
@@ -121,6 +124,8 @@ function mapAnnouncementRow(row: AnnouncementRow): AnnouncementDoc {
     ),
     votingAddVotePrice: row.votingAddVotePrice ?? undefined,
     votingRemoveVotePrice: row.votingRemoveVotePrice ?? undefined,
+    votingAddVoteLimit: row.votingAddVoteLimit ?? null,
+    votingRemoveVoteLimit: row.votingRemoveVoteLimit ?? null,
     votingAllowedGroups: parseJson<string[]>(row.votingAllowedGroupsJson),
     votingAllowedPortfolios: parseJson<string[]>(
       row.votingAllowedPortfoliosJson,
@@ -183,6 +188,25 @@ function normalizePrice(value: number | null | undefined, label: string): number
     throw new Error(`${label} must be a non-negative number.`);
   }
   return Math.round(value * 100) / 100;
+}
+
+function normalizeVoteLimit(
+  value: number | null | undefined,
+  label: string,
+): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    Number.isNaN(value) ||
+    value < 0 ||
+    !Number.isInteger(value)
+  ) {
+    throw new Error(`${label} must be a non-negative whole number.`);
+  }
+  return Math.floor(value);
 }
 
 function normalizeLeaderboardMode(
@@ -304,6 +328,8 @@ export async function createAnnouncement(
   let votingParticipants: VotingParticipant[] | null = null;
   let votingAddVotePrice: number | null = null;
   let votingRemoveVotePrice: number | null = null;
+  let votingAddVoteLimit: number | null = null;
+  let votingRemoveVoteLimit: number | null = null;
   let votingAllowedGroups: string[] | null = null;
   let votingAllowedPortfolios: string[] | null = null;
   let votingAllowUngrouped = false;
@@ -319,6 +345,10 @@ export async function createAnnouncement(
       args.votingAddVotePrice,
       'Price to add a vote',
     );
+    votingAddVoteLimit = normalizeVoteLimit(
+      args.votingAddVoteLimit,
+      'Add vote limit',
+    );
     votingAllowRemovals =
       typeof args.votingAllowRemovals === 'boolean'
         ? args.votingAllowRemovals
@@ -331,6 +361,10 @@ export async function createAnnouncement(
     } else {
       votingRemoveVotePrice = null;
     }
+    votingRemoveVoteLimit = normalizeVoteLimit(
+      args.votingRemoveVoteLimit,
+      'Remove vote limit',
+    );
     const allowedGroups = Array.isArray(args.votingAllowedGroups)
       ? Array.from(new Set(args.votingAllowedGroups))
       : [];
@@ -382,6 +416,9 @@ export async function createAnnouncement(
       eventType === 'voting' ? votingAddVotePrice ?? null : null,
     votingRemoveVotePrice:
       eventType === 'voting' ? votingRemoveVotePrice ?? null : null,
+    votingAddVoteLimit: eventType === 'voting' ? votingAddVoteLimit : null,
+    votingRemoveVoteLimit:
+      eventType === 'voting' ? votingRemoveVoteLimit : null,
     votingAllowedGroupsJson:
       eventType === 'voting' && votingAllowedGroups
         ? JSON.stringify(votingAllowedGroups)
@@ -554,6 +591,8 @@ export async function updateAnnouncement(
   );
   let votingAddVotePrice: number | null = null;
   let votingRemoveVotePrice: number | null = null;
+  let votingAddVoteLimit: number | null = null;
+  let votingRemoveVoteLimit: number | null = null;
   if (eventType === 'voting') {
     const existingParticipants = normalizeVotingParticipants(
       existing.votingParticipants ?? [],
@@ -597,6 +636,12 @@ export async function updateAnnouncement(
         : existing.votingAddVotePrice,
       'Price to add a vote',
     );
+    votingAddVoteLimit = normalizeVoteLimit(
+      args.votingAddVoteLimit !== undefined
+        ? args.votingAddVoteLimit
+        : existing.votingAddVoteLimit ?? null,
+      'Add vote limit',
+    );
     votingAllowRemovals =
       typeof args.votingAllowRemovals === 'boolean'
         ? args.votingAllowRemovals
@@ -611,6 +656,12 @@ export async function updateAnnouncement(
     } else {
       votingRemoveVotePrice = null;
     }
+    votingRemoveVoteLimit = normalizeVoteLimit(
+      args.votingRemoveVoteLimit !== undefined
+        ? args.votingRemoveVoteLimit
+        : existing.votingRemoveVoteLimit ?? null,
+      'Remove vote limit',
+    );
     const allowedGroupsInput =
       args.votingAllowedGroups ?? existing.votingAllowedGroups ?? [];
     const allowedPortfoliosInput =
@@ -690,6 +741,9 @@ export async function updateAnnouncement(
         eventType === 'voting'
           ? votingRemoveVotePrice ?? existing.votingRemoveVotePrice ?? null
           : null,
+      votingAddVoteLimit: eventType === 'voting' ? votingAddVoteLimit : null,
+      votingRemoveVoteLimit:
+        eventType === 'voting' ? votingRemoveVoteLimit : null,
       votingAllowedGroupsJson:
         eventType === 'voting'
           ? serializeJson(
@@ -773,6 +827,9 @@ export async function publishDue(now: number) {
           ),
         })
         .where(eq(announcements.id, announcement.id));
+      await db
+        .delete(votingPurchases)
+        .where(eq(votingPurchases.announcementId, announcement.id));
     }
     if (imageIds.length) {
       await deleteUploads(imageIds);
@@ -1065,6 +1122,14 @@ export async function purchaseVotes(
   }
 
   const allowRemovals = announcement.votingAllowRemovals ?? true;
+  const addVoteLimit =
+    typeof announcement.votingAddVoteLimit === 'number'
+      ? Math.max(0, Math.floor(announcement.votingAddVoteLimit))
+      : null;
+  const removeVoteLimit =
+    typeof announcement.votingRemoveVoteLimit === 'number'
+      ? Math.max(0, Math.floor(announcement.votingRemoveVoteLimit))
+      : null;
   const participants = (announcement.votingParticipants ?? []).map(
     (participant) => ({
       ...participant,
@@ -1080,6 +1145,21 @@ export async function purchaseVotes(
     participants.map((participant) => [participant.userId, { ...participant }]),
   );
 
+  const purchaseRecord = await db
+    .select()
+    .from(votingPurchases)
+    .where(
+      and(
+        eq(votingPurchases.announcementId, args.id),
+        eq(votingPurchases.userId, identity.userId),
+      ),
+    )
+    .get();
+  const purchasedAdd = purchaseRecord?.addVotes ?? 0;
+  const purchasedRemove = purchaseRecord?.removeVotes ?? 0;
+
+  let requestedAdd = 0;
+  let requestedRemove = 0;
   let changed = false;
   for (const adjustment of args.adjustments) {
     const participant = participantMap.get(adjustment.userId);
@@ -1101,6 +1181,8 @@ export async function purchaseVotes(
     }
     participant.votes = (participant.votes ?? 0) + add - remove;
     participantMap.set(adjustment.userId, participant);
+    requestedAdd += add;
+    requestedRemove += remove;
     changed = true;
   }
 
@@ -1109,6 +1191,24 @@ export async function purchaseVotes(
       success: false,
       participants,
     };
+  }
+
+  if (typeof addVoteLimit === 'number') {
+    const remaining = Math.max(0, addVoteLimit - purchasedAdd);
+    if (requestedAdd > remaining) {
+      throw new Error(
+        `You can purchase up to ${remaining} more add votes for this event.`,
+      );
+    }
+  }
+
+  if (allowRemovals && typeof removeVoteLimit === 'number') {
+    const remaining = Math.max(0, removeVoteLimit - purchasedRemove);
+    if (requestedRemove > remaining) {
+      throw new Error(
+        `You can purchase up to ${remaining} more remove votes for this event.`,
+      );
+    }
   }
 
   const updatedParticipants = Array.from(participantMap.values());
@@ -1122,6 +1222,27 @@ export async function purchaseVotes(
         identity.name ?? identity.email ?? identity.userId ?? 'anonymous',
     })
     .where(eq(announcements.id, args.id));
+
+  const now = Date.now();
+  if (purchaseRecord) {
+    await db
+      .update(votingPurchases)
+      .set({
+        addVotes: purchasedAdd + requestedAdd,
+        removeVotes: purchasedRemove + requestedRemove,
+        updatedAt: now,
+      })
+      .where(eq(votingPurchases.id, purchaseRecord.id));
+  } else {
+    await db.insert(votingPurchases).values({
+      id: `${args.id}:${identity.userId}`,
+      announcementId: args.id,
+      userId: identity.userId,
+      addVotes: requestedAdd,
+      removeVotes: requestedRemove,
+      updatedAt: now,
+    });
+  }
 
   broadcast(['announcements', 'voting']);
   return {
@@ -1166,6 +1287,9 @@ export async function removeAnnouncement(
         ),
       })
       .where(eq(announcements.id, id));
+    await db
+      .delete(votingPurchases)
+      .where(eq(votingPurchases.announcementId, id));
   }
   if (imageIds.length) {
     await deleteUploads(imageIds);
