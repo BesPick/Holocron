@@ -18,8 +18,10 @@ import { UserRoleCard } from './_components/UserRoleCard';
 
 const ALL_PORTFOLIOS = GROUP_OPTIONS.flatMap(
   (option) => option.portfolios,
+).map((value) => value as string);
+const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS].map(
+  (value) => value as string,
 );
-const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS];
 const UNASSIGNED_VALUE = 'unassigned';
 
 export default async function AdminRosterPage({
