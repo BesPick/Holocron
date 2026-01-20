@@ -46,7 +46,7 @@ export function AuthShell({
   children,
 }: AuthShellProps) {
   return (
-    <section className='mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-4xl items-start justify-center px-4 py-10 sm:items-center sm:py-16'>
+    <section className='mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-4xl items-start justify-center px-4 py-10 sm:py-16'>
       <div className='grid w-full overflow-hidden rounded-2xl border border-border bg-card/85 shadow-lg backdrop-blur supports-backdrop-filter:bg-card/75 sm:rounded-3xl sm:shadow-xl md:grid-cols-[1.05fr,minmax(0,420px)]'>
         <div className='hidden flex-col justify-between bg-linear-to-br from-primary via-primary to-primary/80 p-10 text-primary-foreground md:flex'>
           <div className='space-y-5'>
@@ -66,7 +66,7 @@ export function AuthShell({
             <p className='text-sm text-muted-foreground'>{subheading}</p>
           </div>
 
-          <div className='flex flex-1 items-start justify-center sm:items-center'>
+          <div className='flex flex-1 items-start justify-center'>
             <div className='w-full min-w-0 max-w-sm space-y-6'>
               {children}
               {footer ? (
