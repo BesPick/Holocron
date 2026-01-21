@@ -83,7 +83,8 @@ const resolveMattermostUserId = async (
 ) => {
   if (cache.has(clerkUserId)) return cache.get(clerkUserId) ?? null;
   try {
-    const user = await clerkClient.users.getUser(clerkUserId);
+    const client = await clerkClient();
+    const user = await client.users.getUser(clerkUserId);
     const metadata = user.publicMetadata as
       | { mattermostUserId?: string | null }
       | undefined;
