@@ -12,6 +12,8 @@ import {
   STANDUP_ABOUT_ME_GUIDELINES_URL,
   STANDUP_SCHEDULE_PDF_URL,
   STANDUP_SCHEDULE_PREVIEW_URL,
+  SECURITY_SHIFT_PDF_URL,
+  SECURITY_SHIFT_PREVIEW_URL,
 } from '@/lib/hosthub-docs';
 
 export const metadata = {
@@ -83,9 +85,7 @@ export default async function HostHubDocsPage() {
       <HostHubSubHeader />
       <div className='rounded-2xl border border-border bg-card/70 p-6 shadow-sm space-y-6'>
         <div>
-          <h2 className='text-2xl font-semibold text-foreground'>
-            Policies
-          </h2>
+          <h2 className='text-2xl font-semibold text-foreground'>Policies</h2>
           <p className='mt-2 text-sm text-muted-foreground'>
             Formal shift rules and expectations for hosts.
           </p>
@@ -99,19 +99,25 @@ export default async function HostHubDocsPage() {
         <details className='border-t border-border pt-6'>
           <summary className='flex cursor-pointer list-none items-center justify-between text-2xl font-semibold text-foreground'>
             <span>Standup Documentation</span>
-            <ChevronDown className='h-5 w-5 text-muted-foreground' aria-hidden={true} />
+            <ChevronDown
+              className='h-5 w-5 text-muted-foreground'
+              aria-hidden={true}
+            />
           </summary>
           <div className='mt-4 space-y-6'>
             <details className='rounded-2xl border border-border bg-background/70 px-4 py-3'>
               <summary className='flex cursor-pointer list-none items-center justify-between text-base font-semibold text-foreground'>
                 <span>Standup Schedule</span>
-                <ChevronDown className='h-4 w-4 text-muted-foreground' aria-hidden={true} />
+                <ChevronDown
+                  className='h-4 w-4 text-muted-foreground'
+                  aria-hidden={true}
+                />
               </summary>
               <div className='mt-4 space-y-4'>
                 <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                   <p className='text-sm text-muted-foreground'>
-                    Review the current standup schedule. You can preview it
-                    here or download the PDF for offline use.
+                    Review the current standup schedule. You can preview it here
+                    or download the PDF for offline use.
                   </p>
                   <div className='flex flex-wrap items-center gap-2'>
                     <Link
@@ -156,7 +162,10 @@ export default async function HostHubDocsPage() {
         <details className='border-t border-border pt-6'>
           <summary className='flex cursor-pointer list-none items-center justify-between text-2xl font-semibold text-foreground'>
             <span>Demo Day Documentation</span>
-            <ChevronDown className='h-5 w-5 text-muted-foreground' aria-hidden={true} />
+            <ChevronDown
+              className='h-5 w-5 text-muted-foreground'
+              aria-hidden={true}
+            />
           </summary>
           <div className='mt-4 space-y-6'>
             <div className='rounded-2xl border border-border bg-background/70 px-4 py-4'>
@@ -182,8 +191,55 @@ export default async function HostHubDocsPage() {
 
         <details className='border-t border-border pt-6'>
           <summary className='flex cursor-pointer list-none items-center justify-between text-2xl font-semibold text-foreground'>
+            <span>Security Shift Documentation</span>
+            <ChevronDown
+              className='h-5 w-5 text-muted-foreground'
+              aria-hidden={true}
+            />
+          </summary>
+          <div className='mt-4 space-y-6'>
+            <details className='rounded-2xl border border-border bg-background/70 px-4 py-3'>
+              <summary className='flex cursor-pointer list-none items-center justify-between text-base font-semibold text-foreground'>
+                <span>Security Shift Documentation</span>
+                <ChevronDown
+                  className='h-4 w-4 text-muted-foreground'
+                  aria-hidden={true}
+                />
+              </summary>
+              <div className='mt-4 space-y-4'>
+                <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                  <p className='text-sm text-muted-foreground'>
+                    Review the current security shift guidelines. You can preview it here
+                    or download the PDF for offline use.
+                  </p>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <Link
+                      href={SECURITY_SHIFT_PDF_URL}
+                      className='inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-secondary/70'
+                    >
+                      Download PDF
+                    </Link>
+                  </div>
+                </div>
+                <div className='aspect-4/3 w-full overflow-hidden rounded-2xl border border-border bg-background'>
+                  <iframe
+                    title='Standup schedule'
+                    src={SECURITY_SHIFT_PREVIEW_URL}
+                    className='h-full w-full'
+                  />
+                </div>
+              </div>
+            </details>
+          </div>
+        </details>
+
+        <details className='border-t border-border pt-6'>
+          <summary className='flex cursor-pointer list-none items-center justify-between text-2xl font-semibold text-foreground'>
             <span>FAQs</span>
-            <ChevronDown className='h-5 w-5 text-muted-foreground' aria-hidden={true} />
+            <ChevronDown
+              className='h-5 w-5 text-muted-foreground'
+              aria-hidden={true}
+            />
           </summary>
           <p className='mt-2 text-sm text-muted-foreground'>
             Quick answers for common questions.
@@ -191,9 +247,7 @@ export default async function HostHubDocsPage() {
           <div className='mt-4 space-y-4 text-sm text-muted-foreground'>
             {FAQ_ITEMS.map((item) => (
               <div key={item.question}>
-                <p className='font-semibold text-foreground'>
-                  {item.question}
-                </p>
+                <p className='font-semibold text-foreground'>{item.question}</p>
                 <p className='mt-1'>{item.answer}</p>
               </div>
             ))}
@@ -203,7 +257,10 @@ export default async function HostHubDocsPage() {
         <details className='border-t border-border pt-6'>
           <summary className='flex cursor-pointer list-none items-center justify-between text-2xl font-semibold text-foreground'>
             <span>Demo Day history</span>
-            <ChevronDown className='h-5 w-5 text-muted-foreground' aria-hidden={true} />
+            <ChevronDown
+              className='h-5 w-5 text-muted-foreground'
+              aria-hidden={true}
+            />
           </summary>
           <div className='mt-4 space-y-4'>
             <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>

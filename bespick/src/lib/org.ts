@@ -1,4 +1,5 @@
 export type Group =
+  | 'C-Suite'
   | 'Security'
   | 'SBO'
   | 'Stan/Eval'
@@ -52,6 +53,7 @@ export type RankCategoryOption = {
 };
 
 export const GROUP_OPTIONS: readonly GroupOption[] = [
+  { value: 'C-Suite', label: 'C-Suite', portfolios: [] },
   { value: 'Security', label: 'Security', portfolios: [] },
   { value: 'SBO', label: 'SBO', portfolios: [] },
   {

@@ -4,10 +4,16 @@ import { HostHubSubHeader } from '@/components/header/hosthub-subheader';
 import { MyScheduleList, type ShiftEntry } from './_components/my-schedule-list';
 import {
   DEMO_DAY_RESOURCES,
+  SECURITY_SHIFT_RESOURCES,
   STANDUP_RESOURCES,
 } from '@/lib/hosthub-docs';
-import { getEventOverrideId } from '@/lib/hosthub-events';
 import {
+  SECURITY_SHIFT_EVENT_TYPES,
+  getEventOverrideId,
+  getSecurityShiftWindow,
+} from '@/lib/hosthub-events';
+import {
+  formatTimeRange,
   formatShortDateLabel,
   isFirstWednesday,
   resolveEventTime,
@@ -15,10 +21,13 @@ import {
 import {
   ensureDemoDayAssignmentsForWindow,
   getEligibleDemoDayRoster,
+  ensureSecurityShiftAssignmentsForWindow,
   ensureStandupAssignmentsForWindow,
+  getEligibleSecurityShiftRoster,
   getEligibleStandupRoster,
   getScheduleRuleConfig,
   listDemoDayAssignmentsInRange,
+  listSecurityShiftAssignmentsInRange,
   listScheduleEventOverridesInRange,
   listStandupAssignmentsInRange,
   toDateKey,
@@ -27,6 +36,8 @@ import {
 export const metadata = {
   title: 'HostHub | BESPIN Holocron',
 };
+
+const SECURITY_SHIFT_DAYS = new Set([1, 2, 3, 4, 5]);
 
 export default async function HostHubPage() {
   const user = await currentUser();
@@ -41,6 +52,7 @@ export default async function HostHubPage() {
   if (user) {
     const eligibleRoster = await getEligibleDemoDayRoster();
     const eligibleStandupRoster = await getEligibleStandupRoster();
+    const eligibleSecurityRoster = await getEligibleSecurityShiftRoster();
     await ensureDemoDayAssignmentsForWindow({
       baseDate: now,
       eligibleUsers: eligibleRoster,
@@ -49,6 +61,10 @@ export default async function HostHubPage() {
       baseDate: now,
       eligibleUsers: eligibleStandupRoster,
     });
+    await ensureSecurityShiftAssignmentsForWindow({
+      baseDate: now,
+      eligibleUsers: eligibleSecurityRoster,
+    });
     const demoRule = await getScheduleRuleConfig('demo-day');
     const standupRule = await getScheduleRuleConfig('standup');
     const demoAssignments = await listDemoDayAssignmentsInRange({
@@ -56,6 +72,10 @@ export default async function HostHubPage() {
       endDate,
     });
     const standupAssignments = await listStandupAssignmentsInRange({
+      startDate,
+      endDate,
+    });
+    const securityAssignments = await listSecurityShiftAssignmentsInRange({
       startDate,
       endDate,
     });
@@ -87,6 +107,9 @@ export default async function HostHubPage() {
     const standupAssignmentsByDate = new Map(
       standupAssignments.map((entry) => [entry.date, entry]),
     );
+    const securityAssignmentsById = new Map(
+      securityAssignments.map((entry) => [entry.id, entry]),
+    );
 
     const cursor = new Date(startDate);
     while (cursor <= endDate) {
@@ -113,6 +136,32 @@ export default async function HostHubPage() {
             ? 'Standup • Canceled'
             : 'Standup • Assigned to you',
           resources: STANDUP_RESOURCES,
+        });
+      }
+
+      if (SECURITY_SHIFT_DAYS.has(cursor.getDay())) {
+        SECURITY_SHIFT_EVENT_TYPES.forEach((eventType) => {
+          const window = getSecurityShiftWindow(eventType);
+          if (!window) return;
+          const securityId = getEventOverrideId(dateKey, eventType);
+          const assignment = securityAssignmentsById.get(securityId);
+          const override = overridesByKey.get(securityId);
+          const time = formatTimeRange(
+            window.startTime,
+            window.endTime,
+          );
+          const canceled = override?.isCanceled ?? false;
+          if (assignment?.userId === user.id) {
+            targetShifts.push({
+              id: securityId,
+              date: dateLabel,
+              time,
+              details: canceled
+                ? `Security Shift (${window.label}) • Canceled`
+                : `Security Shift (${window.label}) • Assigned to you`,
+              resources: SECURITY_SHIFT_RESOURCES,
+            });
+          }
         });
       }
 

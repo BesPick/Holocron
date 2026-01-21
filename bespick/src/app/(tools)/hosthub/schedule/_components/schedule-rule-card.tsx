@@ -23,6 +23,8 @@ type ScheduleRuleCardProps = {
   title: string;
   description: string;
   initialConfig: ScheduleRuleConfig;
+  showDefaultTime?: boolean;
+  timeRanges?: Array<{ label: string; value: string }>;
 };
 
 type StatusState = {
@@ -51,6 +53,8 @@ export function ScheduleRuleCard({
   title,
   description,
   initialConfig,
+  showDefaultTime = true,
+  timeRanges = [],
 }: ScheduleRuleCardProps) {
   const [eligibleRankCategories, setEligibleRankCategories] = useState<
     RankCategory[]
@@ -138,31 +142,49 @@ export function ScheduleRuleCard({
       </div>
 
       <div className='mt-6 space-y-5'>
-        <div>
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <p className='text-sm font-semibold text-foreground'>
-              Default time
-            </p>
-            <button
-              type='button'
-              onClick={() => setDefaultTime('')}
+        {showDefaultTime ? (
+          <div>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-sm font-semibold text-foreground'>
+                Default time
+              </p>
+              <button
+                type='button'
+                onClick={() => setDefaultTime('')}
+                disabled={isPending}
+                className='rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60'
+              >
+                Clear
+              </button>
+            </div>
+            <input
+              type='time'
+              value={defaultTime}
+              onChange={(event) => setDefaultTime(event.target.value)}
               disabled={isPending}
-              className='rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60'
-            >
-              Clear
-            </button>
+              className='mt-2 w-full max-w-50 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+            />
+            <p className='mt-2 text-xs text-muted-foreground'>
+              Leave blank to show TBD for this event type.
+            </p>
           </div>
-          <input
-            type='time'
-            value={defaultTime}
-            onChange={(event) => setDefaultTime(event.target.value)}
-            disabled={isPending}
-            className='mt-2 w-full max-w-50 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-          />
-          <p className='mt-2 text-xs text-muted-foreground'>
-            Leave blank to show TBD for this event type.
-          </p>
-        </div>
+        ) : (
+          <div>
+            <p className='text-sm font-semibold text-foreground'>
+              Shift windows
+            </p>
+            <div className='mt-2 space-y-1 text-sm text-muted-foreground'>
+              {timeRanges.map((range) => (
+                <p key={range.label}>
+                  <span className='font-semibold text-foreground'>
+                    {range.label}:
+                  </span>{' '}
+                  {range.value}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
         <div>
           <p className='text-sm font-semibold text-foreground'>
             Eligible rank categories

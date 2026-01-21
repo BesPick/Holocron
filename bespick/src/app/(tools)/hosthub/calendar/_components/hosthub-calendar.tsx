@@ -1,16 +1,22 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import {
   clearScheduleEventOverride,
   updateScheduleEventOverride,
 } from '@/server/actions/hosthub-event-overrides';
-import { getEventOverrideId } from '@/lib/hosthub-events';
+import {
+  getEventOverrideId,
+  getSecurityShiftWindow,
+  isSecurityShiftEventType,
+  type HostHubEventType,
+} from '@/lib/hosthub-events';
 
 import { CalendarGrid } from './calendar-grid';
 import { MONTH_WINDOW } from './calendar-constants';
+import { CalendarHeader } from './calendar-header';
+import { CalendarMonthSelector } from './calendar-month-selector';
 import type {
   CalendarDay,
   CalendarEvent,
@@ -29,6 +35,10 @@ import { ScheduleDetailsModal } from './schedule-details-modal';
 type HostHubCalendarProps = {
   demoAssignments: Record<string, { userId: string | null; userName: string }>;
   standupAssignments: Record<string, { userId: string | null; userName: string }>;
+  securityAssignments: Record<
+    string,
+    { userId: string | null; userName: string }
+  >;
   currentUserId: string | null;
   isAdmin: boolean;
   demoDefaultTime: string;
@@ -41,6 +51,7 @@ type HostHubCalendarProps = {
 export function HostHubCalendar({
   demoAssignments,
   standupAssignments,
+  securityAssignments,
   currentUserId,
   isAdmin,
   demoDefaultTime,
@@ -55,6 +66,7 @@ export function HostHubCalendar({
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [showStandup, setShowStandup] = useState(true);
   const [showDemo, setShowDemo] = useState(true);
+  const [showSecurity, setShowSecurity] = useState(true);
   const [localOverrides, setLocalOverrides] =
     useState<Record<string, EventOverride>>(eventOverrides);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -78,6 +90,12 @@ export function HostHubCalendar({
     () => new Map(rosterOptions.map((entry) => [entry.userId, entry.name])),
     [rosterOptions],
   );
+  const resolveDefaultTime = (variant: HostHubEventType) => {
+    if (variant === 'standup') return standupDefaultTime;
+    if (variant === 'demo') return demoDefaultTime;
+    const window = getSecurityShiftWindow(variant);
+    return window?.startTime ?? '';
+  };
 
   const availableMonths = useMemo(
     () => MONTH_WINDOW.map((offset) => addMonths(baseDate, offset)),
@@ -85,6 +103,10 @@ export function HostHubCalendar({
   );
 
   const selectedMonth = availableMonths[selectedIndex];
+  const selectedMonthLabel = useMemo(
+    () => formatMonth(selectedMonth),
+    [selectedMonth],
+  );
   const calendarDays = useMemo(
     () => buildCalendar(selectedMonth),
     [selectedMonth],
@@ -116,6 +138,7 @@ export function HostHubCalendar({
             selectedDate,
             demoAssignments,
             standupAssignments,
+            securityAssignments,
             localOverrides,
             demoMoveTargets,
             demoMoveSources,
@@ -127,6 +150,7 @@ export function HostHubCalendar({
       selectedDate,
       demoAssignments,
       standupAssignments,
+      securityAssignments,
       localOverrides,
       demoMoveTargets,
       demoMoveSources,
@@ -173,6 +197,9 @@ export function HostHubCalendar({
     events.filter((event) => {
       if (!showStandup && event.variant === 'standup') return false;
       if (!showDemo && event.variant === 'demo') return false;
+      if (!showSecurity && isSecurityShiftEventType(event.variant)) {
+        return false;
+      }
       if (showOnlyMine) {
         return event.assigneeId && event.assigneeId === currentUserId;
       }
@@ -186,8 +213,9 @@ export function HostHubCalendar({
 
   const openEdit = (event: CalendarEvent) => {
     const override = getOverrideForEvent(event);
+    const defaultTime = resolveDefaultTime(event.variant);
     setEditingEventId(event.id);
-    setEditTime(override?.time ?? (event.time === 'TBD' ? '' : event.time));
+    setEditTime(override?.time ?? defaultTime);
     setEditCanceled(override?.isCanceled ?? false);
     setEditMovedDate(
       event.variant === 'demo' ? override?.movedToDate ?? '' : '',
@@ -206,12 +234,13 @@ export function HostHubCalendar({
     const overrideUserName = overrideUserId
       ? rosterMap.get(overrideUserId) ?? event.assignee ?? 'Unknown'
       : null;
+    const timeValue = isSecurityShiftEventType(event.variant) ? '' : editTime;
     setEditMessage(null);
     startTransition(async () => {
       const result = await updateScheduleEventOverride({
         date: event.dateKey,
         eventType: event.variant,
-        time: editTime,
+        time: timeValue,
         isCanceled: editCanceled,
         movedToDate: nextMoveDate,
         overrideUserId,
@@ -221,7 +250,7 @@ export function HostHubCalendar({
         setLocalOverrides((prev) => ({
           ...prev,
           [key]: {
-            time: editTime.trim() ? editTime.trim() : null,
+            time: timeValue.trim() ? timeValue.trim() : null,
             isCanceled: editCanceled,
             movedToDate: nextMoveDate,
             overrideUserId,
@@ -249,10 +278,7 @@ export function HostHubCalendar({
           delete next[key];
           return next;
         });
-        const nextDefaultTime =
-          event.variant === 'standup'
-            ? standupDefaultTime
-            : demoDefaultTime;
+        const nextDefaultTime = resolveDefaultTime(event.variant);
         setEditTime(nextDefaultTime.trim() ? nextDefaultTime : '');
         setEditCanceled(false);
         setEditMovedDate('');
@@ -270,6 +296,7 @@ export function HostHubCalendar({
         date,
         demoAssignments,
         standupAssignments,
+        securityAssignments,
         localOverrides,
         demoMoveTargets,
         demoMoveSources,
@@ -285,106 +312,31 @@ export function HostHubCalendar({
   };
 
   return (
-    <div className='rounded-2xl border border-border bg-card/70 p-4 shadow-sm sm:p-6'>
-      <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-        <div>
-          <p className='text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground'>
-            HostHub Calendar
-          </p>
-          <h2 className='mt-2 text-2xl font-semibold text-foreground'>
-            {formatMonth(selectedMonth)}
-          </h2>
-          <p className='mt-2 text-sm text-muted-foreground'>
-            We assign the current month only. Past assignments remain visible,
-            and future months appear with TBD placeholders.
-          </p>
-          {refreshNotice && nextRefreshLabel ? (
-            <div className='mt-3 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700'>
-              <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
-              <span>
-                Eligibility rules were updated. Next month will regenerate on{' '}
-                <span className='font-semibold text-amber-800'>
-                  {nextRefreshLabel}
-                </span>
-                .
-              </span>
-            </div>
-          ) : null}
-          <div className='mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground'>
-            <button
-              type='button'
-              onClick={() => setShowStandup((prev) => !prev)}
-              aria-pressed={showStandup}
-              className={`rounded-full border px-3 py-1 transition ${
-                showStandup
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                  : 'border-border/40 bg-secondary/10 text-muted-foreground/50'
-              }`}
-            >
-              Standup • Mon/Thu
-            </button>
-            <button
-              type='button'
-              onClick={() => setShowDemo((prev) => !prev)}
-              aria-pressed={showDemo}
-              className={`rounded-full border px-3 py-1 transition ${
-                showDemo
-                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-700'
-                  : 'border-border/40 bg-secondary/10 text-muted-foreground/50'
-              }`}
-            >
-              Demo Day • 1st Wed
-            </button>
-            <label className='inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-primary'>
-              <input
-                type='checkbox'
-                checked={showOnlyMine}
-                onChange={(event) => setShowOnlyMine(event.target.checked)}
-                disabled={!currentUserId}
-                className='h-4 w-4 accent-primary'
-              />
-              My Shifts Only
-            </label>
-          </div>
-        </div>
-        <div className='flex items-center gap-2'>
-          <button
-            type='button'
-            onClick={handlePrev}
-            disabled={selectedIndex === 0}
-            className='inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-secondary/70 disabled:cursor-not-allowed disabled:opacity-60'
-          >
-            <ChevronLeft className='h-4 w-4' aria-hidden={true} />
-            Prev
-          </button>
-          <button
-            type='button'
-            onClick={handleNext}
-            disabled={selectedIndex === availableMonths.length - 1}
-            className='inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-secondary/70 disabled:cursor-not-allowed disabled:opacity-60'
-          >
-            Next
-            <ChevronRight className='h-4 w-4' aria-hidden={true} />
-          </button>
-        </div>
-      </div>
+    <div className='rounded-2xl border border-border bg-card/70 p-4 shadow-sm sm:p-7 lg:p-8'>
+      <CalendarHeader
+        monthLabel={selectedMonthLabel}
+        nextRefreshLabel={nextRefreshLabel}
+        showRefreshNotice={Boolean(refreshNotice)}
+        showStandup={showStandup}
+        showSecurity={showSecurity}
+        showDemo={showDemo}
+        showOnlyMine={showOnlyMine}
+        currentUserId={currentUserId}
+        onToggleStandup={() => setShowStandup((prev) => !prev)}
+        onToggleSecurity={() => setShowSecurity((prev) => !prev)}
+        onToggleDemo={() => setShowDemo((prev) => !prev)}
+        onToggleOnlyMine={setShowOnlyMine}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        isPrevDisabled={selectedIndex === 0}
+        isNextDisabled={selectedIndex === availableMonths.length - 1}
+      />
 
-      <div className='mt-5 flex gap-2 overflow-x-auto pb-1 text-xs text-muted-foreground sm:flex-wrap sm:overflow-visible'>
-        {availableMonths.map((month, index) => (
-          <button
-            key={month.toISOString()}
-            type='button'
-            onClick={() => setSelectedIndex(index)}
-            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition ${
-              index === selectedIndex
-                ? 'border-primary/40 bg-primary/15 text-primary'
-                : 'border-border bg-background text-muted-foreground hover:bg-secondary/70'
-            }`}
-          >
-            {formatMonth(month)}
-          </button>
-        ))}
-      </div>
+      <CalendarMonthSelector
+        months={availableMonths}
+        selectedIndex={selectedIndex}
+        onSelect={setSelectedIndex}
+      />
 
       <CalendarGrid
         calendarDays={calendarDays}

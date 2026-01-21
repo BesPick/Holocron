@@ -18,6 +18,7 @@ export default async function HostHubScheduleSettingsPage() {
 
   const demoDayRule = await getScheduleRuleConfig('demo-day');
   const standupRule = await getScheduleRuleConfig('standup');
+  const securityShiftRule = await getScheduleRuleConfig('security-shift');
 
   return (
     <section className='mx-auto w-full max-w-5xl px-4 py-16 space-y-10'>
@@ -46,6 +47,17 @@ export default async function HostHubScheduleSettingsPage() {
             title='Standup eligibility'
             description='Select the ranks that can be assigned to Standup.'
             initialConfig={standupRule}
+          />
+          <ScheduleRuleCard
+            ruleId='security-shift'
+            title='Security Shift eligibility'
+            description='Select the ranks that can be assigned to Security Shift.'
+            initialConfig={securityShiftRule}
+            showDefaultTime={false}
+            timeRanges={[
+              { label: 'Morning', value: '07:00-12:00' },
+              { label: 'Afternoon', value: '12:00-16:30' },
+            ]}
           />
         </div>
 

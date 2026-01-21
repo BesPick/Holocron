@@ -1,11 +1,17 @@
-import { getEventOverrideId } from '@/lib/hosthub-events';
 import {
+  SECURITY_SHIFT_EVENT_TYPES,
+  getEventOverrideId,
+  getSecurityShiftWindow,
+} from '@/lib/hosthub-events';
+import {
+  formatTimeRange,
   isFirstWednesday,
   resolveEventTime,
 } from '@/lib/hosthub-schedule-utils';
 import type { CalendarDay, CalendarEvent, DemoMoveEntry, EventOverride } from './calendar-types';
 
 const STANDUP_DAYS = new Set([1, 4]);
+const SECURITY_SHIFT_DAYS = new Set([1, 2, 3, 4, 5]);
 
 const pad2 = (value: number) => value.toString().padStart(2, '0');
 
@@ -77,6 +83,10 @@ export const getEventsForDate = (
     string,
     { userId: string | null; userName: string }
   >,
+  securityAssignments: Record<
+    string,
+    { userId: string | null; userName: string }
+  >,
   eventOverrides: Record<string, EventOverride>,
   demoMoveTargets: Map<string, DemoMoveEntry[]>,
   demoMoveSources: Set<string>,
@@ -84,8 +94,35 @@ export const getEventsForDate = (
   standupDefaultTime: string,
 ) => {
   const events: CalendarEvent[] = [];
+  const key = dateKey(date);
+  const addSecurityShiftEvent = (eventType: (typeof SECURITY_SHIFT_EVENT_TYPES)[number]) => {
+    const window = getSecurityShiftWindow(eventType);
+    if (!window) return;
+    const assignment =
+      securityAssignments[getEventOverrideId(key, eventType)];
+    const override = eventOverrides[getEventOverrideId(key, eventType)];
+    const assignee = resolveAssignee(assignment, override);
+    const startTime = window.startTime;
+    events.push({
+      id: `${eventType}-${key}`,
+      dateKey: key,
+      label: `Security Shift (${window.label})`,
+      time: formatTimeRange(startTime, window.endTime),
+      assignee: assignee.name,
+      assigneeId: assignee.id,
+      variant: eventType,
+      isCanceled: override?.isCanceled ?? false,
+    });
+  };
+
+  if (SECURITY_SHIFT_DAYS.has(date.getDay())) {
+    const morningType = SECURITY_SHIFT_EVENT_TYPES[0];
+    if (morningType) {
+      addSecurityShiftEvent(morningType);
+    }
+  }
+
   if (STANDUP_DAYS.has(date.getDay())) {
-    const key = dateKey(date);
     const standupAssignment = standupAssignments[key];
     const override = eventOverrides[getEventOverrideId(key, 'standup')];
     const assignee = resolveAssignee(standupAssignment, override);
@@ -100,7 +137,14 @@ export const getEventsForDate = (
       isCanceled: override?.isCanceled ?? false,
     });
   }
-  const key = dateKey(date);
+
+  if (SECURITY_SHIFT_DAYS.has(date.getDay())) {
+    const afternoonType = SECURITY_SHIFT_EVENT_TYPES[1];
+    if (afternoonType) {
+      addSecurityShiftEvent(afternoonType);
+    }
+  }
+
   const movedDemoEntries = demoMoveTargets.get(key);
   if (movedDemoEntries) {
     movedDemoEntries.forEach((movedDemo) => {

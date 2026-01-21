@@ -9,6 +9,7 @@ import { checkRole } from '@/server/auth/check-role';
 import {
   getEventOverrideId,
   isHostHubEventType,
+  isSecurityShiftEventType,
   isValidDateKey,
   isValidTimeValue,
   type HostHubEventType,
@@ -65,7 +66,8 @@ export async function updateScheduleEventOverride({
   }
 
   const normalizedTime = normalizeOverrideTime(time);
-  if (time.trim() && !normalizedTime) {
+  const ignoreTime = isSecurityShiftEventType(eventType);
+  if (!ignoreTime && time.trim() && !normalizedTime) {
     return {
       success: false,
       message: 'Enter a valid time in HH:MM format.',
@@ -101,7 +103,7 @@ export async function updateScheduleEventOverride({
       date,
       eventType,
       movedToDate: normalizedMoveDate,
-      time: normalizedTime,
+      time: ignoreTime ? null : normalizedTime,
       isCanceled,
       overrideUserId: normalizedOverrideUserId,
       overrideUserName: normalizedOverrideUserName,

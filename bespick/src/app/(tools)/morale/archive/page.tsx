@@ -90,7 +90,7 @@ export default function ArchivePage() {
       <MoraleSubHeader />
       <DismissibleHeader
         storageKey={ARCHIVE_HEADER_STORAGE_KEY}
-        title='BESPIN Morale Archive'
+        title='Archived Activities'
         description='Revisit archived announcements, polls, and voting events. Items here no longer appear on the main dashboard but remain editable for future use.'
         dismissLabel='Dismiss archive welcome message'
       />

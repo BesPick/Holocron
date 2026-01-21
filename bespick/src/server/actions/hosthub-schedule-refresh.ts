@@ -4,9 +4,11 @@ import { checkRole } from '@/server/auth/check-role';
 import {
   clearScheduleAssignments,
   getEligibleDemoDayRoster,
+  getEligibleSecurityShiftRoster,
   getEligibleStandupRoster,
   markScheduleRefreshComplete,
   refreshDemoDayAssignmentsForWindow,
+  refreshSecurityShiftAssignmentsForWindow,
   refreshStandupAssignmentsForWindow,
   type RefreshAssignmentsSummary,
 } from '@/server/services/hosthub-schedule';
@@ -16,6 +18,7 @@ export type RefreshScheduleAssignmentsResult = {
   message: string;
   demoDay?: RefreshAssignmentsSummary;
   standup?: RefreshAssignmentsSummary;
+  securityShift?: RefreshAssignmentsSummary;
 };
 
 const formatSummary = (
@@ -41,6 +44,7 @@ export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssig
     const baseDate = new Date();
     const demoRoster = await getEligibleDemoDayRoster();
     const standupRoster = await getEligibleStandupRoster();
+    const securityRoster = await getEligibleSecurityShiftRoster();
     const demoDay = await refreshDemoDayAssignmentsForWindow({
       baseDate,
       eligibleUsers: demoRoster,
@@ -49,17 +53,23 @@ export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssig
       baseDate,
       eligibleUsers: standupRoster,
     });
+    const securityShift = await refreshSecurityShiftAssignmentsForWindow({
+      baseDate,
+      eligibleUsers: securityRoster,
+    });
     await markScheduleRefreshComplete();
     const message = [
       'Assignments refreshed.',
       formatSummary('Demo Day', demoDay),
       formatSummary('Standup', standup),
+      formatSummary('Security Shift', securityShift),
     ].join(' ');
     return {
       success: true,
       message,
       demoDay,
       standup,
+      securityShift,
     };
   } catch (error) {
     console.error('Failed to refresh schedule assignments', error);
@@ -83,6 +93,7 @@ export async function resetScheduleAssignments(): Promise<RefreshScheduleAssignm
     const baseDate = new Date();
     const demoRoster = await getEligibleDemoDayRoster();
     const standupRoster = await getEligibleStandupRoster();
+    const securityRoster = await getEligibleSecurityShiftRoster();
     const demoDay = await refreshDemoDayAssignmentsForWindow({
       baseDate,
       eligibleUsers: demoRoster,
@@ -91,17 +102,23 @@ export async function resetScheduleAssignments(): Promise<RefreshScheduleAssignm
       baseDate,
       eligibleUsers: standupRoster,
     });
+    const securityShift = await refreshSecurityShiftAssignmentsForWindow({
+      baseDate,
+      eligibleUsers: securityRoster,
+    });
     await markScheduleRefreshComplete();
     const message = [
       'Schedule reset and regenerated.',
       formatSummary('Demo Day', demoDay),
       formatSummary('Standup', standup),
+      formatSummary('Security Shift', securityShift),
     ].join(' ');
     return {
       success: true,
       message,
       demoDay,
       standup,
+      securityShift,
     };
   } catch (error) {
     console.error('Failed to reset schedule assignments', error);

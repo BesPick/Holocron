@@ -1,8 +1,17 @@
 'use client';
 
 import type { CalendarEvent, EventOverride } from './calendar-types';
-import { DEMO_TONE, MY_TONE, STANDUP_TONE } from './calendar-constants';
+import {
+  DEMO_TONE,
+  MY_TONE,
+  SECURITY_TONE,
+  STANDUP_TONE,
+} from './calendar-constants';
 import { formatFullDate, parseDateKey } from './calendar-utils';
+import {
+  getHostHubEventLabel,
+  isSecurityShiftEventType,
+} from '@/lib/hosthub-events';
 
 type ScheduleDetailsModalProps = {
   selectedDate: Date;
@@ -92,7 +101,9 @@ export function ScheduleDetailsModal({
                 ? MY_TONE
                 : event.variant === 'standup'
                   ? STANDUP_TONE
-                  : DEMO_TONE;
+                  : isSecurityShiftEventType(event.variant)
+                    ? SECURITY_TONE
+                    : DEMO_TONE;
               const override = getOverrideForEvent(event);
               const originalDemoDate =
                 event.variant === 'demo'
@@ -122,7 +133,7 @@ export function ScheduleDetailsModal({
                       <span
                         className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${tone.badge}`}
                       >
-                        {event.variant === 'standup' ? 'Standup' : 'Demo'}
+                        {getHostHubEventLabel(event.variant)}
                       </span>
                     </div>
                   </div>
@@ -186,18 +197,20 @@ export function ScheduleDetailsModal({
                               </span>
                             ) : null}
                           </label>
-                          <label className='flex flex-col gap-2 text-sm text-foreground'>
-                            Time
-                            <input
-                              type='time'
-                              value={editTime}
-                              onChange={(eventValue) =>
-                                onEditTimeChange(eventValue.target.value)
-                              }
-                              disabled={isSaving}
-                              className='w-full max-w-40 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                            />
-                          </label>
+                          {!isSecurityShiftEventType(event.variant) ? (
+                            <label className='flex flex-col gap-2 text-sm text-foreground'>
+                              Time
+                              <input
+                                type='time'
+                                value={editTime}
+                                onChange={(eventValue) =>
+                                  onEditTimeChange(eventValue.target.value)
+                                }
+                                disabled={isSaving}
+                                className='w-full max-w-40 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                              />
+                            </label>
+                          ) : null}
                           {event.variant === 'demo' ? (
                             <label className='flex flex-col gap-2 text-sm text-foreground'>
                               Move date

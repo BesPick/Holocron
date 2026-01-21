@@ -121,6 +121,23 @@ export const standupAssignments = sqliteTable(
   }),
 );
 
+export const securityShiftAssignments = sqliteTable(
+  'security_shift_assignments',
+  {
+    id: text('id').primaryKey(),
+    date: text('date').notNull(),
+    eventType: text('event_type').notNull(),
+    userId: text('user_id'),
+    userName: text('user_name').notNull(),
+    assignedAt: integer('assigned_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    dateIdx: index('idx_security_shift_assignments_date').on(table.date),
+    typeIdx: index('idx_security_shift_assignments_type').on(table.eventType),
+    userIdx: index('idx_security_shift_assignments_user').on(table.userId),
+  }),
+);
+
 export const scheduleRules = sqliteTable('schedule_rules', {
   id: text('id').primaryKey(),
   configJson: text('config_json').notNull(),
@@ -182,6 +199,10 @@ export type DemoDayAssignmentRow = typeof demoDayAssignments.$inferSelect;
 export type DemoDayAssignmentInsert = typeof demoDayAssignments.$inferInsert;
 export type StandupAssignmentRow = typeof standupAssignments.$inferSelect;
 export type StandupAssignmentInsert = typeof standupAssignments.$inferInsert;
+export type SecurityShiftAssignmentRow =
+  typeof securityShiftAssignments.$inferSelect;
+export type SecurityShiftAssignmentInsert =
+  typeof securityShiftAssignments.$inferInsert;
 export type ScheduleRuleRow = typeof scheduleRules.$inferSelect;
 export type ScheduleRuleInsert = typeof scheduleRules.$inferInsert;
 export type ScheduleRefreshRow = typeof scheduleRefresh.$inferSelect;

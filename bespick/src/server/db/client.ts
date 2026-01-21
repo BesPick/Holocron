@@ -94,6 +94,18 @@ CREATE TABLE IF NOT EXISTS standup_assignments (
 );
 CREATE INDEX IF NOT EXISTS idx_standup_assignments_user ON standup_assignments(user_id);
 
+CREATE TABLE IF NOT EXISTS security_shift_assignments (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  user_id TEXT,
+  user_name TEXT NOT NULL,
+  assigned_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_security_shift_assignments_date ON security_shift_assignments(date);
+CREATE INDEX IF NOT EXISTS idx_security_shift_assignments_type ON security_shift_assignments(event_type);
+CREATE INDEX IF NOT EXISTS idx_security_shift_assignments_user ON security_shift_assignments(user_id);
+
 CREATE TABLE IF NOT EXISTS schedule_rules (
   id TEXT PRIMARY KEY,
   config_json TEXT NOT NULL,

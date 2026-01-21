@@ -7,7 +7,7 @@ import {
   type RankCategory,
 } from '@/lib/org';
 
-export type ScheduleRuleId = 'demo-day' | 'standup';
+export type ScheduleRuleId = 'demo-day' | 'standup' | 'security-shift';
 
 export type ScheduleRuleConfig = {
   eligibleRankCategories: RankCategory[];
@@ -16,7 +16,11 @@ export type ScheduleRuleConfig = {
   defaultTime: string;
 };
 
-export const SCHEDULE_RULE_IDS = ['demo-day', 'standup'] as const;
+export const SCHEDULE_RULE_IDS = [
+  'demo-day',
+  'standup',
+  'security-shift',
+] as const;
 
 export const DEFAULT_SCHEDULE_RULES: Record<
   ScheduleRuleId,
@@ -33,6 +37,12 @@ export const DEFAULT_SCHEDULE_RULES: Record<
     eligibleEnlistedRanks: ['E-1', 'E-2', 'E-3', 'E-4', 'E-5'],
     eligibleOfficerRanks: [],
     defaultTime: '08:30',
+  },
+  'security-shift': {
+    eligibleRankCategories: ['Civilian', 'Enlisted'],
+    eligibleEnlistedRanks: ['E-1', 'E-2', 'E-3', 'E-4', 'E-5'],
+    eligibleOfficerRanks: [],
+    defaultTime: '07:00',
   },
 };
 

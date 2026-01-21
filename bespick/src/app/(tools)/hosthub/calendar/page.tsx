@@ -6,8 +6,10 @@ import { checkRole } from '@/server/auth/check-role';
 import {
   ensureDemoDayAssignmentsForWindow,
   getEligibleDemoDayRoster,
+  ensureSecurityShiftAssignmentsForWindow,
   ensureStandupAssignmentsForWindow,
   getHostHubRoster,
+  getEligibleSecurityShiftRoster,
   getEligibleStandupRoster,
   getScheduleRuleConfig,
   getScheduleRefreshNotice,
@@ -24,6 +26,7 @@ export default async function HostHubCalendarPage() {
   const now = new Date();
   const eligibleRoster = await getEligibleDemoDayRoster();
   const eligibleStandupRoster = await getEligibleStandupRoster();
+  const eligibleSecurityRoster = await getEligibleSecurityShiftRoster();
   const demoAssignments = await ensureDemoDayAssignmentsForWindow({
     baseDate: now,
     eligibleUsers: eligibleRoster,
@@ -31,6 +34,10 @@ export default async function HostHubCalendarPage() {
   const standupAssignments = await ensureStandupAssignmentsForWindow({
     baseDate: now,
     eligibleUsers: eligibleStandupRoster,
+  });
+  const securityAssignments = await ensureSecurityShiftAssignmentsForWindow({
+    baseDate: now,
+    eligibleUsers: eligibleSecurityRoster,
   });
   const roster = isAdmin ? await getHostHubRoster() : [];
   const demoRule = await getScheduleRuleConfig('demo-day');
@@ -57,11 +64,12 @@ export default async function HostHubCalendarPage() {
   );
 
   return (
-    <section className='mx-auto w-full max-w-5xl px-4 py-16 space-y-10'>
+    <section className='mx-auto w-full max-w-7xl px-4 py-16 space-y-10'>
       <HostHubSubHeader />
       <HostHubCalendar
         demoAssignments={demoAssignments}
         standupAssignments={standupAssignments}
+        securityAssignments={securityAssignments}
         currentUserId={user?.id ?? null}
         isAdmin={isAdmin}
         demoDefaultTime={demoRule.defaultTime}

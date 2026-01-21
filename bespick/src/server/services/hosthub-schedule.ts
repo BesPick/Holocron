@@ -7,6 +7,7 @@ import {
   scheduleEventOverrides,
   scheduleRefresh,
   scheduleRules,
+  securityShiftAssignments,
   standupAssignments,
 } from '@/server/db/schema';
 import {
@@ -18,6 +19,8 @@ import {
   type RankCategory,
 } from '@/lib/org';
 import {
+  SECURITY_SHIFT_EVENT_TYPES,
+  type SecurityShiftEventType,
   isHostHubEventType,
   isValidDateKey,
   type HostHubEventType,
@@ -39,6 +42,11 @@ export type StandupAssignee = {
   name: string;
 };
 
+export type SecurityShiftAssignee = {
+  userId: string;
+  name: string;
+};
+
 export type HostHubRosterMember = {
   userId: string;
   name: string;
@@ -53,6 +61,15 @@ export type DemoDayAssignment = {
 
 export type StandupAssignment = {
   date: string;
+  userId: string | null;
+  userName: string;
+  assignedAt: number;
+};
+
+export type SecurityShiftAssignment = {
+  id: string;
+  date: string;
+  eventType: SecurityShiftEventType;
   userId: string | null;
   userName: string;
   assignedAt: number;
@@ -88,7 +105,12 @@ const MONTH_WINDOW = [-1, 0, 1, 2, 3];
 const HISTORY_MONTH_LIMIT = 12;
 const DEMO_DAY_WEEKDAY = 3;
 const STANDUP_DAYS = new Set([1, 4]);
-const RULE_IDS: ScheduleRuleId[] = ['demo-day', 'standup'];
+const SECURITY_SHIFT_DAYS = new Set([1, 2, 3, 4, 5]);
+const RULE_IDS: ScheduleRuleId[] = [
+  'demo-day',
+  'standup',
+  'security-shift',
+];
 const SCHEDULE_REFRESH_ID = 'hosthub';
 
 const pad2 = (value: number) => value.toString().padStart(2, '0');
@@ -220,6 +242,7 @@ export async function clearScheduleAssignments() {
   await db.delete(scheduleEventOverrides);
   await db.delete(demoDayAssignments);
   await db.delete(standupAssignments);
+  await db.delete(securityShiftAssignments);
   await db.delete(scheduleRefresh);
 }
 
@@ -280,6 +303,12 @@ export async function clearFutureAssignmentsForRule(
     await db
       .delete(standupAssignments)
       .where(gt(standupAssignments.date, currentMonthEndKey));
+    return;
+  }
+  if (ruleId === 'security-shift') {
+    await db
+      .delete(securityShiftAssignments)
+      .where(gt(securityShiftAssignments.date, currentMonthEndKey));
   }
 }
 
@@ -339,6 +368,40 @@ const getStandupDateKeysForMonth = (date: Date) => {
   }
   return keys;
 };
+
+const getSecurityShiftDateKeysForWindow = (baseDate: Date) => {
+  const keys: string[] = [];
+  for (const offset of MONTH_WINDOW) {
+    const monthDate = addMonths(baseDate, offset);
+    const { start, end } = getMonthRange(monthDate);
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      if (SECURITY_SHIFT_DAYS.has(cursor.getDay())) {
+        keys.push(toDateKey(cursor));
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+  return keys;
+};
+
+const getSecurityShiftDateKeysForMonth = (date: Date) => {
+  const keys: string[] = [];
+  const { start, end } = getMonthRange(date);
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    if (SECURITY_SHIFT_DAYS.has(cursor.getDay())) {
+      keys.push(toDateKey(cursor));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return keys;
+};
+
+const getSecurityShiftAssignmentId = (
+  dateKey: string,
+  eventType: SecurityShiftEventType,
+) => `${eventType}-${dateKey}`;
 
 const buildAvailability = <T extends { userId: string }>(
   eligibleUsers: T[],
@@ -668,6 +731,47 @@ export async function getEligibleStandupRoster(): Promise<StandupAssignee[]> {
   }
 }
 
+export async function getEligibleSecurityShiftRoster(): Promise<
+  SecurityShiftAssignee[]
+> {
+  const user = await currentUser();
+  if (!user) return [];
+  const rule = await getScheduleRuleConfig('security-shift');
+
+  try {
+    const client = await clerkClient();
+    const users = await client.users.getUserList({ limit: 200 });
+    return users.data
+      .map((rosterUser) => {
+        const rankCategory =
+          rosterUser.publicMetadata.rankCategory as RankCategory | null;
+        const rank = rosterUser.publicMetadata.rank as Rank | null;
+        if (!isEligibleForRule({ rule, rankCategory, rank })) {
+          return null;
+        }
+
+        const fullName =
+          `${rosterUser.firstName ?? ''} ${rosterUser.lastName ?? ''}`.trim();
+        const name =
+          fullName ||
+          rosterUser.username ||
+          rosterUser.emailAddresses[0]?.emailAddress ||
+          null;
+        if (!name) return null;
+        return {
+          userId: rosterUser.id,
+          name,
+        };
+      })
+      .filter(
+        (value): value is SecurityShiftAssignee => Boolean(value),
+      );
+  } catch (error) {
+    console.error('Failed to load security shift roster', error);
+    return [];
+  }
+}
+
 export async function ensureStandupAssignmentsForWindow({
   baseDate,
   eligibleUsers,
@@ -874,6 +978,242 @@ export async function refreshStandupAssignmentsForWindow({
   };
 }
 
+export async function ensureSecurityShiftAssignmentsForWindow({
+  baseDate,
+  eligibleUsers,
+}: {
+  baseDate: Date;
+  eligibleUsers: SecurityShiftAssignee[];
+}): Promise<Record<string, SecurityShiftAssignment>> {
+  const { end: currentMonthEnd } = getMonthRange(baseDate);
+  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  await db
+    .delete(securityShiftAssignments)
+    .where(gt(securityShiftAssignments.date, currentMonthEndKey));
+  const todayKey = toDateKey(new Date());
+  const dateKeys = getSecurityShiftDateKeysForWindow(baseDate);
+  const assignableKeys = new Set(getSecurityShiftDateKeysForMonth(baseDate));
+
+  const existingRows = await db
+    .select()
+    .from(securityShiftAssignments)
+    .where(inArray(securityShiftAssignments.date, dateKeys));
+
+  const assignments = new Map<string, SecurityShiftAssignment>();
+  existingRows.forEach((row) => {
+    const eventType = row.eventType as SecurityShiftEventType;
+    if (!SECURITY_SHIFT_EVENT_TYPES.includes(eventType)) return;
+    const isFutureOrToday = row.date >= todayKey;
+    if (!row.userId && isFutureOrToday) {
+      return;
+    }
+    assignments.set(row.id, {
+      id: row.id,
+      date: row.date,
+      eventType,
+      userId: row.userId ?? null,
+      userName: row.userName,
+      assignedAt: row.assignedAt,
+    });
+  });
+
+  const missingAssignableEntries: Array<{
+    id: string;
+    dateKey: string;
+    eventType: SecurityShiftEventType;
+  }> = [];
+
+  dateKeys.forEach((dateKey) => {
+    if (!assignableKeys.has(dateKey)) return;
+    SECURITY_SHIFT_EVENT_TYPES.forEach((eventType) => {
+      const id = getSecurityShiftAssignmentId(dateKey, eventType);
+      if (assignments.has(id)) return;
+      missingAssignableEntries.push({ id, dateKey, eventType });
+    });
+  });
+
+  if (missingAssignableEntries.length === 0 || eligibleUsers.length === 0) {
+    return Object.fromEntries(assignments.entries());
+  }
+
+  const history = await db
+    .select()
+    .from(securityShiftAssignments)
+    .orderBy(desc(securityShiftAssignments.date));
+  let available = buildAvailability(eligibleUsers, history);
+
+  for (const entry of missingAssignableEntries) {
+    if (assignments.has(entry.id)) continue;
+
+    let assignee: SecurityShiftAssignee | null = null;
+    if (eligibleUsers.length > 0) {
+      if (available.length === 0) {
+        available = [...eligibleUsers];
+      }
+      assignee = pickRandom(available);
+      if (assignee) {
+        available = available.filter(
+          (user) => user.userId !== assignee?.userId,
+        );
+      }
+    }
+
+    const row: SecurityShiftAssignment = {
+      id: entry.id,
+      date: entry.dateKey,
+      eventType: entry.eventType,
+      userId: assignee?.userId ?? null,
+      userName: assignee?.name ?? 'TBD',
+      assignedAt: Date.now(),
+    };
+
+    await db
+      .insert(securityShiftAssignments)
+      .values({
+        id: row.id,
+        date: row.date,
+        eventType: row.eventType,
+        userId: row.userId,
+        userName: row.userName,
+        assignedAt: row.assignedAt,
+      })
+      .onConflictDoUpdate({
+        target: securityShiftAssignments.id,
+        set: {
+          eventType: row.eventType,
+          userId: row.userId,
+          userName: row.userName,
+          assignedAt: row.assignedAt,
+        },
+      });
+
+    assignments.set(entry.id, row);
+  }
+
+  return Object.fromEntries(assignments.entries());
+}
+
+export async function refreshSecurityShiftAssignmentsForWindow({
+  baseDate,
+  eligibleUsers,
+}: {
+  baseDate: Date;
+  eligibleUsers: SecurityShiftAssignee[];
+}): Promise<RefreshAssignmentsSummary> {
+  const { end: currentMonthEnd } = getMonthRange(baseDate);
+  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  await db
+    .delete(securityShiftAssignments)
+    .where(gt(securityShiftAssignments.date, currentMonthEndKey));
+
+  const todayKey = toDateKey(new Date());
+  const dateKeys = getSecurityShiftDateKeysForWindow(baseDate);
+  const assignableKeys = getSecurityShiftDateKeysForMonth(baseDate);
+
+  const existingRows = await db
+    .select()
+    .from(securityShiftAssignments)
+    .where(inArray(securityShiftAssignments.date, dateKeys));
+  const existingById = new Map(
+    existingRows.map((row) => [row.id, row]),
+  );
+
+  const eligibleIds = new Set(eligibleUsers.map((user) => user.userId));
+  const futureKeys = assignableKeys.filter((dateKey) => dateKey >= todayKey);
+  const toAssign: Array<{
+    id: string;
+    dateKey: string;
+    eventType: SecurityShiftEventType;
+    hadUserId: boolean;
+  }> = [];
+  let kept = 0;
+
+  for (const dateKey of futureKeys) {
+    for (const eventType of SECURITY_SHIFT_EVENT_TYPES) {
+      const id = getSecurityShiftAssignmentId(dateKey, eventType);
+      const row = existingById.get(id);
+      if (row?.userId && eligibleIds.has(row.userId)) {
+        kept += 1;
+        continue;
+      }
+      toAssign.push({
+        id,
+        dateKey,
+        eventType,
+        hadUserId: Boolean(row?.userId),
+      });
+    }
+  }
+
+  const history = await db
+    .select()
+    .from(securityShiftAssignments)
+    .orderBy(desc(securityShiftAssignments.date));
+  let available = buildAvailability(eligibleUsers, history);
+  let updated = 0;
+  let replaced = 0;
+  let filled = 0;
+
+  for (const entry of toAssign) {
+    let assignee: SecurityShiftAssignee | null = null;
+    if (eligibleUsers.length > 0) {
+      if (available.length === 0) {
+        available = [...eligibleUsers];
+      }
+      assignee = pickRandom(available);
+      if (assignee) {
+        available = available.filter(
+          (user) => user.userId !== assignee?.userId,
+        );
+      }
+    }
+
+    const row: SecurityShiftAssignment = {
+      id: entry.id,
+      date: entry.dateKey,
+      eventType: entry.eventType,
+      userId: assignee?.userId ?? null,
+      userName: assignee?.name ?? 'TBD',
+      assignedAt: Date.now(),
+    };
+
+    await db
+      .insert(securityShiftAssignments)
+      .values({
+        id: row.id,
+        date: row.date,
+        eventType: row.eventType,
+        userId: row.userId,
+        userName: row.userName,
+        assignedAt: row.assignedAt,
+      })
+      .onConflictDoUpdate({
+        target: securityShiftAssignments.id,
+        set: {
+          eventType: row.eventType,
+          userId: row.userId,
+          userName: row.userName,
+          assignedAt: row.assignedAt,
+        },
+      });
+
+    updated += 1;
+    if (entry.hadUserId) {
+      replaced += 1;
+    } else {
+      filled += 1;
+    }
+  }
+
+  return {
+    checked: futureKeys.length * SECURITY_SHIFT_EVENT_TYPES.length,
+    kept,
+    updated,
+    replaced,
+    filled,
+  };
+}
+
 export async function listStandupAssignmentsInRange({
   startDate,
   endDate,
@@ -900,6 +1240,44 @@ export async function listStandupAssignmentsInRange({
     userName: row.userName,
     assignedAt: row.assignedAt,
   }));
+}
+
+export async function listSecurityShiftAssignmentsInRange({
+  startDate,
+  endDate,
+}: {
+  startDate: Date;
+  endDate: Date;
+}): Promise<SecurityShiftAssignment[]> {
+  const startKey = toDateKey(startDate);
+  const endKey = toDateKey(endDate);
+  const rows = await db
+    .select()
+    .from(securityShiftAssignments)
+    .where(
+      and(
+        gte(securityShiftAssignments.date, startKey),
+        lte(securityShiftAssignments.date, endKey),
+      ),
+    )
+    .orderBy(desc(securityShiftAssignments.date));
+
+  return rows
+    .map((row) => {
+      const eventType = row.eventType as SecurityShiftEventType;
+      if (!SECURITY_SHIFT_EVENT_TYPES.includes(eventType)) return null;
+      return {
+        id: row.id,
+        date: row.date,
+        eventType,
+        userId: row.userId ?? null,
+        userName: row.userName,
+        assignedAt: row.assignedAt,
+      };
+    })
+    .filter(
+      (row): row is SecurityShiftAssignment => Boolean(row),
+    );
 }
 
 export async function listScheduleEventOverridesInRange({

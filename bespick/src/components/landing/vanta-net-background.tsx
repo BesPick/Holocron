@@ -85,7 +85,13 @@ export function VantaNetBackground() {
 
   const markLoaded = React.useCallback((key: keyof ScriptLoadState) => {
     scriptState.current[key] = true;
-    if (scriptState.current.three && scriptState.current.vanta) {
+    if (
+      scriptState.current.three &&
+      scriptState.current.vanta &&
+      typeof window !== 'undefined' &&
+      window.THREE &&
+      window.VANTA?.NET
+    ) {
       setReady(true);
     }
   }, []);
@@ -107,7 +113,7 @@ export function VantaNetBackground() {
     if (!ready) return;
     const element = containerRef.current;
     const init = () => {
-      if (!element || !window.VANTA?.NET) return;
+      if (!element || !window.VANTA?.NET || !window.THREE) return;
       vantaRef.current?.destroy();
       const backgroundFallback =
         getComputedStyle(document.body).backgroundColor || '#111111';
@@ -118,6 +124,7 @@ export function VantaNetBackground() {
       const accentColor = getHexFromCssVar('--accent', '#21a123');
       vantaRef.current = window.VANTA.NET({
         el: element,
+        THREE: window.THREE,
         mouseControls: true,
         touchControls: true,
         gyroControls: false,

@@ -16,3 +16,10 @@ export const resolveEventTime = (
   if (defaultTime && defaultTime.trim()) return defaultTime;
   return 'TBD';
 };
+
+export const formatTimeRange = (startTime: string, endTime: string) => {
+  if (!startTime || startTime.trim() === '' || startTime === 'TBD') {
+    return 'TBD';
+  }
+  return `${startTime}-${endTime}`;
+};
