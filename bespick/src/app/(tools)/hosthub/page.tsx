@@ -6,6 +6,12 @@ import {
   DEMO_DAY_RESOURCES,
   STANDUP_RESOURCES,
 } from '@/lib/hosthub-docs';
+import { getEventOverrideId } from '@/lib/hosthub-events';
+import {
+  formatShortDateLabel,
+  isFirstWednesday,
+  resolveEventTime,
+} from '@/lib/hosthub-schedule-utils';
 import {
   ensureDemoDayAssignmentsForWindow,
   getEligibleDemoDayRoster,
@@ -20,28 +26,6 @@ import {
 
 export const metadata = {
   title: 'HostHub | BESPIN Holocron',
-};
-
-const isFirstWednesday = (date: Date) =>
-  date.getDay() === 3 && date.getDate() <= 7;
-
-const formatDateLabel = (date: Date) =>
-  new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  }).format(date);
-
-const overrideKey = (dateValue: string, eventType: 'standup' | 'demo') =>
-  `${eventType}-${dateValue}`;
-
-const resolveEventTime = (
-  overrideTime: string | null | undefined,
-  defaultTime: string,
-) => {
-  if (overrideTime && overrideTime.trim()) return overrideTime;
-  if (defaultTime && defaultTime.trim()) return defaultTime;
-  return 'TBD';
 };
 
 export default async function HostHubPage() {
@@ -81,7 +65,7 @@ export default async function HostHubPage() {
     });
     const overridesByKey = new Map(
       overrides.map((override) => [
-        overrideKey(override.date, override.eventType),
+        getEventOverrideId(override.date, override.eventType),
         override,
       ]),
     );
@@ -106,14 +90,14 @@ export default async function HostHubPage() {
 
     const cursor = new Date(startDate);
     while (cursor <= endDate) {
-      const dateLabel = formatDateLabel(cursor);
+      const dateLabel = formatShortDateLabel(cursor);
       const dateKey = toDateKey(cursor);
       const targetShifts =
         dateKey < todayKey ? pastShifts : currentShifts;
 
       const standupAssignment = standupAssignmentsByDate.get(dateKey);
       const standupOverride = overridesByKey.get(
-        overrideKey(dateKey, 'standup'),
+        getEventOverrideId(dateKey, 'standup'),
       );
       const standupTime = resolveEventTime(
         standupOverride?.time,
@@ -157,7 +141,9 @@ export default async function HostHubPage() {
 
       if (isFirstWednesday(cursor) && !movedDemoSources.has(dateKey)) {
         const assignment = demoAssignmentsByDate.get(dateKey);
-        const demoOverride = overridesByKey.get(overrideKey(dateKey, 'demo'));
+        const demoOverride = overridesByKey.get(
+          getEventOverrideId(dateKey, 'demo'),
+        );
         const demoTime = resolveEventTime(
           demoOverride?.time,
           demoRule.defaultTime,

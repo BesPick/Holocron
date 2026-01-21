@@ -5,14 +5,11 @@ import {
   ClerkLoaded,
   ClerkLoading,
   SignedIn,
-  UserButton,
   useUser,
 } from '@clerk/nextjs';
 import {
-  BadgeCheck,
   Gamepad2,
   HeartPulse,
-  Layers,
   Menu,
   Server,
   Users,
@@ -20,8 +17,9 @@ import {
 } from 'lucide-react';
 
 import { HeaderButton } from '@/components/header/header-button';
+import { AssignmentModal } from '@/components/header/assignment-modal';
+import { UserAssignmentMenu } from '@/components/header/user-assignment-menu';
 import {
-  GROUP_OPTIONS,
   getPortfoliosForGroup,
   getRanksForCategory,
   isValidGroup,
@@ -32,58 +30,8 @@ import {
   type Portfolio,
   type Rank,
   type RankCategory,
-  RANK_CATEGORY_OPTIONS,
 } from '@/lib/org';
 import { updateMyAssignments } from '@/server/actions/assignments';
-
-type AssignmentInfoProps = {
-  groupLabel: string;
-  portfolioLabel: string;
-  rankCategoryLabel: string;
-  rankLabel: string;
-  onEditGroup: () => void;
-  onEditPortfolio: () => void;
-  onEditRankCategory: () => void;
-  onEditRank: () => void;
-};
-
-function UserAssignmentMenu({
-  groupLabel,
-  portfolioLabel,
-  rankCategoryLabel,
-  rankLabel,
-  onEditGroup,
-  onEditPortfolio,
-  onEditRankCategory,
-  onEditRank,
-}: AssignmentInfoProps) {
-  return (
-    <UserButton>
-      <UserButton.MenuItems>
-        <UserButton.Action
-          label={`Rank Type: ${rankCategoryLabel}`}
-          labelIcon={<BadgeCheck className='h-4 w-4' aria-hidden={true} />}
-          onClick={onEditRankCategory}
-        />
-        <UserButton.Action
-          label={`Rank: ${rankLabel}`}
-          labelIcon={<BadgeCheck className='h-4 w-4' aria-hidden={true} />}
-          onClick={onEditRank}
-        />
-        <UserButton.Action
-          label={`Group: ${groupLabel}`}
-          labelIcon={<Users className='h-4 w-4' aria-hidden={true} />}
-          onClick={onEditGroup}
-        />
-        <UserButton.Action
-          label={`Portfolio: ${portfolioLabel}`}
-          labelIcon={<Layers className='h-4 w-4' aria-hidden={true} />}
-          onClick={onEditPortfolio}
-        />
-      </UserButton.MenuItems>
-    </UserButton>
-  );
-}
 
 export function HeaderActions() {
   const { user } = useUser();
@@ -356,142 +304,26 @@ export function HeaderActions() {
         </div>
       )}
 
-      {isAssignmentOpen ? (
-        <div
-          className='fixed inset-0 z-60 grid place-items-center bg-black/50 p-4'
-          role='dialog'
-          aria-modal='true'
-          aria-label='Update assignments'
-          onClick={closeAssignmentModal}
-        >
-          <div
-            className='w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl'
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 className='text-lg font-semibold text-foreground'>
-              Update assignments
-            </h2>
-            <p className='mt-1 text-sm text-muted-foreground'>
-              Choose a rank, group, and portfolio for your profile.
-            </p>
-
-            <div className='mt-5 space-y-4'>
-              <label className='flex flex-col gap-2 text-sm text-foreground'>
-                Rank Category
-                <select
-                  value={assignmentRankCategory}
-                  onChange={(event) =>
-                    handleAssignmentRankCategoryChange(event.target.value)
-                  }
-                  autoFocus={assignmentFocus === 'rankCategory'}
-                  className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-                >
-                  <option value=''>No rank category</option>
-                  {RANK_CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className='flex flex-col gap-2 text-sm text-foreground'>
-                Rank
-                <select
-                  value={assignmentRank}
-                  onChange={(event) =>
-                    handleAssignmentRankChange(event.target.value)
-                  }
-                  disabled={rankSelectDisabled}
-                  autoFocus={assignmentFocus === 'rank'}
-                  className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-                >
-                  <option value=''>No rank assigned</option>
-                  {availableRanks.map((rankOption) => (
-                    <option key={rankOption} value={rankOption}>
-                      {rankOption}
-                    </option>
-                  ))}
-                </select>
-                <span className='text-xs text-muted-foreground'>
-                  {rankSelectDisabled
-                    ? 'Select a rank category with levels to enable this field.'
-                    : ''}
-                </span>
-              </label>
-
-              <label className='flex flex-col gap-2 text-sm text-foreground'>
-                Group
-                <select
-                  value={assignmentGroup}
-                  onChange={(event) =>
-                    handleAssignmentGroupChange(event.target.value)
-                  }
-                  autoFocus={assignmentFocus === 'group'}
-                  className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-                >
-                  <option value=''>No group assigned</option>
-                  {GROUP_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className='flex flex-col gap-2 text-sm text-foreground'>
-                Portfolio
-                <select
-                  value={assignmentPortfolio}
-                  onChange={(event) =>
-                    handleAssignmentPortfolioChange(event.target.value)
-                  }
-                  disabled={portfolioSelectDisabled}
-                  autoFocus={assignmentFocus === 'portfolio'}
-                  className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-                >
-                  <option value=''>No portfolio assigned</option>
-                  {availablePortfolios.map((portfolioOption) => (
-                    <option key={portfolioOption} value={portfolioOption}>
-                      {portfolioOption}
-                    </option>
-                  ))}
-                </select>
-                <span className='text-xs text-muted-foreground'>
-                  {portfolioSelectDisabled
-                    ? 'Select a group with portfolios to enable this field.'
-                    : ''}
-                </span>
-              </label>
-            </div>
-
-            {assignmentError ? (
-              <p className='mt-4 text-sm text-destructive'>
-                {assignmentError}
-              </p>
-            ) : null}
-
-            <div className='mt-6 flex items-center justify-end gap-3'>
-              <button
-                type='button'
-                onClick={closeAssignmentModal}
-                className='rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-secondary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                disabled={isAssignmentPending}
-              >
-                Cancel
-              </button>
-              <button
-                type='button'
-                onClick={handleAssignmentSave}
-                className='rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-                disabled={isAssignmentPending}
-              >
-                {isAssignmentPending ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <AssignmentModal
+        open={isAssignmentOpen}
+        focus={assignmentFocus}
+        rankCategory={assignmentRankCategory}
+        rank={assignmentRank}
+        group={assignmentGroup}
+        portfolio={assignmentPortfolio}
+        availableRanks={availableRanks}
+        availablePortfolios={availablePortfolios}
+        rankSelectDisabled={rankSelectDisabled}
+        portfolioSelectDisabled={portfolioSelectDisabled}
+        error={assignmentError}
+        pending={isAssignmentPending}
+        onClose={closeAssignmentModal}
+        onSave={handleAssignmentSave}
+        onChangeRankCategory={handleAssignmentRankCategoryChange}
+        onChangeRank={handleAssignmentRankChange}
+        onChangeGroup={handleAssignmentGroupChange}
+        onChangePortfolio={handleAssignmentPortfolioChange}
+      />
     </>
   );
 }

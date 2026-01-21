@@ -4,7 +4,13 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useApiMutation, useApiQuery } from '@/lib/apiClient';
-import type { ActivityStatus, Doc, Id, StorageImage } from '@/types/db';
+import type {
+  ActivityStatus,
+  ActivityType,
+  Doc,
+  Id,
+  StorageImage,
+} from '@/types/db';
 import type {
   CreateAnnouncementArgs,
   UpdateAnnouncementArgs,
@@ -21,86 +27,24 @@ import {
   type Portfolio,
   getPortfoliosForGroup,
 } from '@/lib/org';
+import {
+  ACTIVITY_LABELS,
+  ALLOWED_IMAGE_EXTENSIONS,
+  ALLOWED_IMAGE_TYPES,
+  GROUP_KEYS,
+  LEADERBOARD_OPTIONS,
+  MAX_IMAGES,
+  PORTFOLIO_KEYS,
+  initGroupSelections,
+  initPortfolioSelections,
+} from './announcement-form/constants';
+import type {
+  VotingLeaderboardMode,
+  VotingParticipant,
+  VotingRosterEntry,
+} from './announcement-form/types';
 
-export type ActivityType = 'announcements' | 'poll' | 'voting';
 type AnnouncementDoc = Doc<'announcements'>;
-
-const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  announcements: 'Announcement',
-  poll: 'Poll',
-  voting: 'Voting',
-};
-const MAX_IMAGES = 5;
-const ALLOWED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-]);
-const ALLOWED_IMAGE_EXTENSIONS = new Set([
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.gif',
-  '.webp',
-]);
-const LEADERBOARD_OPTIONS: Array<{
-  value: VotingLeaderboardMode;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: 'all',
-    label: 'Single leaderboard',
-    description: 'Rank everyone together regardless of group.',
-  },
-  {
-    value: 'group',
-    label: 'Per group',
-    description: 'Each group gets its own leaderboard.',
-  },
-  {
-    value: 'group_portfolio',
-    label: 'Per group & portfolio',
-    description:
-      'Create leaderboards for every group and their individual portfolios.',
-  },
-];
-
-type VotingParticipant = {
-  userId: string;
-  firstName: string;
-  lastName: string;
-  group?: Group | null;
-  portfolio?: Portfolio | null;
-  votes: number;
-};
-
-type VotingRosterEntry = VotingParticipant & {
-  group: Group | null;
-  portfolio: Portfolio | null;
-};
-
-type VotingLeaderboardMode = 'all' | 'group' | 'group_portfolio';
-
-const GROUP_KEYS = GROUP_OPTIONS.map((option) => option.value) as Group[];
-const PORTFOLIO_KEYS = GROUP_OPTIONS.flatMap(
-  (option) => option.portfolios,
-) as Portfolio[];
-
-function initGroupSelections(defaultValue: boolean): Record<Group, boolean> {
-  return GROUP_KEYS.reduce((acc, group) => {
-    acc[group] = defaultValue;
-    return acc;
-  }, {} as Record<Group, boolean>);
-}
-
-function initPortfolioSelections(defaultValue: boolean): Record<Portfolio, boolean> {
-  return PORTFOLIO_KEYS.reduce((acc, portfolio) => {
-    acc[portfolio] = defaultValue;
-    return acc;
-  }, {} as Record<Portfolio, boolean>);
-}
 
 export function AnnouncementForm({
   activityType = 'announcements',
@@ -143,27 +87,32 @@ export function AnnouncementForm({
   const [pollCloseTime, setPollCloseTime] = React.useState('');
   const [imageIds, setImageIds] = React.useState<Id<'_storage'>[]>([]);
   const [uploadingImages, setUploadingImages] = React.useState(false);
-const [votingRoster, setVotingRoster] = React.useState<VotingRosterEntry[]>([]);
-const [votingGroupSelections, setVotingGroupSelections] = React.useState<
-  Record<Group, boolean>
->(() => initGroupSelections(true));
-const [votingPortfolioSelections, setVotingPortfolioSelections] = React.useState<
-  Record<Portfolio, boolean>
->(() => initPortfolioSelections(true));
-const [votingAllowUngrouped, setVotingAllowUngrouped] = React.useState(false);
-const [votingAllowRemovals, setVotingAllowRemovals] = React.useState(true);
-const [votingLockedGroups, setVotingLockedGroups] = React.useState<
-  Record<Group, boolean>
->(() => initGroupSelections(false));
-const [votingLockedPortfolios, setVotingLockedPortfolios] = React.useState<
-  Record<Portfolio, boolean>
->(() => initPortfolioSelections(false));
-const [votingLockedUngrouped, setVotingLockedUngrouped] = React.useState(false);
-const [votingAddVotePrice, setVotingAddVotePrice] = React.useState('');
-const [votingRemoveVotePrice, setVotingRemoveVotePrice] = React.useState('');
-const [votingAddVoteLimit, setVotingAddVoteLimit] = React.useState('');
-const [votingRemoveVoteLimit, setVotingRemoveVoteLimit] = React.useState('');
-const [votingLeaderboardMode, setVotingLeaderboardMode] = React.useState<VotingLeaderboardMode>('all');
+  const [votingRoster, setVotingRoster] = React.useState<VotingRosterEntry[]>(
+    [],
+  );
+  const [votingGroupSelections, setVotingGroupSelections] = React.useState<
+    Record<Group, boolean>
+  >(() => initGroupSelections(true));
+  const [votingPortfolioSelections, setVotingPortfolioSelections] = React.useState<
+    Record<Portfolio, boolean>
+  >(() => initPortfolioSelections(true));
+  const [votingAllowUngrouped, setVotingAllowUngrouped] = React.useState(false);
+  const [votingAllowRemovals, setVotingAllowRemovals] = React.useState(true);
+  const [votingLockedGroups, setVotingLockedGroups] = React.useState<
+    Record<Group, boolean>
+  >(() => initGroupSelections(false));
+  const [votingLockedPortfolios, setVotingLockedPortfolios] = React.useState<
+    Record<Portfolio, boolean>
+  >(() => initPortfolioSelections(false));
+  const [votingLockedUngrouped, setVotingLockedUngrouped] =
+    React.useState(false);
+  const [votingAddVotePrice, setVotingAddVotePrice] = React.useState('');
+  const [votingRemoveVotePrice, setVotingRemoveVotePrice] = React.useState('');
+  const [votingAddVoteLimit, setVotingAddVoteLimit] = React.useState('');
+  const [votingRemoveVoteLimit, setVotingRemoveVoteLimit] =
+    React.useState('');
+  const [votingLeaderboardMode, setVotingLeaderboardMode] =
+    React.useState<VotingLeaderboardMode>('all');
   const [votingUsersLoading, setVotingUsersLoading] = React.useState(false);
   const [votingUsersError, setVotingUsersError] = React.useState<string | null>(
     null,

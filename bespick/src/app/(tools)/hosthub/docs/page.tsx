@@ -18,6 +18,46 @@ export const metadata = {
   title: 'Docs | HostHub',
 };
 
+const POLICIES = [
+  'If you are assigned, you are responsible for coordinating and running the event.',
+  'If you are unavailable, you must find a replacement and coordinate the swap.',
+  'Notify an admin once a replacement is confirmed so the calendar can be updated.',
+  'Come prepared with any materials or context needed for the session and be early to google meetings.',
+];
+
+const FAQ_ITEMS = [
+  {
+    question: 'If it is Monday, are the "About Me" slides required?',
+    answer:
+      'Yes, if you are the assigned standup host for that day. Use the guidelines doc for format and any approved exceptions.',
+  },
+  {
+    question: 'How are assignees selected?',
+    answer:
+      'Assignments are random within the eligibility settings in the Schedule tab. The system rotates through everyone before repeating and only schedules the current month.',
+  },
+  {
+    question: 'How do I switch an assignment?',
+    answer:
+      'Coordinate with another eligible teammate, then ask an admin to update the assignment. The assigned host is responsible for securing a replacement if they are unavailable.',
+  },
+  {
+    question: 'Why are some future events marked TBD?',
+    answer:
+      'Only the current month is assigned. Future months show the event placeholders so you can plan ahead.',
+  },
+  {
+    question: 'Can I view only my shifts?',
+    answer:
+      'Yes. Use the "My Shifts Only" filter on the Calendar tab to hide events that are not assigned to you.',
+  },
+  {
+    question: 'Who do I contact with feedback or issues?',
+    answer:
+      'Send feedback to an admin so they can review and prioritize updates. (andrew.odom@teambespin.us)',
+  },
+];
+
 const formatDemoDate = (value: string) => {
   const [year, month, day] = value.split('-').map(Number);
   if (!year || !month || !day) return value;
@@ -50,10 +90,9 @@ export default async function HostHubDocsPage() {
             Formal shift rules and expectations for hosts.
           </p>
           <ul className='mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground'>
-            <li>If you are assigned, you are responsible for coordinating and running the event.</li>
-            <li>If you are unavailable, you must find a replacement and coordinate the swap.</li>
-            <li>Notify an admin once a replacement is confirmed so the calendar can be updated.</li>
-            <li>Come prepared with any materials or context needed for the session and be early to google meetings.</li>
+            {POLICIES.map((policy) => (
+              <li key={policy}>{policy}</li>
+            ))}
           </ul>
         </div>
 
@@ -150,62 +189,14 @@ export default async function HostHubDocsPage() {
             Quick answers for common questions.
           </p>
           <div className='mt-4 space-y-4 text-sm text-muted-foreground'>
-            <div>
-              <p className='font-semibold text-foreground'>
-                If it is Monday, are the "About Me" slides required?
-              </p>
-              <p className='mt-1'>
-                Yes, if you are the assigned standup host for that day. Use the
-                guidelines doc for format and any approved exceptions.
-              </p>
-            </div>
-            <div>
-              <p className='font-semibold text-foreground'>
-                How are assignees selected?
-              </p>
-              <p className='mt-1'>
-                Assignments are random within the eligibility settings in the
-                Schedule tab. The system rotates through everyone before
-                repeating and only schedules the current month.
-              </p>
-            </div>
-            <div>
-              <p className='font-semibold text-foreground'>
-                How do I switch an assignment?
-              </p>
-              <p className='mt-1'>
-                Coordinate with another eligible teammate, then ask an admin to
-                update the assignment. The assigned host is responsible for
-                securing a replacement if they are unavailable.
-              </p>
-            </div>
-            <div>
-              <p className='font-semibold text-foreground'>
-                Why are some future events marked TBD?
-              </p>
-              <p className='mt-1'>
-                Only the current month is assigned. Future months show the
-                event placeholders so you can plan ahead.
-              </p>
-            </div>
-            <div>
-              <p className='font-semibold text-foreground'>
-                Can I view only my shifts?
-              </p>
-              <p className='mt-1'>
-                Yes. Use the "My Shifts Only" filter on the Calendar tab to
-                hide events that are not assigned to you.
-              </p>
-            </div>
-            <div>
-              <p className='font-semibold text-foreground'>
-                Who do I contact with feedback or issues?
-              </p>
-              <p className='mt-1'>
-                Send feedback to an admin so they can review and
-                prioritize updates. (andrew.odom@teambespin.us)
-              </p>
-            </div>
+            {FAQ_ITEMS.map((item) => (
+              <div key={item.question}>
+                <p className='font-semibold text-foreground'>
+                  {item.question}
+                </p>
+                <p className='mt-1'>{item.answer}</p>
+              </div>
+            ))}
           </div>
         </details>
 

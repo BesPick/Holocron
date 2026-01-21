@@ -1366,9 +1366,6 @@ export async function purchaseVotes(
     .update(announcements)
     .set({
       votingParticipantsJson: JSON.stringify(updatedParticipants),
-      updatedAt: Date.now(),
-      updatedBy:
-        identity.name ?? identity.email ?? identity.userId ?? 'anonymous',
     })
     .where(eq(announcements.id, args.id));
 

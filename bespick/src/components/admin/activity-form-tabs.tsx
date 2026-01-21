@@ -4,11 +4,8 @@ import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useApiQuery } from '@/lib/apiClient';
-import type { Doc, Id } from '@/types/db';
-import {
-  AnnouncementForm,
-  type ActivityType,
-} from '@/components/admin/announcement-form';
+import type { ActivityType, Doc, Id } from '@/types/db';
+import { AnnouncementForm } from '@/components/admin/announcement-form';
 
 const ACTIVITY_OPTIONS: Array<{
   value: ActivityType;

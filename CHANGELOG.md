@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-01-21
+
+- Refactored all folders under src so that they are more readable. 
+- Broke long files into multiple components.
+- Fixed bug with the edit log for admins.
+
+## [1.2.0] - 2026-01-19
+
 - Added a full reset option for HostHub schedules to clear and regenerate assignments.
 - Added a HostHub in-development warning banner across HostHub pages.
 
@@ -22,18 +30,18 @@ All notable changes to this project will be documented in this file.
 
 - Updated all credentials to prod (Clerk, Paypal).
 
-## [0.1.2] - 2026-01-14
+## [0.1.2] - 2026-01-10
 
 - Updated npm commands to automate updates.
 - Improved the readme readability.
 - Tightened the UI for mobile devices.
 
-## [0.1.1] - 2026-01-14
+## [0.1.1] - 2025-02-27
 
 - Add a visible app version/build stamp in the UI.
 - Improve morale tool layouts for phone-sized screens.
 - Tighten PayPal funding configuration and expose gateway errors in the UI.
 
-## [0.1.0]
+## [0.1.0] - 2025-11-13
 
 - Initial release.
