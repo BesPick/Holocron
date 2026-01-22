@@ -15,7 +15,7 @@ import {
 import {
   formatTimeRange,
   formatShortDateLabel,
-  isFirstWednesday,
+  isSecondWednesday,
   resolveEventTime,
 } from '@/lib/hosthub-schedule-utils';
 import {
@@ -188,7 +188,7 @@ export default async function HostHubPage() {
         });
       }
 
-      if (isFirstWednesday(cursor) && !movedDemoSources.has(dateKey)) {
+      if (isSecondWednesday(cursor) && !movedDemoSources.has(dateKey)) {
         const assignment = demoAssignmentsByDate.get(dateKey);
         const demoOverride = overridesByKey.get(
           getEventOverrideId(dateKey, 'demo'),

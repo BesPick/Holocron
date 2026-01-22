@@ -1,5 +1,5 @@
-export const isFirstWednesday = (date: Date) =>
-  date.getDay() === 3 && date.getDate() <= 7;
+export const isSecondWednesday = (date: Date) =>
+  date.getDay() === 3 && date.getDate() >= 8 && date.getDate() <= 14;
 
 export const formatShortDateLabel = (date: Date) =>
   new Intl.DateTimeFormat('en-US', {
