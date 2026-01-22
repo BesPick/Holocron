@@ -11,7 +11,7 @@ import {
 } from '@/lib/hosthub-events';
 import {
   formatShortDateLabel,
-  isFirstWednesday,
+  isSecondWednesday,
   resolveEventTime,
 } from '@/lib/hosthub-schedule-utils';
 import { getPrimaryEmail } from '@/server/auth';
@@ -207,11 +207,7 @@ export async function notifyHostHubShiftsForTomorrow() {
   const demoSourceDates = new Set<string>(
     demoMoveTargets.map((override) => override.date),
   );
-  if (
-    canNotifyDemo &&
-    isFirstWednesday(targetDate) &&
-    !demoMoveSources.has(targetKey)
-  ) {
+  if (isSecondWednesday(targetDate) && !demoMoveSources.has(targetKey)) {
     demoSourceDates.add(targetKey);
   }
 
@@ -317,11 +313,7 @@ export async function notifyHostHubShiftsForTomorrow() {
     });
   });
 
-  if (
-    canNotifyDemo &&
-    isFirstWednesday(targetDate) &&
-    !demoMoveSources.has(targetKey)
-  ) {
+  if (isSecondWednesday(targetDate) && !demoMoveSources.has(targetKey)) {
     const override = overridesById.get(getEventOverrideId(targetKey, 'demo'));
     if (!override?.isCanceled) {
       const assignment = demoAssignments[targetKey];

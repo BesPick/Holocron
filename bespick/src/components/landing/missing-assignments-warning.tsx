@@ -32,13 +32,13 @@ export function MissingAssignmentsWarning({
   if (hasRankCategory && hasGroup) return null;
 
   const missingParts: string[] = [];
-  if (!hasRankCategory) missingParts.push('rank type');
+  if (!hasRankCategory) missingParts.push('rank category');
   if (!hasGroup) missingParts.push('group');
 
   const missingLabel =
     missingParts.length === 1
       ? missingParts[0]
-      : 'rank type and group';
+      : 'rank category and group';
 
   const focus: AssignmentModalFocus = !hasRankCategory
     ? 'rankCategory'
@@ -61,7 +61,7 @@ export function MissingAssignmentsWarning({
               Action needed
             </p>
             <p className='mt-1 text-sm font-medium text-amber-100'>
-              Your profile is missing `&quot`{missingLabel}`&quot`. Update it so tools can
+              Your profile is missing {missingLabel}. Please update it so that Holocron can
               match you to schedules and rosters.
             </p>
           </div>

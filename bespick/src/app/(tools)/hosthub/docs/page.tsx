@@ -142,7 +142,7 @@ export default async function HostHubDocsPage() {
               <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                 <div>
                   <p className='text-base font-semibold text-foreground'>
-                    `&quot`About Me`&quot` Guidelines
+                    About Me Slides Guidelines
                   </p>
                   <p className='mt-1 text-sm text-muted-foreground'>
                     Reference guidelines and expectations for About Me slides.

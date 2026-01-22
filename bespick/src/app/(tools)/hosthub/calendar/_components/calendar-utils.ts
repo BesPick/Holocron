@@ -5,7 +5,7 @@ import {
 } from '@/lib/hosthub-events';
 import {
   formatTimeRange,
-  isFirstWednesday,
+  isSecondWednesday,
   resolveEventTime,
 } from '@/lib/hosthub-schedule-utils';
 import type { CalendarDay, CalendarEvent, DemoMoveEntry, EventOverride } from './calendar-types';
@@ -168,7 +168,7 @@ export const getEventsForDate = (
       });
     });
   }
-  if (isFirstWednesday(date)) {
+  if (isSecondWednesday(date)) {
     if (demoMoveSources.has(key)) {
       return events;
     }
