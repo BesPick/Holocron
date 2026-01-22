@@ -4,7 +4,12 @@ import { auth } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 
 import { db } from '@/server/db/client';
-import { scheduleEventOverrides } from '@/server/db/schema';
+import {
+  demoDayAssignments,
+  scheduleEventOverrides,
+  securityShiftAssignments,
+  standupAssignments,
+} from '@/server/db/schema';
 import { checkRole } from '@/server/auth/check-role';
 import {
   getEventOverrideId,
@@ -14,6 +19,7 @@ import {
   isValidTimeValue,
   type HostHubEventType,
 } from '@/lib/hosthub-events';
+import { notifyHostHubScheduleChanges } from '@/server/services/mattermost-notifications';
 
 export type UpdateScheduleEventOverrideResult = {
   success: boolean;
@@ -32,6 +38,35 @@ const normalizeMoveDate = (value: string, sourceDate: string) => {
   if (!isValidDateKey(trimmed)) return { value: null, valid: false };
   if (trimmed === sourceDate) return { value: null, valid: true };
   return { value: trimmed, valid: true };
+};
+
+const getBaseAssignmentUserId = async (
+  eventType: HostHubEventType,
+  dateKey: string,
+) => {
+  if (eventType === 'demo') {
+    const row = await db
+      .select({ userId: demoDayAssignments.userId })
+      .from(demoDayAssignments)
+      .where(eq(demoDayAssignments.date, dateKey))
+      .get();
+    return row?.userId ?? null;
+  }
+  if (eventType === 'standup') {
+    const row = await db
+      .select({ userId: standupAssignments.userId })
+      .from(standupAssignments)
+      .where(eq(standupAssignments.date, dateKey))
+      .get();
+    return row?.userId ?? null;
+  }
+
+  const row = await db
+    .select({ userId: securityShiftAssignments.userId })
+    .from(securityShiftAssignments)
+    .where(eq(securityShiftAssignments.id, getEventOverrideId(dateKey, eventType)))
+    .get();
+  return row?.userId ?? null;
 };
 
 export async function updateScheduleEventOverride({
@@ -98,6 +133,11 @@ export async function updateScheduleEventOverride({
   try {
     const { userId } = await auth();
     const id = getEventOverrideId(date, eventType);
+    const existingOverride = await db
+      .select()
+      .from(scheduleEventOverrides)
+      .where(eq(scheduleEventOverrides.id, id))
+      .get();
     const payload = {
       id,
       date,
@@ -126,6 +166,34 @@ export async function updateScheduleEventOverride({
           updatedBy: payload.updatedBy,
         },
       });
+
+    const previousOverrideUserId =
+      existingOverride?.overrideUserId ?? null;
+    const baseAssignmentUserId = await getBaseAssignmentUserId(
+      eventType,
+      date,
+    );
+    const previousEffectiveUserId =
+      previousOverrideUserId ?? baseAssignmentUserId;
+    const nextEffectiveUserId =
+      normalizedOverrideUserId ?? baseAssignmentUserId;
+    if (previousEffectiveUserId !== nextEffectiveUserId) {
+      try {
+        await notifyHostHubScheduleChanges(
+          [
+            {
+              eventType,
+              dateKey: date,
+              oldUserId: previousEffectiveUserId,
+              newUserId: nextEffectiveUserId,
+            },
+          ],
+          { allowOverrideAssignee: true },
+        );
+      } catch (error) {
+        console.error('Failed to notify HostHub override changes', error);
+      }
+    }
 
     return {
       success: true,
@@ -163,9 +231,42 @@ export async function clearScheduleEventOverride({
 
   try {
     const id = getEventOverrideId(date, eventType);
+    const existingOverride = await db
+      .select()
+      .from(scheduleEventOverrides)
+      .where(eq(scheduleEventOverrides.id, id))
+      .get();
     await db
       .delete(scheduleEventOverrides)
       .where(eq(scheduleEventOverrides.id, id));
+
+    if (existingOverride) {
+      const baseAssignmentUserId = await getBaseAssignmentUserId(
+        eventType,
+        date,
+      );
+      const previousEffectiveUserId =
+        existingOverride.overrideUserId ?? baseAssignmentUserId;
+      const nextEffectiveUserId = baseAssignmentUserId;
+      if (previousEffectiveUserId !== nextEffectiveUserId) {
+        try {
+          await notifyHostHubScheduleChanges(
+            [
+              {
+                eventType,
+                dateKey: date,
+                oldUserId: previousEffectiveUserId,
+                newUserId: nextEffectiveUserId,
+              },
+            ],
+            { allowOverrideAssignee: true },
+          );
+        } catch (error) {
+          console.error('Failed to notify HostHub override changes', error);
+        }
+      }
+    }
+
     return {
       success: true,
       message: 'Event reset to default.',

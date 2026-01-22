@@ -12,14 +12,30 @@ export type ProfileWarningConfig = {
   enabled: boolean;
 };
 
+export type MattermostNotificationConfig = {
+  moraleEnabled: boolean;
+  hosthubStandupEnabled: boolean;
+  hosthubDemoEnabled: boolean;
+  hosthubSecurityAmEnabled: boolean;
+  hosthubSecurityPmEnabled: boolean;
+};
+
 const WARNING_BANNER_ID = 'warning-banner';
 const PROFILE_WARNING_ID = 'profile-warning';
+const MATTERMOST_NOTIFICATIONS_ID = 'mattermost-notifications';
 const DEFAULT_WARNING_BANNER: WarningBannerConfig = {
   enabled: false,
   message: '',
 };
 const DEFAULT_PROFILE_WARNING: ProfileWarningConfig = {
   enabled: true,
+};
+const DEFAULT_MATTERMOST_NOTIFICATIONS: MattermostNotificationConfig = {
+  moraleEnabled: true,
+  hosthubStandupEnabled: true,
+  hosthubDemoEnabled: true,
+  hosthubSecurityAmEnabled: true,
+  hosthubSecurityPmEnabled: true,
 };
 
 const parseJson = (raw: string) => {
@@ -53,6 +69,22 @@ const normalizeProfileWarningConfig = (
   const record = value as Record<string, unknown>;
   return {
     enabled: Boolean(record.enabled),
+  };
+};
+
+const normalizeMattermostNotificationConfig = (
+  value: unknown,
+): MattermostNotificationConfig => {
+  if (!value || typeof value !== 'object') {
+    return DEFAULT_MATTERMOST_NOTIFICATIONS;
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    moraleEnabled: Boolean(record.moraleEnabled),
+    hosthubStandupEnabled: Boolean(record.hosthubStandupEnabled),
+    hosthubDemoEnabled: Boolean(record.hosthubDemoEnabled),
+    hosthubSecurityAmEnabled: Boolean(record.hosthubSecurityAmEnabled),
+    hosthubSecurityPmEnabled: Boolean(record.hosthubSecurityPmEnabled),
   };
 };
 
@@ -120,6 +152,48 @@ export async function saveProfileWarningConfig({
   const normalized = normalizeProfileWarningConfig(config);
   const payload = {
     id: PROFILE_WARNING_ID,
+    configJson: JSON.stringify(normalized),
+    updatedAt: Date.now(),
+    updatedBy: updatedBy ?? null,
+  };
+
+  await db
+    .insert(siteSettings)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: siteSettings.id,
+      set: {
+        configJson: payload.configJson,
+        updatedAt: payload.updatedAt,
+        updatedBy: payload.updatedBy,
+      },
+    });
+
+  return normalized;
+}
+
+export async function getMattermostNotificationConfig(): Promise<MattermostNotificationConfig> {
+  const rows = await db
+    .select()
+    .from(siteSettings)
+    .where(eq(siteSettings.id, MATTERMOST_NOTIFICATIONS_ID))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return DEFAULT_MATTERMOST_NOTIFICATIONS;
+  const parsed = parseJson(row.configJson);
+  return normalizeMattermostNotificationConfig(parsed);
+}
+
+export async function saveMattermostNotificationConfig({
+  config,
+  updatedBy,
+}: {
+  config: MattermostNotificationConfig;
+  updatedBy?: string | null;
+}): Promise<MattermostNotificationConfig> {
+  const normalized = normalizeMattermostNotificationConfig(config);
+  const payload = {
+    id: MATTERMOST_NOTIFICATIONS_ID,
     configJson: JSON.stringify(normalized),
     updatedAt: Date.now(),
     updatedBy: updatedBy ?? null,

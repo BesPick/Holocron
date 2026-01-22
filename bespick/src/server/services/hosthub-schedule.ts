@@ -531,9 +531,11 @@ export async function ensureDemoDayAssignmentsForWindow({
 export async function refreshDemoDayAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  scope = 'month',
 }: {
   baseDate: Date;
   eligibleUsers: DemoDayAssignee[];
+  scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
   await pruneDemoDayHistory(new Date());
   const { end: currentMonthEnd } = getMonthRange(baseDate);
@@ -546,7 +548,10 @@ export async function refreshDemoDayAssignmentsForWindow({
   const dateKeys = MONTH_WINDOW.map((offset) =>
     getFirstWednesdayKey(addMonths(baseDate, offset)),
   );
-  const assignableKeys = [getFirstWednesdayKey(baseDate)];
+  const assignableKeys =
+    scope === 'window'
+      ? dateKeys
+      : [getFirstWednesdayKey(baseDate)];
 
   const existingRows = await db
     .select()
@@ -882,9 +887,11 @@ export async function ensureStandupAssignmentsForWindow({
 export async function refreshStandupAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  scope = 'month',
 }: {
   baseDate: Date;
   eligibleUsers: StandupAssignee[];
+  scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
   const { end: currentMonthEnd } = getMonthRange(baseDate);
   const currentMonthEndKey = toDateKey(currentMonthEnd);
@@ -894,7 +901,10 @@ export async function refreshStandupAssignmentsForWindow({
 
   const todayKey = toDateKey(new Date());
   const dateKeys = getStandupDateKeysForWindow(baseDate);
-  const assignableKeys = getStandupDateKeysForMonth(baseDate);
+  const assignableKeys =
+    scope === 'window'
+      ? dateKeys
+      : getStandupDateKeysForMonth(baseDate);
 
   const existingRows = await db
     .select()
@@ -1096,9 +1106,11 @@ export async function ensureSecurityShiftAssignmentsForWindow({
 export async function refreshSecurityShiftAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  scope = 'month',
 }: {
   baseDate: Date;
   eligibleUsers: SecurityShiftAssignee[];
+  scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
   const { end: currentMonthEnd } = getMonthRange(baseDate);
   const currentMonthEndKey = toDateKey(currentMonthEnd);
@@ -1108,7 +1120,10 @@ export async function refreshSecurityShiftAssignmentsForWindow({
 
   const todayKey = toDateKey(new Date());
   const dateKeys = getSecurityShiftDateKeysForWindow(baseDate);
-  const assignableKeys = getSecurityShiftDateKeysForMonth(baseDate);
+  const assignableKeys =
+    scope === 'window'
+      ? dateKeys
+      : getSecurityShiftDateKeysForMonth(baseDate);
 
   const existingRows = await db
     .select()
