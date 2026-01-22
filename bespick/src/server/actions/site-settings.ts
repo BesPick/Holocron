@@ -37,7 +37,7 @@ export async function updateWarningBanner({
   }
 
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     const config = await saveWarningBannerConfig({
       config: { enabled, message },
       updatedBy: userId ?? null,
@@ -72,7 +72,7 @@ export async function updateProfileWarning({
   }
 
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     const config = await saveProfileWarningConfig({
       config: { enabled },
       updatedBy: userId ?? null,
