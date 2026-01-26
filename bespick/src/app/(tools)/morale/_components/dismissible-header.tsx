@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 type DismissibleHeaderProps = {
   storageKey: string;
@@ -10,6 +10,16 @@ type DismissibleHeaderProps = {
   collapsedTitle?: string;
 };
 
+const STORAGE_EVENT = 'bespick-storage-update';
+
+const getStoredDismissed = (storageKey: string) => {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(storageKey) === 'true';
+};
+
+const isStorageEvent = (event: Event): event is StorageEvent =>
+  typeof StorageEvent !== 'undefined' && event instanceof StorageEvent;
+
 export function DismissibleHeader({
   storageKey,
   title,
@@ -17,18 +27,35 @@ export function DismissibleHeader({
   dismissLabel,
   collapsedTitle,
 }: DismissibleHeaderProps) {
-  const [isDismissed, setIsDismissed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(storageKey);
-    setIsDismissed(stored === 'true');
-  }, [storageKey]);
+  const isDismissed = useSyncExternalStore(
+    useCallback(
+      (onStoreChange) => {
+        if (typeof window === 'undefined') {
+          return () => undefined;
+        }
+        const handler = (event: Event) => {
+          if (isStorageEvent(event) && event.key && event.key !== storageKey) {
+            return;
+          }
+          onStoreChange();
+        };
+        window.addEventListener('storage', handler);
+        window.addEventListener(STORAGE_EVENT, handler);
+        return () => {
+          window.removeEventListener('storage', handler);
+          window.removeEventListener(STORAGE_EVENT, handler);
+        };
+      },
+      [storageKey],
+    ),
+    useCallback(() => getStoredDismissed(storageKey), [storageKey]),
+    useCallback(() => null, []),
+  );
 
   const handleDismiss = useCallback(() => {
-    setIsDismissed(true);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(storageKey, 'true');
+      window.dispatchEvent(new Event(STORAGE_EVENT));
     }
   }, [storageKey]);
 

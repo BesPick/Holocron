@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import { clerkClient } from '@clerk/nextjs/server';
 
 import { checkRole } from '@/server/auth/check-role';
+import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 import {
   isValidGroup,
   isValidPortfolioForGroup,
   isValidRankCategory,
   isValidRankForCategory,
+  isValidTeam,
 } from '@/lib/org';
 
 export async function GET() {
@@ -17,14 +19,27 @@ export async function GET() {
 
   try {
     const client = await clerkClient();
+    const metadataOptions = await getMetadataOptionsConfig();
+    const groupOptions = metadataOptions.groupOptions;
+    const teamOptions = metadataOptions.teamOptions;
     const users = await client.users.getUserList({ limit: 500 });
     const payload = users.data.map((user) => {
+      const rawTeam = user.publicMetadata.team;
+      const normalizedTeam = isValidTeam(rawTeam, teamOptions)
+        ? rawTeam
+        : null;
       const rawGroup = user.publicMetadata.group;
-      const normalizedGroup = isValidGroup(rawGroup) ? rawGroup : null;
+      const normalizedGroup = isValidGroup(rawGroup, groupOptions)
+        ? rawGroup
+        : null;
       const rawPortfolio = user.publicMetadata.portfolio;
       const normalizedPortfolio =
         normalizedGroup &&
-        isValidPortfolioForGroup(normalizedGroup, rawPortfolio)
+        isValidPortfolioForGroup(
+          normalizedGroup,
+          rawPortfolio,
+          groupOptions,
+        )
           ? rawPortfolio
           : null;
       const rawRankCategory = user.publicMetadata.rankCategory;
@@ -41,6 +56,7 @@ export async function GET() {
         userId: user.id,
         firstName: (user.firstName ?? '').trim(),
         lastName: (user.lastName ?? '').trim(),
+        team: normalizedTeam,
         group: normalizedGroup,
         portfolio: normalizedPortfolio,
         rankCategory: normalizedRankCategory,

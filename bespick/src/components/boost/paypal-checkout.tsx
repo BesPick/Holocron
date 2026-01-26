@@ -23,6 +23,13 @@ type FundingButtonConfig = {
   helper?: string;
 };
 
+type PayPalNamespace = {
+  Buttons?: (
+    options: { fundingSource?: unknown },
+  ) => { isEligible?: () => boolean } | null;
+  FUNDING?: Record<string, unknown>;
+};
+
 const FUNDING_TIERS: FundingTier[] = [
   {
     id: '1',
@@ -89,7 +96,7 @@ function clampAmount(input: number) {
 }
 
 function getEligibleFundingSources(buttons: FundingButtonConfig[]) {
-  const paypal = (window as typeof window & { paypal?: any }).paypal;
+  const paypal = (window as typeof window & { paypal?: PayPalNamespace }).paypal;
   if (!paypal?.Buttons) return null;
   const eligible = new Set<FundingButtonConfig['fundingSource']>();
   for (const { fundingSource } of buttons) {
@@ -126,16 +133,10 @@ function PayPalButtonsPanel({
 }: PayPalButtonsPanelProps) {
   const [{ isPending, isRejected, isResolved }] = usePayPalScriptReducer();
   const showButtons = isResolved && !isRejected;
-  const [eligibleFunding, setEligibleFunding] = useState<
-    Set<FundingButtonConfig['fundingSource']> | null
-  >(null);
-
-  useEffect(() => {
-    if (!showButtons) {
-      setEligibleFunding(null);
-      return;
-    }
-    setEligibleFunding(getEligibleFundingSources(paymentButtons));
+  const eligibleFunding = useMemo(() => {
+    if (!showButtons) return null;
+    if (typeof window === 'undefined') return null;
+    return getEligibleFundingSources(paymentButtons);
   }, [paymentButtons, showButtons]);
 
   const visibleButtons = useMemo(() => {

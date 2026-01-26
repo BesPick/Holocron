@@ -25,10 +25,12 @@ import {
   saveProfileWarningConfig,
   saveWarningBannerConfig,
   saveMattermostNotificationConfig,
+  saveMetadataOptionsConfig,
   type MattermostNotificationConfig,
   type ProfileWarningConfig,
   type WarningBannerConfig,
 } from '@/server/services/site-settings';
+import type { MetadataOptionsConfig } from '@/lib/metadata-options';
 
 export type UpdateWarningBannerResult = {
   success: boolean;
@@ -46,6 +48,12 @@ export type UpdateMattermostNotificationResult = {
   success: boolean;
   message: string;
   config?: MattermostNotificationConfig;
+};
+
+export type UpdateMetadataOptionsResult = {
+  success: boolean;
+  message: string;
+  config?: MetadataOptionsConfig;
 };
 
 export type SendMattermostTestResult = {
@@ -152,6 +160,37 @@ export async function updateMattermostNotifications(
     return {
       success: false,
       message: 'Updating Mattermost notifications failed. Please try again.',
+    };
+  }
+}
+
+export async function updateMetadataOptions(
+  config: MetadataOptionsConfig,
+): Promise<UpdateMetadataOptionsResult> {
+  if (!(await checkRole('admin'))) {
+    return {
+      success: false,
+      message: 'You are not authorized to update site settings.',
+    };
+  }
+
+  try {
+    const { userId } = await auth();
+    const updatedConfig = await saveMetadataOptionsConfig({
+      config,
+      updatedBy: userId ?? null,
+    });
+
+    return {
+      success: true,
+      message: 'Metadata options updated.',
+      config: updatedConfig,
+    };
+  } catch (error) {
+    console.error('Failed to update metadata options', error);
+    return {
+      success: false,
+      message: 'Updating metadata options failed. Please try again.',
     };
   }
 }

@@ -1,4 +1,4 @@
-import type { Group, Portfolio, Rank, RankCategory } from '@/lib/org';
+import type { Group, Portfolio, Rank, RankCategory, Team } from '@/lib/org';
 
 export {};
 
@@ -8,6 +8,7 @@ declare global {
   interface CustomJwtSessionClaims {
     metadata: {
       role?: Roles;
+      team?: Team | null;
       group?: Group | null;
       portfolio?: Portfolio | null;
       rankCategory?: RankCategory | null;

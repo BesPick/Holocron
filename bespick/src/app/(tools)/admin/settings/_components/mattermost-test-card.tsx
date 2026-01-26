@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import { sendMattermostTestDm } from '@/server/actions/site-settings';
 
@@ -59,19 +60,23 @@ export function MattermostTestCard({
   };
 
   return (
-    <section className='rounded-2xl border border-border bg-card/70 p-6 shadow-sm'>
-      <div>
-        <h2 className='text-xl font-semibold text-foreground'>
-          Mattermost test DM
-        </h2>
-        <p className='mt-2 text-sm text-muted-foreground'>
-          Send a test notification to confirm the bot can reach a specific
-          user. The bot resolves the Mattermost user ID from Clerk metadata or
-          a matching email address.
-        </p>
-      </div>
+    <details className='group rounded-2xl border border-border bg-card/70 shadow-sm'>
+      <summary className='flex cursor-pointer items-center justify-between gap-4 px-6 py-5 list-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'>
+        <div>
+          <h2 className='text-xl font-semibold text-foreground'>
+            Mattermost test DM
+          </h2>
+          <p className='mt-2 text-sm text-muted-foreground'>
+            Send a test notification to confirm the bot can reach a specific
+            user. The bot resolves the Mattermost user ID from Clerk metadata or
+            a matching email address.
+          </p>
+        </div>
+        <ChevronDown className='h-5 w-5 text-muted-foreground transition-transform group-open:rotate-180' />
+      </summary>
 
-      <div className='mt-6 space-y-4'>
+      <div className='border-t border-border/60 px-6 pb-6'>
+        <div className='pt-5 space-y-4'>
         <div className='grid gap-3 sm:grid-cols-2'>
           <label className='text-sm text-foreground' htmlFor='eventType'>
             Event type
@@ -134,7 +139,8 @@ export function MattermostTestCard({
             {status.message}
           </div>
         ) : null}
+        </div>
       </div>
-    </section>
+    </details>
   );
 }

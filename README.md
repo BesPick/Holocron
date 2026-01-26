@@ -4,11 +4,14 @@ BESPIN Holocron is BESPIN's internal operations suite: a single Next.js app that
 
 ## Table of Contents
 
+*DISCLAIMER: This README was generated using Chatgpt then edited by the developers. Please direct questions, comments, or error findings to a developer for help.*
+
 - [Vision](#vision)
 - [Purpose & Design](#purpose--design)
 - [Tool Suite](#tool-suite)
   - [Morale (Live)](#morale-live)
   - [HostHub (In Development)](#hosthub-in-development)
+  - [Admin Settings (Live)](#admin-settings-live)
   - [Games (In Development)](#games-in-development)
 - [Tech Stack](#tech-stack)
 - [Architecture & Data Flow](#architecture--data-flow)
@@ -22,7 +25,13 @@ BESPIN Holocron is BESPIN's internal operations suite: a single Next.js app that
   - [5) Run the app locally](#5-run-the-app-locally)
   - [6) Configure Clerk (required for sign-in)](#6-configure-clerk-required-for-sign-in)
   - [7) Optional: enable PayPal Boost](#7-optional-enable-paypal-boost)
+  - [8) Optional: enable Mattermost notifications](#8-optional-enable-mattermost-notifications)
 - [Environment Variables](#environment-variables)
+  - [Required](#required)
+  - [Optional: Access control](#optional-access-control)
+  - [Optional: PayPal](#optional-paypal)
+  - [Optional: Mattermost](#optional-mattermost)
+  - [Optional: App metadata](#optional-app-metadata)
 - [Directory Layout](#directory-layout)
 - [Authentication & Roles](#authentication--roles)
 - [Deployment Notes](#deployment-notes)
@@ -65,13 +74,14 @@ once and then move between tools from the same header.
 
 - Announcements, polls, and voting events with scheduling, auto-archive, and auto-delete.
 - Polls support multi-select, anonymous mode, and admin-only voter breakdowns.
-- Voting events support per-vote pricing and leaderboard modes driven by group/portfolio metadata.
+- Voting events support per-vote pricing, per-user add/remove limits, and leaderboard modes driven by group/portfolio metadata.
+- Zero-cost voting submissions when pricing is disabled.
 - Boost contributions via PayPal checkout.
 - Admin workflows: create/edit, scheduled queue, roster/role management.
 
 ### HostHub (In Development)
 
-- Personal schedule view for upcoming standup and Demo Day assignments.
+- Personal schedule view for standup, demo day, and security shifts.
 - Calendar view for upcoming assignments across the roster.
 - Docs hub embedding the standup schedule, "About Me" guidance, and Demo Day docs.
 - Demo Day history export (CSV download).
@@ -81,7 +91,14 @@ HostHub assignment rules (current):
 
 - Standup shifts auto-assign for Mondays and Thursdays.
 - Demo Day auto-assigns the first Wednesday of each month.
+- Security shifts auto-assign Monday through Friday with AM/PM windows.
 - Eligibility is derived from Clerk publicMetadata (rankCategory + rank).
+
+### Admin Settings (Live)
+
+- Manage metadata options (groups, portfolios, teams, and custom sections).
+- Configure the landing-page warning banner and profile warning nudges.
+- Configure Mattermost notifications and send test messages.
 
 ### Games (In Development)
 
@@ -108,6 +125,7 @@ Next.js App Router -> Server Actions / API Routes -> SQLite (Drizzle)
 - Client components call `useApiQuery` / `useApiMutation`, routed via `src/app/api/rpc/route.ts`.
 - Server actions and services live in `src/server/actions` and `src/server/services`.
 - Live updates for Morale use SSE (`src/app/api/stream/route.ts` + `src/lib/liveEvents`).
+- Site-wide settings live in the `site_settings` table and are managed via `/admin/settings`.
 - Persistent uploads live in `public/uploads` and are tracked in the `uploads` table.
 
 ## Developer Notes
@@ -115,8 +133,8 @@ Next.js App Router -> Server Actions / API Routes -> SQLite (Drizzle)
 - The app lives in `bespick/` (this README sits at the repo root).
 - SQLite database file is created at `bespick/data/bespick.sqlite` on first run.
 - HostHub schedule rules and Google Docs links live in `src/server/services/hosthub-schedule.ts` and `src/lib/hosthub-docs.ts`.
-- Database tables of note: `announcements`, `poll_votes`, `uploads`, `demo_day_assignments`, `standup_assignments`.
-- Clerk `publicMetadata` fields in use today: `role`, `group`, `portfolio`, `rankCategory`, `rank`.
+- Database tables of note: `announcements`, `poll_votes`, `uploads`, `demo_day_assignments`, `standup_assignments`, `security_shift_assignments`, `site_settings`.
+- Clerk `publicMetadata` fields in use today: `role`, `group`, `portfolio`, `rankCategory`, `rank`, `team`.
 - `publishDue` is invoked by the Morale dashboard to auto-publish, archive, and delete scheduled items.
 - If you change Node versions, run `npm rebuild better-sqlite3` to refresh the native module.
 - Tests run with `npm run test` (Vitest). Lint with `npm run lint`.
@@ -129,6 +147,7 @@ Next.js App Router -> Server Actions / API Routes -> SQLite (Drizzle)
 - npm 9+ (or pnpm/bun/yarn if you prefer).
 - Clerk application (publishable + secret keys).
 - Optional: PayPal REST app if you want Boost contributions enabled.
+- Optional: Mattermost bot token if you want shift/announcement notifications.
 
 ### 1) Clone the repo
 
@@ -167,6 +186,15 @@ CLERK_SECRET_KEY=sk_your_key_here
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 
+# Access control (optional - defaults to teambespin.us)
+NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN=teambespin.us
+ALLOWED_EMAIL_DOMAIN=teambespin.us
+CLERK_WEBHOOK_SECRET=
+
+# App URL (used for absolute links in notifications)
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+APP_BASE_URL=http://localhost:3000
+
 # PayPal (optional - leave blank if you do not need Boost payments)
 NEXT_PUBLIC_PAYPAL_CLIENT_ID=
 NEXT_PUBLIC_PAYPAL_CURRENCY=USD
@@ -175,6 +203,12 @@ PAYPAL_CLIENT_ID=
 PAYPAL_CLIENT_SECRET=
 PAYPAL_ENVIRONMENT=sandbox
 PAYPAL_BRAND_NAME=Morale
+
+# Mattermost (optional - for notifications)
+MATTERMOST_URL=
+MATTERMOST_BOT_TOKEN=
+MATTERMOST_EVENT_CHANNEL_ID=
+MATTERMOST_BOT_USER_ID=
 EOF
 ```
 
@@ -202,26 +236,62 @@ If port 3000 is already in use, Next.js will pick 3001 and print it.
 3. Keep `PAYPAL_ENVIRONMENT=sandbox` until you test the full checkout flow.
 4. Switch to `live` when you are ready for real payments.
 
+### 8) Optional: enable Mattermost notifications
+
+1. Create or reuse a Mattermost bot account and generate a bot token.
+2. Set `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`, and `MATTERMOST_EVENT_CHANNEL_ID` in `.env.local`.
+3. Set `NEXT_PUBLIC_APP_URL` or `APP_BASE_URL` so notifications can link back to Holocron.
+4. Open `/admin/settings` to toggle which notifications are sent and to send a test message.
+
 ## Environment Variables
 
-Create `bespick/.env.local` and populate (Next.js loads `.env.local` automatically):
+### Required
 
 | Variable | Description |
 | --- | --- |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Frontend key from your Clerk instance. |
 | `CLERK_SECRET_KEY` | Server-side Clerk secret. |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` / `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | Routes for auth flows (defaults already match `/sign-*`). |
+
+### Optional: Access control
+
+| Variable | Description |
+| --- | --- |
+| `ALLOWED_EMAIL_DOMAIN` | Server-side allowed email domain for sign-ups (defaults to `teambespin.us`). |
+| `NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN` | Client-side allowed domain shown on auth screens (defaults to `teambespin.us`). |
+| `CLERK_WEBHOOK_SECRET` | Enable `/api/clerk/webhook` to auto-delete disallowed sign-ups. |
+
+### Optional: PayPal
+
+| Variable | Description |
+| --- | --- |
 | `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | Client ID from your PayPal REST app (sandbox or live). Used in the browser to load the PayPal JS SDK. |
 | `NEXT_PUBLIC_PAYPAL_CURRENCY` | Optional currency override for the PayPal JS SDK (defaults to `USD`). |
+| `NEXT_PUBLIC_PAYPAL_BUYER_COUNTRY` | Optional buyer country override (defaults to `US`). |
 | `PAYPAL_CLIENT_ID` | Same PayPal client ID, used server-side when exchanging OAuth tokens. |
 | `PAYPAL_CLIENT_SECRET` | PayPal secret used on the server to request OAuth tokens. |
 | `PAYPAL_ENVIRONMENT` | `sandbox` or `live` to control which PayPal base URL is used. |
 | `PAYPAL_BRAND_NAME` | Friendly brand label shown during PayPal checkout (defaults to `Morale`). |
 | `PAYPAL_API_BASE_URL` | Optional override if PayPal gives you a regional API domain. |
-| `NEXT_PUBLIC_APP_VERSION` | Optional override for the footer version string (defaults to `package.json`). |
-| `NEXT_PUBLIC_GIT_SHA` | Optional short git SHA shown in the footer. |
 
 > The PayPal client ID appears twice on purpose: `NEXT_PUBLIC_PAYPAL_CLIENT_ID` is safe to expose to the browser to bootstrap the PayPal JS SDK, while `PAYPAL_CLIENT_ID` stays on the server (together with `PAYPAL_CLIENT_SECRET`) so we can exchange OAuth tokens without leaking secrets.
+
+### Optional: Mattermost
+
+| Variable | Description |
+| --- | --- |
+| `MATTERMOST_URL` | Base URL for your Mattermost instance (example: `https://chat.example.com`). |
+| `MATTERMOST_BOT_TOKEN` | Bot token used to post messages. |
+| `MATTERMOST_EVENT_CHANNEL_ID` | Channel ID for event notifications. |
+| `MATTERMOST_BOT_USER_ID` | Optional explicit bot user ID (auto-fetched if omitted). |
+| `APP_BASE_URL` / `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_APP_BASE_URL` | Base URL used to build links inside notifications. |
+
+### Optional: App metadata
+
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_APP_VERSION` | Optional override for the footer version string (defaults to `package.json`). |
+| `NEXT_PUBLIC_GIT_SHA` | Optional short git SHA shown in the footer. |
 
 ## Directory Layout
 
@@ -232,7 +302,8 @@ bespick/
 │  ├─ app/                # Next.js App Router routes
 │  │  ├─ (landing)/       # Holocron landing page
 │  │  ├─ (tools)/
-│  │  │  ├─ (morale)/     # Morale tool routes
+│  │  │  ├─ admin/        # Admin settings pages
+│  │  │  ├─ morale/       # Morale tool routes
 │  │  │  ├─ hosthub/      # HostHub tool routes
 │  │  │  └─ games/        # Games tool routes
 │  │  └─ api/             # API routes (rpc, stream, payments, admin)
@@ -247,12 +318,13 @@ bespick/
 
 ## Authentication & Roles
 
-- **Clerk middleware** (`src/proxy.ts`) forces authentication for every route except `/sign-in` and `/sign-up`, and blocks `/admin/*` unless `sessionClaims.metadata.role === 'admin'`.
-- **Role values** are defined in `src/types/globals.d.ts` (`'admin' | ''`). Only admins currently unlock admin routes.
-- **Granting roles** can be done via `/morale/admin/roster` (which uses the `updateUserRole` server action) or directly in the Clerk dashboard by editing a user's `publicMetadata.role`.
-- **Group, portfolio, and rank** metadata live in `publicMetadata` and power voting and HostHub eligibility.
-- **Server enforcement**: mutations call `src/server/auth` helpers to ensure the user is logged in. Client routes rely on Clerk hooks (`useUser`) for conditional rendering.
-- **Auto-delete disallowed signups**: Configure a Clerk webhook pointing to `/api/clerk/webhook` and set `CLERK_WEBHOOK_SECRET`. New users without an allowed email domain are deleted automatically.
+- **Clerk middleware** (`src/proxy.ts`) forces authentication for every route except `/sign-in` and `/sign-up`.
+- **Morale admin routes** (`/morale/admin/*`) require role `admin` or `moderator`.
+- **Admin settings** (`/admin/settings`) are restricted to role `admin` via `checkRole` on the server.
+- **Role values** are defined in `src/types/globals.d.ts` (`'admin' | 'moderator' | ''`).
+- **Granting roles** can be done via `/morale/admin/roster` (uses `updateUserRole`) or directly in the Clerk dashboard by editing a user's `publicMetadata.role`.
+- **Group, portfolio, rank, and team** metadata live in `publicMetadata` and power voting and HostHub eligibility.
+- **Auto-delete disallowed signups**: configure a Clerk webhook pointing to `/api/clerk/webhook` and set `CLERK_WEBHOOK_SECRET`. New users without an allowed email domain are deleted automatically.
 
 ## Deployment Notes
 
@@ -573,6 +645,6 @@ sudo systemctl restart nginx
 - **`npm ERR! ERESOLVE`**: Dependency resolution conflict. Ensure Node 20.11.1, use the repo lockfile (`npm ci`) and do not mix yarn/pnpm.
 - **`npm ci` fails with EUSAGE**: Lockfile missing in the repo. Use `npm install` to generate it or pull the latest lockfile.
 - **PayPal `invalid_client` (401)**: Wrong credentials or environment mismatch. For sandbox, set `PAYPAL_ENVIRONMENT=sandbox` and update both server and `NEXT_PUBLIC_` client ID, then `npm run build` and `sudo systemctl restart holocron`.
-- **TLS handshake errors**: Cloudflare SSL mode mismatch. Use `Full (strict)` with an Origin Certificate or turn off proxy and use Let’s Encrypt.
+- **TLS handshake errors**: Cloudflare SSL mode mismatch. Use `Full (strict)` with an Origin Certificate or turn off proxy and use Let's Encrypt.
 
 With these pieces in place, you can onboard admins, run morale events, and keep HostHub schedules current while the next tools come online.

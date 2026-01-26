@@ -3,22 +3,26 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 
 import { checkRole } from '@/server/auth/check-role';
+import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 import {
   type Group,
   type Portfolio,
   type Rank,
   type RankCategory,
+  type Team,
   getPortfoliosForGroup,
   isValidGroup,
   isValidPortfolioForGroup,
   getRanksForCategory,
   isValidRankCategory,
   isValidRankForCategory,
+  isValidTeam,
 } from '@/lib/org';
 
 export type UpdateUserRoleResult = {
   success: boolean;
   role: string | null;
+  team: Team | null;
   group: Group | null;
   portfolio: Portfolio | null;
   rankCategory: RankCategory | null;
@@ -37,6 +41,7 @@ const normalizeRole = (role: string | null) =>
 export async function updateUserRole({
   id,
   role,
+  team,
   group,
   portfolio,
   rankCategory,
@@ -44,6 +49,7 @@ export async function updateUserRole({
 }: {
   id: string;
   role: string | null;
+  team?: string | null;
   group?: string | null;
   portfolio?: string | null;
   rankCategory?: string | null;
@@ -53,6 +59,7 @@ export async function updateUserRole({
     return {
       success: false,
       role: null,
+      team: null,
       group: null,
       portfolio: null,
       rankCategory: null,
@@ -63,9 +70,13 @@ export async function updateUserRole({
 
   try {
     const client = await clerkClient();
+    const metadataOptions = await getMetadataOptionsConfig();
+    const groupOptions = metadataOptions.groupOptions;
+    const teamOptions = metadataOptions.teamOptions;
     const user = await client.users.getUser(id);
     const existingRole = (user.publicMetadata.role as string | null) ?? null;
     const normalizedExistingRole = normalizeRole(existingRole);
+    const existingTeam = (user.publicMetadata.team as Team | null) ?? null;
     const existingGroup = (user.publicMetadata.group as Group | null) ?? null;
     const existingPortfolio =
       (user.publicMetadata.portfolio as Portfolio | null) ?? null;
@@ -73,11 +84,21 @@ export async function updateUserRole({
       (user.publicMetadata.rankCategory as RankCategory | null) ?? null;
     const existingRank = (user.publicMetadata.rank as Rank | null) ?? null;
     const normalizedRole = normalizeRole(role);
+    const normalizedTeam =
+      team === undefined
+        ? isValidTeam(existingTeam, teamOptions)
+          ? existingTeam
+          : null
+        : isValidTeam(team, teamOptions)
+          ? team
+          : null;
 
     const normalizedGroup =
       group === undefined
-        ? existingGroup
-        : typeof group === 'string' && isValidGroup(group)
+        ? isValidGroup(existingGroup, groupOptions)
+          ? existingGroup
+          : null
+        : typeof group === 'string' && isValidGroup(group, groupOptions)
           ? group
           : null;
 
@@ -86,21 +107,29 @@ export async function updateUserRole({
       normalizedPortfolio =
         normalizedGroup &&
         existingPortfolio &&
-        isValidPortfolioForGroup(normalizedGroup, existingPortfolio)
+        isValidPortfolioForGroup(
+          normalizedGroup,
+          existingPortfolio,
+          groupOptions,
+        )
           ? existingPortfolio
           : null;
     } else {
       normalizedPortfolio =
         typeof portfolio === 'string' &&
         normalizedGroup &&
-        isValidPortfolioForGroup(normalizedGroup, portfolio)
+        isValidPortfolioForGroup(
+          normalizedGroup,
+          portfolio,
+          groupOptions,
+        )
           ? portfolio
           : null;
     }
 
     if (
       normalizedGroup &&
-      getPortfoliosForGroup(normalizedGroup).length === 0
+      getPortfoliosForGroup(normalizedGroup, groupOptions).length === 0
     ) {
       normalizedPortfolio = null;
     }
@@ -137,6 +166,7 @@ export async function updateUserRole({
     const nextMetadata = {
       ...user.publicMetadata,
       role: normalizedRole,
+      team: normalizedTeam,
       group: normalizedGroup,
       portfolio: normalizedPortfolio,
       rankCategory: normalizedRankCategory,
@@ -150,9 +180,24 @@ export async function updateUserRole({
     const nextRole = normalizeRole(
       (response.publicMetadata.role as string | null) ?? null,
     );
-    const nextGroup = (response.publicMetadata.group as Group | null) ?? null;
+    const nextTeam = isValidTeam(response.publicMetadata.team, teamOptions)
+      ? response.publicMetadata.team
+      : null;
+    const nextGroup = isValidGroup(
+      response.publicMetadata.group,
+      groupOptions,
+    )
+      ? response.publicMetadata.group
+      : null;
     const nextPortfolio =
-      (response.publicMetadata.portfolio as Portfolio | null) ?? null;
+      nextGroup &&
+      isValidPortfolioForGroup(
+        nextGroup,
+        response.publicMetadata.portfolio,
+        groupOptions,
+      )
+        ? response.publicMetadata.portfolio
+        : null;
     const nextRankCategory = isValidRankCategory(
       response.publicMetadata.rankCategory,
     )
@@ -174,6 +219,7 @@ export async function updateUserRole({
     return {
       success: true,
       role: nextRole,
+      team: nextTeam,
       group: nextGroup,
       portfolio: nextPortfolio,
       rankCategory: nextRankCategory,
@@ -185,6 +231,7 @@ export async function updateUserRole({
     return {
       success: false,
       role: null,
+      team: null,
       group: null,
       portfolio: null,
       rankCategory: null,

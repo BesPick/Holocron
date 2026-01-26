@@ -6,7 +6,9 @@ import { useUser } from '@clerk/nextjs';
 import {
   isValidGroup,
   isValidRankCategory,
+  isValidTeam,
 } from '@/lib/org';
+import { useMetadataOptions } from '@/components/metadata/metadata-options-provider';
 import {
   requestAssignmentModalOpen,
   type AssignmentModalFocus,
@@ -20,6 +22,7 @@ export function MissingAssignmentsWarning({
   enabled = true,
 }: MissingAssignmentsWarningProps) {
   const { user, isLoaded, isSignedIn } = useUser();
+  const { groupOptions, teamOptions } = useMetadataOptions();
 
   if (!enabled) return null;
   if (!isLoaded || !isSignedIn || !user) return null;
@@ -27,22 +30,38 @@ export function MissingAssignmentsWarning({
   const hasRankCategory = isValidRankCategory(
     user.publicMetadata?.rankCategory,
   );
-  const hasGroup = isValidGroup(user.publicMetadata?.group);
+  const groupRequired = groupOptions.length > 0;
+  const teamRequired = teamOptions.length > 0;
+  const hasGroup =
+    !groupRequired ||
+    isValidGroup(user.publicMetadata?.group, groupOptions);
+  const hasTeam =
+    !teamRequired || isValidTeam(user.publicMetadata?.team, teamOptions);
 
-  if (hasRankCategory && hasGroup) return null;
+  if (hasRankCategory && hasGroup && hasTeam) return null;
 
   const missingParts: string[] = [];
   if (!hasRankCategory) missingParts.push('rank category');
-  if (!hasGroup) missingParts.push('group');
+  if (groupRequired && !hasGroup) missingParts.push('group');
+  if (teamRequired && !hasTeam) missingParts.push('team');
 
   const missingLabel =
     missingParts.length === 1
       ? missingParts[0]
-      : 'rank category and group';
+      : missingParts.length === 2
+        ? `${missingParts[0]} and ${missingParts[1]}`
+        : `${missingParts.slice(0, -1).join(', ')} and ${
+            missingParts[missingParts.length - 1]
+          }`;
 
-  const focus: AssignmentModalFocus = !hasRankCategory
-    ? 'rankCategory'
-    : 'group';
+  let focus: AssignmentModalFocus = 'group';
+  if (!hasRankCategory) {
+    focus = 'rankCategory';
+  } else if (groupRequired && !hasGroup) {
+    focus = 'group';
+  } else if (teamRequired && !hasTeam) {
+    focus = 'team';
+  }
 
   const handleUpdate = () => {
     requestAssignmentModalOpen({ focus });

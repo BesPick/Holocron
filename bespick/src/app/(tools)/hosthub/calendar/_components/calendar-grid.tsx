@@ -124,7 +124,7 @@ export function CalendarGrid({
 
       <div className='hidden sm:block'>
         <div className='overflow-x-auto pb-3 lg:overflow-visible'>
-          <div className='min-w-[48rem] md:min-w-[64rem] lg:min-w-0'>
+          <div className='min-w-3xl md:min-w-5xl lg:min-w-0'>
             <div className='grid grid-cols-7 gap-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground sm:text-sm'>
               {WEEKDAY_LABELS.map((label) => (
                 <span key={label} className='text-center'>
@@ -144,7 +144,7 @@ export function CalendarGrid({
                     type='button'
                     onClick={() => onDayClick(day)}
                     disabled={!day.inMonth}
-                    className={`min-h-[7.5rem] rounded-2xl border px-2.5 py-2.5 text-left transition sm:min-h-[9rem] lg:min-h-[10.5rem] ${
+                    className={`min-h-30 rounded-2xl border px-2.5 py-2.5 text-left transition sm:min-h-36 lg:min-h-[42 ${
                       day.inMonth
                         ? 'border-border bg-background text-foreground hover:bg-secondary/20'
                         : 'border-border/60 bg-secondary/40 text-muted-foreground'

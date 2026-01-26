@@ -5,6 +5,7 @@ import { checkRole } from '@/server/auth/check-role';
 import { getPrimaryEmail } from '@/server/auth';
 import {
   getMattermostNotificationConfig,
+  getMetadataOptionsConfig,
   getProfileWarningConfig,
   getWarningBannerConfig,
 } from '@/server/services/site-settings';
@@ -13,6 +14,7 @@ import { ProfileWarningCard } from './_components/profile-warning-card';
 import { WarningBannerCard } from './_components/warning-banner-card';
 import { MattermostNotificationsCard } from './_components/mattermost-notifications-card';
 import { MattermostTestCard } from './_components/mattermost-test-card';
+import { MetadataOptionsCard } from './_components/metadata-options-card';
 
 export default async function AdminSettingsPage() {
   if (!(await checkRole('admin'))) {
@@ -51,6 +53,7 @@ export default async function AdminSettingsPage() {
   const warningBanner = await getWarningBannerConfig();
   const profileWarning = await getProfileWarningConfig();
   const mattermostNotifications = await getMattermostNotificationConfig();
+  const metadataOptions = await getMetadataOptionsConfig();
 
   return (
     <div className='mx-auto w-full max-w-5xl space-y-8 px-4 py-10'>
@@ -63,6 +66,7 @@ export default async function AdminSettingsPage() {
       </header>
 
       <div className='space-y-6'>
+        <MetadataOptionsCard initialConfig={metadataOptions} />
         <WarningBannerCard initialConfig={warningBanner} />
         <ProfileWarningCard initialConfig={profileWarning} />
         <MattermostNotificationsCard

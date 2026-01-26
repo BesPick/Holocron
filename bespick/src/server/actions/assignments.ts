@@ -7,16 +7,20 @@ import {
   type Portfolio,
   type Rank,
   type RankCategory,
+  type Team,
   getPortfoliosForGroup,
   isValidGroup,
   isValidPortfolioForGroup,
   getRanksForCategory,
   isValidRankCategory,
   isValidRankForCategory,
+  isValidTeam,
 } from '@/lib/org';
+import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 
 export type UpdateMyAssignmentsResult = {
   success: boolean;
+  team: Team | null;
   group: Group | null;
   portfolio: Portfolio | null;
   rankCategory: RankCategory | null;
@@ -25,11 +29,13 @@ export type UpdateMyAssignmentsResult = {
 };
 
 export async function updateMyAssignments({
+  team,
   group,
   portfolio,
   rankCategory,
   rank,
 }: {
+  team: string | null;
   group: string | null;
   portfolio: string | null;
   rankCategory: string | null;
@@ -40,6 +46,7 @@ export async function updateMyAssignments({
   if (!userId) {
     return {
       success: false,
+      team: null,
       group: null,
       portfolio: null,
       rankCategory: null,
@@ -51,7 +58,11 @@ export async function updateMyAssignments({
   try {
     const client = await clerkClient();
     const user = await client.users.getUser(userId);
-    const normalizedGroup = isValidGroup(group) ? group : null;
+    const metadataOptions = await getMetadataOptionsConfig();
+    const groupOptions = metadataOptions.groupOptions;
+    const teamOptions = metadataOptions.teamOptions;
+    const normalizedTeam = isValidTeam(team, teamOptions) ? team : null;
+    const normalizedGroup = isValidGroup(group, groupOptions) ? group : null;
     const normalizedRankCategory = isValidRankCategory(rankCategory)
       ? rankCategory
       : null;
@@ -61,7 +72,7 @@ export async function updateMyAssignments({
       normalizedPortfolio = null;
     } else if (
       portfolio &&
-      isValidPortfolioForGroup(normalizedGroup, portfolio)
+      isValidPortfolioForGroup(normalizedGroup, portfolio, groupOptions)
     ) {
       normalizedPortfolio = portfolio;
     } else {
@@ -70,7 +81,7 @@ export async function updateMyAssignments({
 
     if (
       normalizedGroup &&
-      getPortfoliosForGroup(normalizedGroup).length === 0
+      getPortfoliosForGroup(normalizedGroup, groupOptions).length === 0
     ) {
       normalizedPortfolio = null;
     }
@@ -93,6 +104,7 @@ export async function updateMyAssignments({
 
     const nextMetadata = {
       ...user.publicMetadata,
+      team: normalizedTeam,
       group: normalizedGroup,
       portfolio: normalizedPortfolio,
       rankCategory: normalizedRankCategory,
@@ -103,12 +115,19 @@ export async function updateMyAssignments({
       publicMetadata: nextMetadata,
     });
 
-    const nextGroup = isValidGroup(response.publicMetadata.group)
+    const nextTeam = isValidTeam(response.publicMetadata.team, teamOptions)
+      ? response.publicMetadata.team
+      : null;
+    const nextGroup = isValidGroup(response.publicMetadata.group, groupOptions)
       ? response.publicMetadata.group
       : null;
     const nextPortfolio =
       nextGroup &&
-      isValidPortfolioForGroup(nextGroup, response.publicMetadata.portfolio)
+      isValidPortfolioForGroup(
+        nextGroup,
+        response.publicMetadata.portfolio,
+        groupOptions,
+      )
         ? response.publicMetadata.portfolio
         : null;
     const nextRankCategory = isValidRankCategory(
@@ -124,6 +143,7 @@ export async function updateMyAssignments({
 
     return {
       success: true,
+      team: nextTeam,
       group: nextGroup,
       portfolio: nextPortfolio,
       rankCategory: nextRankCategory,
@@ -134,6 +154,7 @@ export async function updateMyAssignments({
     console.error('Failed to update assignments', error);
     return {
       success: false,
+      team: null,
       group: null,
       portfolio: null,
       rankCategory: null,

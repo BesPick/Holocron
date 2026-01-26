@@ -1,18 +1,8 @@
-export type Group =
-  | 'C-Suite'
-  | 'Security'
-  | 'SBO'
-  | 'Stan/Eval'
-  | 'Products'
-  | 'Enterprise';
+export type Group = string;
 
-export type Portfolio =
-  | 'Spec Ops'
-  | 'Support'
-  | 'Logistics'
-  | 'MOSS'
-  | 'Atlas'
-  | 'Forge';
+export type Portfolio = string;
+
+export type Team = string;
 
 export type RankCategory = 'Civilian' | 'Enlisted' | 'Officer';
 
@@ -47,6 +37,11 @@ export type GroupOption = {
   portfolios: readonly Portfolio[];
 };
 
+export type TeamOption = {
+  value: Team;
+  label: string;
+};
+
 export type RankCategoryOption = {
   value: RankCategory;
   label: string;
@@ -67,6 +62,23 @@ export const GROUP_OPTIONS: readonly GroupOption[] = [
     portfolios: ['Atlas', 'Forge'],
   },
   { value: 'Stan/Eval', label: 'Stan/Eval', portfolios: [] },
+] as const;
+
+export const TEAM_OPTIONS: readonly TeamOption[] = [
+  { value: 'TAK', label: 'TAK' },
+  { value: 'DTAK', label: 'DTAK' },
+  { value: 'Forge', label: 'Forge' },
+  { value: 'Security', label: 'Security' },
+  { value: 'Moss', label: 'Moss' },
+  { value: 'ViP', label: 'ViP' },
+  { value: 'Highground', label: 'Highground' },
+  { value: 'Lighthouse', label: 'Lighthouse' },
+  { value: 'Arrakis', label: 'Arrakis' },
+  { value: 'Pluto Web', label: 'Pluto Web' },
+  { value: 'Pluto Mobile', label: 'Pluto Mobile' },
+  { value: 'Stan/Eval', label: 'Stan/Eval' },
+  { value: 'Lowdown', label: 'Lowdown' },
+  { value: 'N/A', label: 'N/A' },
 ] as const;
 
 export const RANK_CATEGORY_OPTIONS: readonly RankCategoryOption[] = [
@@ -100,17 +112,32 @@ export const OFFICER_RANKS: readonly OfficerRank[] = [
   'O-10',
 ] as const;
 
-export function isValidGroup(value: unknown): value is Group {
-  return GROUP_OPTIONS.some((option) => option.value === value);
+export function isValidGroup(
+  value: unknown,
+  options: readonly GroupOption[] = GROUP_OPTIONS,
+): value is Group {
+  if (typeof value !== 'string') return false;
+  return options.some((option) => option.value === value);
+}
+
+export function isValidTeam(
+  value: unknown,
+  options: readonly TeamOption[] = TEAM_OPTIONS,
+): value is Team {
+  if (typeof value !== 'string') return false;
+  return options.some((option) => option.value === value);
 }
 
 export function isValidRankCategory(value: unknown): value is RankCategory {
   return RANK_CATEGORY_OPTIONS.some((option) => option.value === value);
 }
 
-export function getPortfoliosForGroup(group: Group | null | undefined) {
+export function getPortfoliosForGroup(
+  group: Group | null | undefined,
+  options: readonly GroupOption[] = GROUP_OPTIONS,
+) {
   if (!group) return [] as const;
-  const option = GROUP_OPTIONS.find((option) => option.value === group);
+  const option = options.find((option) => option.value === group);
   return (option?.portfolios ?? []) as readonly Portfolio[];
 }
 
@@ -125,9 +152,10 @@ export function getRanksForCategory(
 export function isValidPortfolioForGroup(
   group: Group | null | undefined,
   portfolio: unknown,
+  options: readonly GroupOption[] = GROUP_OPTIONS,
 ): portfolio is Portfolio {
   if (!group || typeof portfolio !== 'string') return false;
-  return getPortfoliosForGroup(group).includes(portfolio as Portfolio);
+  return getPortfoliosForGroup(group, options).includes(portfolio as Portfolio);
 }
 
 export function isValidRankForCategory(

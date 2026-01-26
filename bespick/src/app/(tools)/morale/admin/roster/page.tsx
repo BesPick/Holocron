@@ -5,20 +5,18 @@ import { checkRole } from '@/server/auth/check-role';
 
 import {
   ENLISTED_RANKS,
-  GROUP_OPTIONS,
   OFFICER_RANKS,
   isValidGroup,
   isValidPortfolioForGroup,
   isValidRankCategory,
   isValidRankForCategory,
+  isValidTeam,
 } from '@/lib/org';
+import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 
 import { SearchUsers } from './_components/SearchUsers';
 import { UserRoleCard } from './_components/UserRoleCard';
 
-const ALL_PORTFOLIOS = GROUP_OPTIONS.flatMap(
-  (option) => option.portfolios,
-).map((value) => value as string);
 const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS].map(
   (value) => value as string,
 );
@@ -44,6 +42,12 @@ export default async function AdminRosterPage({
   const canEditRoster = await checkRole('admin');
 
   const params = await searchParams;
+  const metadataOptions = await getMetadataOptionsConfig();
+  const groupOptions = metadataOptions.groupOptions;
+  const teamOptions = metadataOptions.teamOptions;
+  const allPortfolios = groupOptions.flatMap((option) =>
+    option.portfolios.map((value) => value as string),
+  );
   const getParam = (key: string) => {
     const value = params?.[key];
     if (Array.isArray(value)) {
@@ -54,6 +58,7 @@ export default async function AdminRosterPage({
 
   const query = getParam('search');
   const rawRole = getParam('role');
+  const rawTeam = getParam('team');
   const rawGroup = getParam('group');
   const rawPortfolio = getParam('portfolio');
   const rawRankCategory = getParam('rankCategory');
@@ -67,7 +72,12 @@ export default async function AdminRosterPage({
     rawRole === 'member'
       ? rawRole
       : '';
-  const groupFilter = isValidGroup(rawGroup)
+  const teamFilter = isValidTeam(rawTeam, teamOptions)
+    ? rawTeam
+    : isUnassigned(rawTeam)
+    ? UNASSIGNED_VALUE
+    : '';
+  const groupFilter = isValidGroup(rawGroup, groupOptions)
     ? rawGroup
     : isUnassigned(rawGroup)
     ? UNASSIGNED_VALUE
@@ -78,14 +88,18 @@ export default async function AdminRosterPage({
     ? UNASSIGNED_VALUE
     : '';
   const isKnownPortfolio = (value: string) =>
-    ALL_PORTFOLIOS.includes(value);
+    allPortfolios.includes(value);
   const isKnownRank = (value: string) => ALL_RANKS.includes(value);
 
   const portfolioFilter = isUnassigned(rawPortfolio)
     ? UNASSIGNED_VALUE
     : rawPortfolio &&
       (groupFilter && groupFilter !== UNASSIGNED_VALUE
-        ? isValidPortfolioForGroup(groupFilter, rawPortfolio)
+        ? isValidPortfolioForGroup(
+            groupFilter,
+            rawPortfolio,
+            groupOptions,
+          )
         : isKnownPortfolio(rawPortfolio))
     ? rawPortfolio
     : '';
@@ -100,6 +114,7 @@ export default async function AdminRosterPage({
   const hasFilters = Boolean(
     query ||
       roleFilter ||
+      teamFilter ||
       groupFilter ||
       portfolioFilter ||
       rankCategoryFilter ||
@@ -127,12 +142,18 @@ export default async function AdminRosterPage({
       ?.emailAddress ?? 'No email available';
 
   const normalizedUsers = users.map((user) => {
+    const rawTeam = user.publicMetadata.team;
+    const normalizedTeam = isValidTeam(rawTeam, teamOptions)
+      ? rawTeam
+      : null;
     const rawGroup = user.publicMetadata.group;
-    const normalizedGroup = isValidGroup(rawGroup) ? rawGroup : null;
+    const normalizedGroup = isValidGroup(rawGroup, groupOptions)
+      ? rawGroup
+      : null;
     const rawPortfolio = user.publicMetadata.portfolio;
     const normalizedPortfolio =
       normalizedGroup &&
-      isValidPortfolioForGroup(normalizedGroup, rawPortfolio)
+      isValidPortfolioForGroup(normalizedGroup, rawPortfolio, groupOptions)
         ? rawPortfolio
         : null;
     const rawRankCategory = user.publicMetadata.rankCategory;
@@ -155,6 +176,7 @@ export default async function AdminRosterPage({
 
     return {
       user,
+      normalizedTeam,
       normalizedGroup,
       normalizedPortfolio,
       normalizedRankCategory,
@@ -174,6 +196,19 @@ export default async function AdminRosterPage({
       return false;
     }
     if (roleFilter === 'member' && entry.normalizedRole !== 'member') {
+      return false;
+    }
+    if (
+      teamFilter === UNASSIGNED_VALUE &&
+      entry.normalizedTeam !== null
+    ) {
+      return false;
+    }
+    if (
+      teamFilter &&
+      teamFilter !== UNASSIGNED_VALUE &&
+      entry.normalizedTeam !== teamFilter
+    ) {
       return false;
     }
     if (
@@ -278,6 +313,7 @@ export default async function AdminRosterPage({
       fullName,
       email: primaryEmail(user),
       role: entry.normalizedRole,
+      team: entry.normalizedTeam,
       group: entry.normalizedGroup,
       portfolio: entry.normalizedPortfolio,
       rankCategory: entry.normalizedRankCategory,
@@ -292,6 +328,7 @@ export default async function AdminRosterPage({
       'Email',
       'Role',
       'Group',
+      'Team',
       'Portfolio',
       'Rank Category',
       'Rank',
@@ -308,6 +345,7 @@ export default async function AdminRosterPage({
         entry.email,
         roleLabel,
         entry.group ?? 'No group assigned',
+        entry.team ?? 'No team assigned',
         entry.portfolio ?? 'No portfolio assigned',
         entry.rankCategory ?? 'No rank category',
         entry.rank ?? 'No rank assigned',
@@ -363,6 +401,7 @@ export default async function AdminRosterPage({
                 fullName: entry.fullName,
                 email: entry.email,
                 role: entry.rawRole,
+                team: entry.team,
                 group: entry.group,
                 portfolio: entry.portfolio,
                 rankCategory: entry.rankCategory,

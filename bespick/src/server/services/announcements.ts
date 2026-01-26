@@ -13,6 +13,7 @@ import { deleteUploads } from '@/server/services/storage';
 import { notifyMoraleAnnouncementPublished } from '@/server/services/mattermost-notifications';
 import { broadcast } from '@/server/events';
 import { isValidGroup, isValidPortfolioForGroup } from '@/lib/org';
+import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 import type {
   AnnouncementDoc,
   Id,
@@ -194,14 +195,22 @@ type VotingRosterFilters = {
 async function loadVotingRoster(): Promise<VotingRosterEntry[]> {
   try {
     const client = await clerkClient();
+    const metadataOptions = await getMetadataOptionsConfig();
+    const groupOptions = metadataOptions.groupOptions;
     const users = await client.users.getUserList({ limit: 500 });
     return users.data.map((user) => {
       const rawGroup = user.publicMetadata.group;
-      const normalizedGroup = isValidGroup(rawGroup) ? rawGroup : null;
+      const normalizedGroup = isValidGroup(rawGroup, groupOptions)
+        ? rawGroup
+        : null;
       const rawPortfolio = user.publicMetadata.portfolio;
       const normalizedPortfolio =
         normalizedGroup &&
-        isValidPortfolioForGroup(normalizedGroup, rawPortfolio)
+        isValidPortfolioForGroup(
+          normalizedGroup,
+          rawPortfolio,
+          groupOptions,
+        )
           ? rawPortfolio
           : null;
       return {

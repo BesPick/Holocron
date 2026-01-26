@@ -1,21 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { Announcement } from '../_components/types';
 
 export function useLocalActivities(activities?: Announcement[]) {
-  const [localActivities, setLocalActivities] = useState<
-    Announcement[] | null
-  >(null);
+  const [localState, setLocalState] = useState(() => ({
+    source: activities,
+    items: activities ?? null,
+  }));
 
-  useEffect(() => {
-    if (activities) {
-      setLocalActivities(activities);
-    }
-  }, [activities]);
+  const resolvedActivities =
+    localState.source === activities
+      ? localState.items
+      : activities ?? null;
+
+  const setLocalActivities = useCallback(
+    (
+      value:
+        | Announcement[]
+        | null
+        | ((previous: Announcement[] | null) => Announcement[] | null),
+    ) => {
+      setLocalState((prev) => {
+        const base =
+          prev.source === activities ? prev.items : activities ?? null;
+        const nextItems =
+          typeof value === 'function'
+            ? value(base)
+            : value;
+        return { source: activities, items: nextItems };
+      });
+    },
+    [activities],
+  );
 
   return {
-    activities: localActivities ?? activities ?? [],
+    activities: resolvedActivities ?? activities ?? [],
     setLocalActivities,
   };
 }

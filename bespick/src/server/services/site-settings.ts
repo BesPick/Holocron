@@ -2,6 +2,13 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '@/server/db/client';
 import { siteSettings } from '@/server/db/schema';
+import {
+  DEFAULT_METADATA_OPTIONS,
+  RESERVED_METADATA_SECTION_IDS,
+  type MetadataCustomSection,
+  type MetadataOptionsConfig,
+} from '@/lib/metadata-options';
+import type { GroupOption, TeamOption } from '@/lib/org';
 
 export type WarningBannerConfig = {
   enabled: boolean;
@@ -23,6 +30,7 @@ export type MattermostNotificationConfig = {
 const WARNING_BANNER_ID = 'warning-banner';
 const PROFILE_WARNING_ID = 'profile-warning';
 const MATTERMOST_NOTIFICATIONS_ID = 'mattermost-notifications';
+const METADATA_OPTIONS_ID = 'metadata-options';
 const DEFAULT_WARNING_BANNER: WarningBannerConfig = {
   enabled: false,
   message: '',
@@ -36,6 +44,102 @@ const DEFAULT_MATTERMOST_NOTIFICATIONS: MattermostNotificationConfig = {
   hosthubDemoEnabled: true,
   hosthubSecurityAmEnabled: true,
   hosthubSecurityPmEnabled: true,
+};
+
+const slugify = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const normalizeOptionList = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const options: string[] = [];
+  for (const entry of value) {
+    const raw =
+      typeof entry === 'string'
+        ? entry.trim()
+        : entry && typeof entry === 'object' && 'value' in entry
+          ? typeof (entry as { value?: unknown }).value === 'string'
+            ? (entry as { value: string }).value.trim()
+            : ''
+          : '';
+    if (!raw || seen.has(raw)) continue;
+    seen.add(raw);
+    options.push(raw);
+  }
+  return options;
+};
+
+const normalizeGroupOptions = (value: unknown): GroupOption[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const groups: GroupOption[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const rawValue = typeof record.value === 'string' ? record.value.trim() : '';
+    const rawLabel = typeof record.label === 'string' ? record.label.trim() : '';
+    const groupValue = rawValue || rawLabel;
+    if (!groupValue || seen.has(groupValue)) continue;
+    const portfolios = normalizeOptionList(record.portfolios);
+    groups.push({
+      value: groupValue,
+      label: rawLabel || groupValue,
+      portfolios,
+    });
+    seen.add(groupValue);
+  }
+  return groups;
+};
+
+const normalizeTeamOptions = (value: unknown): TeamOption[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const teams: TeamOption[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string') {
+      const trimmed = entry.trim();
+      if (!trimmed || seen.has(trimmed)) continue;
+      teams.push({ value: trimmed, label: trimmed });
+      seen.add(trimmed);
+      continue;
+    }
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const rawValue = typeof record.value === 'string' ? record.value.trim() : '';
+    const rawLabel = typeof record.label === 'string' ? record.label.trim() : '';
+    const teamValue = rawValue || rawLabel;
+    if (!teamValue || seen.has(teamValue)) continue;
+    teams.push({ value: teamValue, label: rawLabel || teamValue });
+    seen.add(teamValue);
+  }
+  return teams;
+};
+
+const normalizeCustomSections = (value: unknown): MetadataCustomSection[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const sections: MetadataCustomSection[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const rawLabel = typeof record.label === 'string' ? record.label.trim() : '';
+    const rawId = typeof record.id === 'string' ? record.id.trim() : '';
+    const derivedId = rawId || slugify(rawLabel);
+    if (!derivedId || RESERVED_METADATA_SECTION_IDS.has(derivedId)) continue;
+    if (seen.has(derivedId)) continue;
+    const options = normalizeOptionList(record.options);
+    sections.push({
+      id: derivedId,
+      label: rawLabel || derivedId,
+      options,
+    });
+    seen.add(derivedId);
+  }
+  return sections;
 };
 
 const parseJson = (raw: string) => {
@@ -85,6 +189,30 @@ const normalizeMattermostNotificationConfig = (
     hosthubDemoEnabled: Boolean(record.hosthubDemoEnabled),
     hosthubSecurityAmEnabled: Boolean(record.hosthubSecurityAmEnabled),
     hosthubSecurityPmEnabled: Boolean(record.hosthubSecurityPmEnabled),
+  };
+};
+
+const normalizeMetadataOptionsConfig = (
+  value: unknown,
+): MetadataOptionsConfig => {
+  if (!value || typeof value !== 'object') {
+    return DEFAULT_METADATA_OPTIONS;
+  }
+  const record = value as Record<string, unknown>;
+  const hasGroupOptions = 'groupOptions' in record;
+  const hasTeamOptions = 'teamOptions' in record;
+  const groupOptions = normalizeGroupOptions(record.groupOptions);
+  const teamOptions = normalizeTeamOptions(record.teamOptions);
+  const customSections = normalizeCustomSections(record.customSections);
+
+  return {
+    groupOptions: hasGroupOptions
+      ? groupOptions
+      : DEFAULT_METADATA_OPTIONS.groupOptions,
+    teamOptions: hasTeamOptions
+      ? teamOptions
+      : DEFAULT_METADATA_OPTIONS.teamOptions,
+    customSections,
   };
 };
 
@@ -194,6 +322,48 @@ export async function saveMattermostNotificationConfig({
   const normalized = normalizeMattermostNotificationConfig(config);
   const payload = {
     id: MATTERMOST_NOTIFICATIONS_ID,
+    configJson: JSON.stringify(normalized),
+    updatedAt: Date.now(),
+    updatedBy: updatedBy ?? null,
+  };
+
+  await db
+    .insert(siteSettings)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: siteSettings.id,
+      set: {
+        configJson: payload.configJson,
+        updatedAt: payload.updatedAt,
+        updatedBy: payload.updatedBy,
+      },
+    });
+
+  return normalized;
+}
+
+export async function getMetadataOptionsConfig(): Promise<MetadataOptionsConfig> {
+  const rows = await db
+    .select()
+    .from(siteSettings)
+    .where(eq(siteSettings.id, METADATA_OPTIONS_ID))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return DEFAULT_METADATA_OPTIONS;
+  const parsed = parseJson(row.configJson);
+  return normalizeMetadataOptionsConfig(parsed);
+}
+
+export async function saveMetadataOptionsConfig({
+  config,
+  updatedBy,
+}: {
+  config: MetadataOptionsConfig;
+  updatedBy?: string | null;
+}): Promise<MetadataOptionsConfig> {
+  const normalized = normalizeMetadataOptionsConfig(config);
+  const payload = {
+    id: METADATA_OPTIONS_ID,
     configJson: JSON.stringify(normalized),
     updatedAt: Date.now(),
     updatedBy: updatedBy ?? null,

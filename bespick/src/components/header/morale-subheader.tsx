@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import { useUser } from '@clerk/nextjs';
 import {
@@ -30,7 +30,10 @@ const activeClasses = 'border-primary/30 bg-primary/15 text-primary';
 export function MoraleSubHeader() {
   const pathname = usePathname();
   const { user } = useUser();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileState, setMobileState] = useState(() => ({
+    open: false,
+    pathname,
+  }));
   const role = user?.publicMetadata?.role as string | null | undefined;
   const isMoraleAdmin = role === 'admin' || role === 'moderator';
 
@@ -64,9 +67,17 @@ export function MoraleSubHeader() {
     item.adminOnly ? isMoraleAdmin : true,
   );
 
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
+  const mobileOpen =
+    mobileState.pathname === pathname && mobileState.open;
+  const toggleMobile = () => {
+    setMobileState((prev) => {
+      const samePath = prev.pathname === pathname;
+      return {
+        pathname,
+        open: samePath ? !prev.open : true,
+      };
+    });
+  };
 
   return (
     <div className='mb-8 rounded-2xl border border-border bg-card/70 px-5 py-4 shadow-sm backdrop-blur'>
@@ -77,7 +88,7 @@ export function MoraleSubHeader() {
           </h2>
           <button
             type='button'
-            onClick={() => setMobileOpen((prev) => !prev)}
+            onClick={toggleMobile}
             aria-expanded={mobileOpen}
             aria-controls='morale-subheader-nav'
             className='inline-flex items-center justify-center rounded-full border border-border bg-background/80 p-2 text-foreground transition hover:bg-secondary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:hidden'

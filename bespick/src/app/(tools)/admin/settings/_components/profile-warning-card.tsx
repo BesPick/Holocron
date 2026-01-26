@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import { updateProfileWarning } from '@/server/actions/site-settings';
 import type { ProfileWarningConfig } from '@/server/services/site-settings';
@@ -38,18 +39,22 @@ export function ProfileWarningCard({
   };
 
   return (
-    <section className='rounded-2xl border border-border bg-card/70 p-6 shadow-sm'>
-      <div>
-        <h2 className='text-xl font-semibold text-foreground'>
-          Profile completion reminder
-        </h2>
-        <p className='mt-2 text-sm text-muted-foreground'>
-          Show a landing-page reminder for signed-in users who are missing a
-          rank type or group assignment.
-        </p>
-      </div>
+    <details className='group rounded-2xl border border-border bg-card/70 shadow-sm'>
+      <summary className='flex cursor-pointer items-center justify-between gap-4 px-6 py-5 list-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'>
+        <div>
+          <h2 className='text-xl font-semibold text-foreground'>
+            Profile completion reminder
+          </h2>
+          <p className='mt-2 text-sm text-muted-foreground'>
+            Show a landing-page reminder for signed-in users who are missing a
+            rank type, group, or team assignment.
+          </p>
+        </div>
+        <ChevronDown className='h-5 w-5 text-muted-foreground transition-transform group-open:rotate-180' />
+      </summary>
 
-      <div className='mt-6 space-y-4'>
+      <div className='border-t border-border/60 px-6 pb-6'>
+        <div className='pt-5 space-y-4'>
         <label className='flex items-center gap-3 text-sm text-foreground'>
           <input
             type='checkbox'
@@ -83,7 +88,8 @@ export function ProfileWarningCard({
             {status.message}
           </div>
         ) : null}
+        </div>
       </div>
-    </section>
+    </details>
   );
 }

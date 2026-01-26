@@ -46,6 +46,13 @@ type FundingButtonConfig = {
   helper?: string;
 };
 
+type PayPalNamespace = {
+  Buttons?: (
+    options: { fundingSource?: unknown },
+  ) => { isEligible?: () => boolean } | null;
+  FUNDING?: Record<string, unknown>;
+};
+
 const PAYMENT_METHOD_BUTTONS: FundingButtonConfig[] = [
   {
     id: 'paypal',
@@ -85,7 +92,7 @@ const createCurrencyFormatter = (currency: string) =>
   });
 
 const getEligibleFundingSources = (buttons: FundingButtonConfig[]) => {
-  const paypal = (window as typeof window & { paypal?: any }).paypal;
+  const paypal = (window as typeof window & { paypal?: PayPalNamespace }).paypal;
   if (!paypal?.Buttons) return null;
   const eligible = new Set<FundingButtonConfig['fundingSource']>();
   for (const { fundingSource } of buttons) {

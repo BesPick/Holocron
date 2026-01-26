@@ -1,14 +1,16 @@
 'use client';
 
 import { UserButton } from '@clerk/nextjs';
-import { BadgeCheck, Info, Layers, Users } from 'lucide-react';
+import { BadgeCheck, Flag, Info, Layers, Users } from 'lucide-react';
 
 type AssignmentInfoProps = {
   groupLabel: string;
+  teamLabel: string;
   portfolioLabel: string;
   rankCategoryLabel: string;
   rankLabel: string;
   onEditGroup: () => void;
+  onEditTeam: () => void;
   onEditPortfolio: () => void;
   onEditRankCategory: () => void;
   onEditRank: () => void;
@@ -16,10 +18,12 @@ type AssignmentInfoProps = {
 
 export function UserAssignmentMenu({
   groupLabel,
+  teamLabel,
   portfolioLabel,
   rankCategoryLabel,
   rankLabel,
   onEditGroup,
+  onEditTeam,
   onEditPortfolio,
   onEditRankCategory,
   onEditRank,
@@ -46,6 +50,11 @@ export function UserAssignmentMenu({
           label={`Portfolio: ${portfolioLabel}`}
           labelIcon={<Layers className='h-4 w-4' aria-hidden={true} />}
           onClick={onEditPortfolio}
+        />
+        <UserButton.Action
+          label={`Team: ${teamLabel}`}
+          labelIcon={<Flag className='h-4 w-4' aria-hidden={true} />}
+          onClick={onEditTeam}
         />
         <UserButton.Action
           label='Click on the information above to update it'

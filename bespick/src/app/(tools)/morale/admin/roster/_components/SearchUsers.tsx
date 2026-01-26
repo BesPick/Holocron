@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   usePathname,
   useRouter,
@@ -8,45 +8,117 @@ import {
 } from 'next/navigation';
 import {
   ENLISTED_RANKS,
-  GROUP_OPTIONS,
   OFFICER_RANKS,
   RANK_CATEGORY_OPTIONS,
   getPortfoliosForGroup,
   getRanksForCategory,
   isValidGroup,
 } from '@/lib/org';
+import { useMetadataOptions } from '@/components/metadata/metadata-options-provider';
 
 const UNASSIGNED_VALUE = 'unassigned';
+
+type FilterState = {
+  searchTerm: string;
+  role: string;
+  team: string;
+  group: string;
+  portfolio: string;
+  rankCategory: string;
+  rank: string;
+};
 
 export const SearchUsers = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { groupOptions, teamOptions } = useMetadataOptions();
   const searchValue = searchParams.get('search') ?? '';
   const roleValue = searchParams.get('role') ?? '';
+  const teamValue = searchParams.get('team') ?? '';
   const groupValue = searchParams.get('group') ?? '';
   const portfolioValue = searchParams.get('portfolio') ?? '';
   const rankCategoryValue = searchParams.get('rankCategory') ?? '';
   const rankValue = searchParams.get('rank') ?? '';
 
-  const [searchTerm, setSearchTerm] = useState(searchValue);
-  const [role, setRole] = useState(roleValue);
-  const [group, setGroup] = useState(groupValue);
-  const [portfolio, setPortfolio] = useState(portfolioValue);
-  const [rankCategory, setRankCategory] = useState(rankCategoryValue);
-  const [rank, setRank] = useState(rankValue);
-  const hasFilters = Boolean(
-    searchTerm ||
-      role ||
-      group ||
-      portfolio ||
-      rankCategory ||
-      rank,
+  const paramsKey = useMemo(
+    () =>
+      JSON.stringify([
+        searchValue,
+        roleValue,
+        teamValue,
+        groupValue,
+        portfolioValue,
+        rankCategoryValue,
+        rankValue,
+      ]),
+    [
+      groupValue,
+      portfolioValue,
+      rankCategoryValue,
+      rankValue,
+      roleValue,
+      searchValue,
+      teamValue,
+    ],
   );
+
+  const initialValues = useMemo<FilterState>(
+    () => ({
+      searchTerm: searchValue,
+      role: roleValue,
+      team: teamValue,
+      group: groupValue,
+      portfolio: portfolioValue,
+      rankCategory: rankCategoryValue,
+      rank: rankValue,
+    }),
+    [
+      groupValue,
+      portfolioValue,
+      rankCategoryValue,
+      rankValue,
+      roleValue,
+      searchValue,
+      teamValue,
+    ],
+  );
+
+  const [formState, setFormState] = useState(() => ({
+    sourceKey: paramsKey,
+    values: initialValues,
+  }));
+
+  const values =
+    formState.sourceKey === paramsKey ? formState.values : initialValues;
+  const updateFormValues = useCallback(
+    (updates: Partial<FilterState>) => {
+      setFormState((prev) => {
+        const base =
+          prev.sourceKey === paramsKey ? prev.values : initialValues;
+        return {
+          sourceKey: paramsKey,
+          values: { ...base, ...updates },
+        };
+      });
+    },
+    [initialValues, paramsKey],
+  );
+
+  const {
+    searchTerm,
+    role,
+    team,
+    group,
+    portfolio,
+    rankCategory,
+    rank,
+  } = values;
 
   const buildQueryParams = ({
     searchTerm,
     roleValue,
+    teamValue,
     groupValue,
     portfolioValue,
     rankCategoryValue,
@@ -54,6 +126,7 @@ export const SearchUsers = () => {
   }: {
     searchTerm: string;
     roleValue: string;
+    teamValue: string;
     groupValue: string;
     portfolioValue: string;
     rankCategoryValue: string;
@@ -65,6 +138,9 @@ export const SearchUsers = () => {
     }
     if (roleValue) {
       params.set('role', roleValue);
+    }
+    if (teamValue) {
+      params.set('team', teamValue);
     }
     if (groupValue) {
       params.set('group', groupValue);
@@ -81,37 +157,21 @@ export const SearchUsers = () => {
     return params;
   };
 
-  useEffect(() => {
-    setSearchTerm(searchValue);
-    setRole(roleValue);
-    setGroup(groupValue);
-    setPortfolio(portfolioValue);
-    setRankCategory(rankCategoryValue);
-    setRank(rankValue);
-  }, [
-    roleValue,
-    groupValue,
-    portfolioValue,
-    rankCategoryValue,
-    rankValue,
-    searchValue,
-  ]);
-
   const allPortfolios = useMemo<string[]>(
     () =>
-      GROUP_OPTIONS.flatMap((option) => option.portfolios).map(
+      groupOptions.flatMap((option) => option.portfolios).map(
         (value) => value as string,
       ),
-    [],
+    [groupOptions],
   );
   const portfolioOptions = useMemo<string[]>(() => {
-    if (group && isValidGroup(group)) {
-      return getPortfoliosForGroup(group).map(
+    if (group && isValidGroup(group, groupOptions)) {
+      return getPortfoliosForGroup(group, groupOptions).map(
         (value) => value as string,
       );
     }
     return allPortfolios;
-  }, [allPortfolios, group]);
+  }, [allPortfolios, group, groupOptions]);
 
   const allRanks = useMemo<string[]>(
     () =>
@@ -132,36 +192,40 @@ export const SearchUsers = () => {
     return allRanks;
   }, [allRanks, rankCategory]);
 
-  useEffect(() => {
-    if (
-      portfolio &&
-      portfolio !== UNASSIGNED_VALUE &&
-      !portfolioOptions.includes(portfolio)
-    ) {
-      setPortfolio('');
-    }
+  const resolvedPortfolio = useMemo(() => {
+    if (!portfolio) return '';
+    if (portfolio === UNASSIGNED_VALUE) return portfolio;
+    return portfolioOptions.includes(portfolio) ? portfolio : '';
   }, [portfolio, portfolioOptions]);
 
-  useEffect(() => {
-    if (
-      rank &&
-      rank !== UNASSIGNED_VALUE &&
-      !rankOptions.includes(rank)
-    ) {
-      setRank('');
-    }
+  const resolvedRank = useMemo(() => {
+    if (!rank) return '';
+    if (rank === UNASSIGNED_VALUE) return rank;
+    return rankOptions.includes(rank) ? rank : '';
   }, [rank, rankOptions]);
+
+  const hasFilters = Boolean(
+    searchTerm ||
+      role ||
+      team ||
+      group ||
+      resolvedPortfolio ||
+      rankCategory ||
+      resolvedRank,
+  );
 
   const applyFilters = useCallback(
     ({
       nextRole = role,
+      nextTeam = team,
       nextGroup = group,
-      nextPortfolio = portfolio,
+      nextPortfolio = resolvedPortfolio,
       nextRankCategory = rankCategory,
-      nextRank = rank,
+      nextRank = resolvedRank,
       nextSearchTerm = searchValue,
     }: {
       nextRole?: string;
+      nextTeam?: string;
       nextGroup?: string;
       nextPortfolio?: string;
       nextRankCategory?: string;
@@ -171,6 +235,7 @@ export const SearchUsers = () => {
       const params = buildQueryParams({
         searchTerm: nextSearchTerm,
         roleValue: nextRole,
+        teamValue: nextTeam,
         groupValue: nextGroup,
         portfolioValue: nextPortfolio,
         rankCategoryValue: nextRankCategory,
@@ -182,24 +247,30 @@ export const SearchUsers = () => {
     [
       group,
       pathname,
-      portfolio,
-      rank,
+      resolvedPortfolio,
+      resolvedRank,
       rankCategory,
       role,
+      team,
       router,
       searchValue,
     ],
   );
 
   const handleRoleChange = (value: string) => {
-    setRole(value);
+    updateFormValues({ role: value });
     applyFilters({ nextRole: value });
+  };
+
+  const handleTeamChange = (value: string) => {
+    updateFormValues({ team: value });
+    applyFilters({ nextTeam: value });
   };
 
   const handleGroupChange = (value: string) => {
     const nextGroup = value;
-    const available = nextGroup && isValidGroup(nextGroup)
-      ? getPortfoliosForGroup(nextGroup).map(
+    const available = nextGroup && isValidGroup(nextGroup, groupOptions)
+      ? getPortfoliosForGroup(nextGroup, groupOptions).map(
           (entry) => entry as string,
         )
       : [];
@@ -210,13 +281,12 @@ export const SearchUsers = () => {
       portfolio !== UNASSIGNED_VALUE
         ? portfolio
         : '';
-    setGroup(nextGroup);
-    setPortfolio(nextPortfolio);
+    updateFormValues({ group: nextGroup, portfolio: nextPortfolio });
     applyFilters({ nextGroup, nextPortfolio });
   };
 
   const handlePortfolioChange = (value: string) => {
-    setPortfolio(value);
+    updateFormValues({ portfolio: value });
     applyFilters({ nextPortfolio: value });
   };
 
@@ -235,13 +305,12 @@ export const SearchUsers = () => {
       rank !== UNASSIGNED_VALUE
         ? rank
         : '';
-    setRankCategory(nextCategory);
-    setRank(nextRank);
+    updateFormValues({ rankCategory: nextCategory, rank: nextRank });
     applyFilters({ nextRankCategory: nextCategory, nextRank });
   };
 
   const handleRankChange = (value: string) => {
-    setRank(value);
+    updateFormValues({ rank: value });
     applyFilters({ nextRank: value });
   };
 
@@ -257,6 +326,7 @@ export const SearchUsers = () => {
           applyFilters({
             nextSearchTerm: searchTerm,
             nextRole: role,
+            nextTeam: team,
             nextGroup: group,
             nextPortfolio: portfolio,
             nextRankCategory: rankCategory,
@@ -274,7 +344,9 @@ export const SearchUsers = () => {
               type='text'
               autoComplete='off'
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) =>
+                updateFormValues({ searchTerm: event.target.value })
+              }
               placeholder='Enter a name or email'
               className='mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
             />
@@ -283,12 +355,15 @@ export const SearchUsers = () => {
             <button
               type='button'
               onClick={() => {
-                setSearchTerm('');
-                setRole('');
-                setGroup('');
-                setPortfolio('');
-                setRankCategory('');
-                setRank('');
+                updateFormValues({
+                  searchTerm: '',
+                  role: '',
+                  team: '',
+                  group: '',
+                  portfolio: '',
+                  rankCategory: '',
+                  rank: '',
+                });
                 router.push(pathname);
               }}
               disabled={!hasFilters}
@@ -305,7 +380,7 @@ export const SearchUsers = () => {
           </div>
         </div>
 
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-5'>
+        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-6'>
           <label className='text-sm text-foreground' htmlFor='role'>
             Role
             <select
@@ -319,42 +394,6 @@ export const SearchUsers = () => {
               <option value='admin'>Admin</option>
               <option value='moderator'>Moderator</option>
               <option value='member'>Member</option>
-            </select>
-          </label>
-          <label className='text-sm text-foreground' htmlFor='group'>
-            Group
-            <select
-              id='group'
-              name='group'
-              value={group}
-              onChange={(event) => handleGroupChange(event.target.value)}
-              className='mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-            >
-              <option value=''>All groups</option>
-              <option value={UNASSIGNED_VALUE}>Unassigned</option>
-              {GROUP_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className='text-sm text-foreground' htmlFor='portfolio'>
-            Portfolio
-            <select
-              id='portfolio'
-              name='portfolio'
-              value={portfolio}
-              onChange={(event) => handlePortfolioChange(event.target.value)}
-              className='mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-            >
-              <option value=''>All portfolios</option>
-              <option value={UNASSIGNED_VALUE}>Unassigned</option>
-              {portfolioOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
             </select>
           </label>
           <label
@@ -383,7 +422,7 @@ export const SearchUsers = () => {
             <select
               id='rank'
               name='rank'
-              value={rank}
+              value={resolvedRank}
               onChange={(event) => handleRankChange(event.target.value)}
               className='mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
             >
@@ -392,6 +431,60 @@ export const SearchUsers = () => {
               {rankOptions.map((value) => (
                 <option key={value} value={value}>
                   {value}
+                </option>
+                ))}
+            </select>
+          </label>
+          <label className='text-sm text-foreground' htmlFor='group'>
+            Group
+            <select
+              id='group'
+              name='group'
+              value={group}
+              onChange={(event) => handleGroupChange(event.target.value)}
+              className='mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+            >
+              <option value=''>All groups</option>
+              <option value={UNASSIGNED_VALUE}>Unassigned</option>
+              {groupOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className='text-sm text-foreground' htmlFor='portfolio'>
+            Portfolio
+            <select
+              id='portfolio'
+              name='portfolio'
+              value={resolvedPortfolio}
+              onChange={(event) => handlePortfolioChange(event.target.value)}
+              className='mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+            >
+              <option value=''>All portfolios</option>
+              <option value={UNASSIGNED_VALUE}>Unassigned</option>
+              {portfolioOptions.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className='text-sm text-foreground' htmlFor='team'>
+            Team
+            <select
+              id='team'
+              name='team'
+              value={team}
+              onChange={(event) => handleTeamChange(event.target.value)}
+              className='mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+            >
+              <option value=''>All teams</option>
+              <option value={UNASSIGNED_VALUE}>Unassigned</option>
+              {teamOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>

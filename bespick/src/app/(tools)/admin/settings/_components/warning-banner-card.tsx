@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ChevronDown } from 'lucide-react';
 
 import { updateWarningBanner } from '@/server/actions/site-settings';
 import type { WarningBannerConfig } from '@/server/services/site-settings';
@@ -53,18 +53,22 @@ export function WarningBannerCard({
   };
 
   return (
-    <section className='rounded-2xl border border-border bg-card/70 p-6 shadow-sm'>
-      <div>
-        <h2 className='text-xl font-semibold text-foreground'>
-          Warning banner
-        </h2>
-        <p className='mt-2 text-sm text-muted-foreground'>
-          Display a notice at the top of the landing page for outages,
-          maintenance windows, or urgent updates.
-        </p>
-      </div>
+    <details className='group rounded-2xl border border-border bg-card/70 shadow-sm'>
+      <summary className='flex cursor-pointer items-center justify-between gap-4 px-6 py-5 list-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'>
+        <div>
+          <h2 className='text-xl font-semibold text-foreground'>
+            Warning banner
+          </h2>
+          <p className='mt-2 text-sm text-muted-foreground'>
+            Display a notice at the top of the landing page for outages,
+            maintenance windows, or urgent updates.
+          </p>
+        </div>
+        <ChevronDown className='h-5 w-5 text-muted-foreground transition-transform group-open:rotate-180' />
+      </summary>
 
-      <div className='mt-6 space-y-5'>
+      <div className='border-t border-border/60 px-6 pb-6'>
+        <div className='pt-5 space-y-5'>
         <label className='flex items-center gap-3 text-sm text-foreground'>
           <input
             type='checkbox'
@@ -151,7 +155,8 @@ export function WarningBannerCard({
             {status.message}
           </div>
         ) : null}
+        </div>
       </div>
-    </section>
+    </details>
   );
 }

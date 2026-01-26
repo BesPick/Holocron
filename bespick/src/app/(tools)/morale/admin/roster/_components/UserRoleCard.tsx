@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 
 import {
-  GROUP_OPTIONS,
   getPortfoliosForGroup,
   getRanksForCategory,
   isValidRankForCategory,
@@ -14,9 +13,11 @@ import {
   type Portfolio,
   type Rank,
   type RankCategory,
+  type Team,
   RANK_CATEGORY_OPTIONS,
 } from '@/lib/org';
 import { deleteRosterUser, updateUserRole } from '@/server/actions/roster';
+import { useMetadataOptions } from '@/components/metadata/metadata-options-provider';
 
 type UserRoleCardProps = {
   user: {
@@ -24,6 +25,7 @@ type UserRoleCardProps = {
     fullName: string;
     email: string;
     role: string | null;
+    team: Team | null;
     group: Group | null;
     portfolio: Portfolio | null;
     rankCategory: RankCategory | null;
@@ -52,9 +54,11 @@ export function UserRoleCard({
   canEdit = true,
 }: UserRoleCardProps) {
   const router = useRouter();
+  const { groupOptions, teamOptions } = useMetadataOptions();
   const [currentRole, setCurrentRole] = useState<string | null>(
     normalizeRole(user.role),
   );
+  const [currentTeam, setCurrentTeam] = useState<Team | null>(user.team);
   const [currentGroup, setCurrentGroup] = useState<Group | null>(user.group);
   const [currentPortfolio, setCurrentPortfolio] = useState<Portfolio | null>(
     user.portfolio,
@@ -79,6 +83,10 @@ export function UserRoleCard({
     {
       label: 'Group',
       value: currentGroup ?? 'No group assigned',
+    },
+    {
+      label: 'Team',
+      value: currentTeam ?? 'No team assigned',
     },
     {
       label: 'Portfolio',
@@ -108,12 +116,14 @@ export function UserRoleCard({
     portfolio,
     rankCategory,
     rank,
+    team,
   }: {
     role?: string | null;
     group?: Group | null;
     portfolio?: Portfolio | null;
     rankCategory?: RankCategory | null;
     rank?: Rank | null;
+    team?: Team | null;
   }) => {
     if (!canEdit) {
       return;
@@ -122,6 +132,7 @@ export function UserRoleCard({
       const payload = {
         id: user.id,
         role: role === undefined ? currentRole ?? null : role,
+        team: team === undefined ? currentTeam : team,
         group:
           group === undefined
             ? currentGroup
@@ -144,6 +155,7 @@ export function UserRoleCard({
 
       if (result.success) {
         setCurrentRole(result.role);
+        setCurrentTeam(result.team);
         setCurrentGroup(result.group);
         setCurrentPortfolio(result.portfolio);
         setCurrentRankCategory(result.rankCategory);
@@ -162,7 +174,7 @@ export function UserRoleCard({
   const handleGroupChange = (value: string) => {
     const nextGroup = value ? (value as Group) : null;
     const availablePortfolios = nextGroup
-      ? getPortfoliosForGroup(nextGroup)
+      ? getPortfoliosForGroup(nextGroup, groupOptions)
       : [];
     const nextPortfolio =
       nextGroup &&
@@ -171,6 +183,11 @@ export function UserRoleCard({
         ? currentPortfolio
         : null;
     submitUpdate({ group: nextGroup, portfolio: nextPortfolio });
+  };
+
+  const handleTeamChange = (value: string) => {
+    const nextTeam = value ? (value as Team) : null;
+    submitUpdate({ team: nextTeam });
   };
 
   const handlePortfolioChange = (value: string) => {
@@ -214,7 +231,7 @@ export function UserRoleCard({
   };
 
   const availablePortfolios = currentGroup
-    ? getPortfoliosForGroup(currentGroup)
+    ? getPortfoliosForGroup(currentGroup, groupOptions)
     : [];
   const portfolioSelectDisabled =
     !currentGroup ||
@@ -349,7 +366,7 @@ export function UserRoleCard({
                 </label>
               </div>
 
-              <div className='mt-4 grid gap-4 sm:grid-cols-2'>
+              <div className='mt-4 grid gap-4 sm:grid-cols-3'>
                 <label className='flex flex-col gap-2 text-sm text-foreground'>
                   Group
                   <select
@@ -359,7 +376,26 @@ export function UserRoleCard({
                     className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
                   >
                     <option value=''>No group assigned</option>
-                    {GROUP_OPTIONS.map((option) => (
+                    {groupOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className='flex flex-col gap-2 text-sm text-foreground'>
+                  Team
+                  <select
+                    value={currentTeam ?? ''}
+                    onChange={(event) =>
+                      handleTeamChange(event.target.value)
+                    }
+                    disabled={isPending || !canEdit}
+                    className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+                  >
+                    <option value=''>No team assigned</option>
+                    {teamOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>

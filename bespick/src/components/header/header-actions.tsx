@@ -27,6 +27,7 @@ import {
 import { HeaderButton } from '@/components/header/header-button';
 import { AssignmentModal } from '@/components/header/assignment-modal';
 import { UserAssignmentMenu } from '@/components/header/user-assignment-menu';
+import { useMetadataOptions } from '@/components/metadata/metadata-options-provider';
 import {
   getPortfoliosForGroup,
   getRanksForCategory,
@@ -34,10 +35,12 @@ import {
   isValidPortfolioForGroup,
   isValidRankCategory,
   isValidRankForCategory,
+  isValidTeam,
   type Group,
   type Portfolio,
   type Rank,
   type RankCategory,
+  type Team,
 } from '@/lib/org';
 import { updateMyAssignments } from '@/server/actions/assignments';
 import {
@@ -48,13 +51,14 @@ import {
 
 export function HeaderActions() {
   const { user } = useUser();
+  const { groupOptions, teamOptions } = useMetadataOptions();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [isAssignmentOpen, setIsAssignmentOpen] = useState(false);
-  const [assignmentFocus, setAssignmentFocus] = useState<
-    'group' | 'portfolio' | 'rankCategory' | 'rank'
-  >('group');
+  const [assignmentFocus, setAssignmentFocus] =
+    useState<AssignmentModalFocus>('group');
   const [assignmentGroup, setAssignmentGroup] = useState<Group | ''>('');
+  const [assignmentTeam, setAssignmentTeam] = useState<Team | ''>('');
   const [assignmentPortfolio, setAssignmentPortfolio] = useState<
     Portfolio | ''
   >('');
@@ -69,11 +73,17 @@ export function HeaderActions() {
   const isAdmin = role === 'admin';
   const isMoraleAdmin = isAdmin || role === 'moderator';
   const rawGroup = user?.publicMetadata?.group;
-  const normalizedGroup = isValidGroup(rawGroup) ? rawGroup : null;
+  const normalizedGroup = isValidGroup(rawGroup, groupOptions)
+    ? rawGroup
+    : null;
+  const rawTeam = user?.publicMetadata?.team;
+  const normalizedTeam = isValidTeam(rawTeam, teamOptions)
+    ? rawTeam
+    : null;
   const rawPortfolio = user?.publicMetadata?.portfolio;
   const normalizedPortfolio =
     normalizedGroup &&
-    isValidPortfolioForGroup(normalizedGroup, rawPortfolio)
+    isValidPortfolioForGroup(normalizedGroup, rawPortfolio, groupOptions)
       ? rawPortfolio
       : null;
   const rawRankCategory = user?.publicMetadata?.rankCategory;
@@ -86,7 +96,14 @@ export function HeaderActions() {
     isValidRankForCategory(normalizedRankCategory, rawRank)
       ? rawRank
       : null;
-  const groupLabel = normalizedGroup ?? 'No group assigned';
+  const resolveLabel = (
+    value: string | null,
+    options: Array<{ value: string; label: string }>,
+  ) => (value ? options.find((option) => option.value === value)?.label ?? value : null);
+  const groupLabel =
+    resolveLabel(normalizedGroup, groupOptions) ?? 'No group assigned';
+  const teamLabel =
+    resolveLabel(normalizedTeam, teamOptions) ?? 'No team assigned';
   const portfolioLabel = normalizedPortfolio ?? 'No portfolio assigned';
   const rankCategoryLabel = normalizedRankCategory ?? 'No rank category';
   const rankLabel =
@@ -98,6 +115,7 @@ export function HeaderActions() {
   const openAssignmentModal = useCallback(
     (focus: AssignmentModalFocus) => {
       setAssignmentGroup(normalizedGroup ?? '');
+      setAssignmentTeam(normalizedTeam ?? '');
       setAssignmentPortfolio(normalizedPortfolio ?? '');
       setAssignmentRankCategory(normalizedRankCategory ?? '');
       setAssignmentRank(normalizedRank ?? '');
@@ -107,6 +125,7 @@ export function HeaderActions() {
     },
     [
       normalizedGroup,
+      normalizedTeam,
       normalizedPortfolio,
       normalizedRank,
       normalizedRankCategory,
@@ -197,7 +216,7 @@ export function HeaderActions() {
   const toggleMenu = () => setOpen((prev) => !prev);
   const closeMenu = () => setOpen(false);
   const availablePortfolios = assignmentGroup
-    ? getPortfoliosForGroup(assignmentGroup)
+    ? getPortfoliosForGroup(assignmentGroup, groupOptions)
     : [];
   const portfolioSelectDisabled =
     !assignmentGroup || availablePortfolios.length === 0 || isAssignmentPending;
@@ -211,7 +230,9 @@ export function HeaderActions() {
 
   const handleAssignmentGroupChange = (value: string) => {
     const nextGroup = value ? (value as Group) : '';
-    const nextPortfolios = nextGroup ? getPortfoliosForGroup(nextGroup) : [];
+    const nextPortfolios = nextGroup
+      ? getPortfoliosForGroup(nextGroup, groupOptions)
+      : [];
     setAssignmentGroup(nextGroup);
     setAssignmentPortfolio((current) =>
       current && nextPortfolios.includes(current as Portfolio) ? current : '',
@@ -220,6 +241,10 @@ export function HeaderActions() {
 
   const handleAssignmentPortfolioChange = (value: string) => {
     setAssignmentPortfolio(value ? (value as Portfolio) : '');
+  };
+
+  const handleAssignmentTeamChange = (value: string) => {
+    setAssignmentTeam(value ? (value as Team) : '');
   };
 
   const handleAssignmentRankCategoryChange = (value: string) => {
@@ -241,6 +266,7 @@ export function HeaderActions() {
       setAssignmentError(null);
       const result = await updateMyAssignments({
         group: assignmentGroup ? assignmentGroup : null,
+        team: assignmentTeam ? assignmentTeam : null,
         portfolio: assignmentPortfolio ? assignmentPortfolio : null,
         rankCategory: assignmentRankCategory ? assignmentRankCategory : null,
         rank: assignmentRank ? assignmentRank : null,
@@ -271,10 +297,12 @@ export function HeaderActions() {
                 ))}
                 <UserAssignmentMenu
                   groupLabel={groupLabel}
+                  teamLabel={teamLabel}
                   portfolioLabel={portfolioLabel}
                   rankCategoryLabel={rankCategoryLabel}
                   rankLabel={rankLabel}
                   onEditGroup={() => openAssignmentModal('group')}
+                  onEditTeam={() => openAssignmentModal('team')}
                   onEditPortfolio={() => openAssignmentModal('portfolio')}
                   onEditRankCategory={() => openAssignmentModal('rankCategory')}
                   onEditRank={() => openAssignmentModal('rank')}
@@ -307,10 +335,12 @@ export function HeaderActions() {
           <SignedIn>
             <UserAssignmentMenu
               groupLabel={groupLabel}
+              teamLabel={teamLabel}
               portfolioLabel={portfolioLabel}
               rankCategoryLabel={rankCategoryLabel}
               rankLabel={rankLabel}
               onEditGroup={() => openAssignmentModal('group')}
+              onEditTeam={() => openAssignmentModal('team')}
               onEditPortfolio={() => openAssignmentModal('portfolio')}
               onEditRankCategory={() => openAssignmentModal('rankCategory')}
               onEditRank={() => openAssignmentModal('rank')}
@@ -356,6 +386,7 @@ export function HeaderActions() {
         rankCategory={assignmentRankCategory}
         rank={assignmentRank}
         group={assignmentGroup}
+        team={assignmentTeam}
         portfolio={assignmentPortfolio}
         availableRanks={availableRanks}
         availablePortfolios={availablePortfolios}
@@ -368,6 +399,7 @@ export function HeaderActions() {
         onChangeRankCategory={handleAssignmentRankCategoryChange}
         onChangeRank={handleAssignmentRankChange}
         onChangeGroup={handleAssignmentGroupChange}
+        onChangeTeam={handleAssignmentTeamChange}
         onChangePortfolio={handleAssignmentPortfolioChange}
       />
     </>

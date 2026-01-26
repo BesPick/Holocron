@@ -1,5 +1,6 @@
 export type AssignmentModalFocus =
   | 'group'
+  | 'team'
   | 'portfolio'
   | 'rankCategory'
   | 'rank';

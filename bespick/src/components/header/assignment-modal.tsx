@@ -1,20 +1,22 @@
 'use client';
 
 import {
-  GROUP_OPTIONS,
   RANK_CATEGORY_OPTIONS,
   type Group,
   type Portfolio,
   type Rank,
   type RankCategory,
+  type Team,
 } from '@/lib/org';
+import { useMetadataOptions } from '@/components/metadata/metadata-options-provider';
 
 type AssignmentModalProps = {
   open: boolean;
-  focus: 'group' | 'portfolio' | 'rankCategory' | 'rank';
+  focus: 'group' | 'team' | 'portfolio' | 'rankCategory' | 'rank';
   rankCategory: RankCategory | '';
   rank: Rank | '';
   group: Group | '';
+  team: Team | '';
   portfolio: Portfolio | '';
   availableRanks: readonly Rank[];
   availablePortfolios: readonly Portfolio[];
@@ -27,6 +29,7 @@ type AssignmentModalProps = {
   onChangeRankCategory: (value: string) => void;
   onChangeRank: (value: string) => void;
   onChangeGroup: (value: string) => void;
+  onChangeTeam: (value: string) => void;
   onChangePortfolio: (value: string) => void;
 };
 
@@ -36,6 +39,7 @@ export function AssignmentModal({
   rankCategory,
   rank,
   group,
+  team,
   portfolio,
   availableRanks,
   availablePortfolios,
@@ -48,8 +52,10 @@ export function AssignmentModal({
   onChangeRankCategory,
   onChangeRank,
   onChangeGroup,
+  onChangeTeam,
   onChangePortfolio,
 }: AssignmentModalProps) {
+  const { groupOptions, teamOptions } = useMetadataOptions();
   if (!open) return null;
 
   return (
@@ -68,7 +74,7 @@ export function AssignmentModal({
           Update assignments
         </h2>
         <p className='mt-1 text-sm text-muted-foreground'>
-          Choose a rank, group, and portfolio for your profile.
+          Choose a rank, group, team, and portfolio for your profile.
         </p>
 
         <div className='mt-5 space-y-4'>
@@ -121,7 +127,24 @@ export function AssignmentModal({
               className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
             >
               <option value=''>No group assigned</option>
-              {GROUP_OPTIONS.map((option) => (
+              {groupOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className='flex flex-col gap-2 text-sm text-foreground'>
+            Team
+            <select
+              value={team}
+              onChange={(event) => onChangeTeam(event.target.value)}
+              autoFocus={focus === 'team'}
+              className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+            >
+              <option value=''>No team assigned</option>
+              {teamOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
