@@ -21,7 +21,11 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   // Protect all routes starting with `/morale/admin`
   if (isAdminRoute(req)) {
     const role = (await auth()).sessionClaims?.metadata?.role ?? '';
-    if (role !== 'admin' && role !== 'moderator') {
+    if (
+      role !== 'admin' &&
+      role !== 'moderator' &&
+      role !== 'morale-member'
+    ) {
       const url = new URL('/', req.url);
       return NextResponse.redirect(url);
     }

@@ -3,9 +3,13 @@ import { ChevronDown } from 'lucide-react';
 
 import { HostHubSubHeader } from '@/components/header/hosthub-subheader';
 import {
+  buildBuilding892BlockedUsers,
+  ensureBuilding892AssignmentsForWindow,
   ensureDemoDayAssignmentsForWindow,
+  getBuilding892TeamRoster,
   getEligibleDemoDayRoster,
   listDemoDayHistory,
+  listScheduleEventOverridesInRange,
 } from '@/server/services/hosthub-schedule';
 import {
   DEMO_DAY_DOC_URL,
@@ -73,10 +77,46 @@ const formatDemoDate = (value: string) => {
 };
 
 export default async function HostHubDocsPage() {
+  const baseDate = new Date();
   const eligibleRoster = await getEligibleDemoDayRoster();
+  const { start, end } = (() => {
+    const startDate = new Date(
+      baseDate.getFullYear(),
+      baseDate.getMonth(),
+      1,
+    );
+    const endDate = new Date(
+      baseDate.getFullYear(),
+      baseDate.getMonth() + 1,
+      0,
+    );
+    return { start: startDate, end: endDate };
+  })();
+  const overridesStart = new Date(start);
+  overridesStart.setDate(overridesStart.getDate() - 7);
+  const building892Roster = await getBuilding892TeamRoster();
+  const overrides = await listScheduleEventOverridesInRange({
+    startDate: overridesStart,
+    endDate: end,
+  });
+  const building892Overrides = new Map(
+    overrides
+      .filter((override) => override.eventType === 'building-892')
+      .map((override) => [override.date, override]),
+  );
+  const building892Assignments = await ensureBuilding892AssignmentsForWindow({
+    baseDate,
+    eligibleTeams: building892Roster.eligibleTeams,
+  });
+  const blockedUsersByWeek = buildBuilding892BlockedUsers({
+    assignments: building892Assignments,
+    teamMembers: building892Roster.teamMembers,
+    overrides: building892Overrides,
+  });
   await ensureDemoDayAssignmentsForWindow({
-    baseDate: new Date(),
+    baseDate,
     eligibleUsers: eligibleRoster,
+    blockedUsersByWeek,
   });
   const demoHistory = await listDemoDayHistory();
 

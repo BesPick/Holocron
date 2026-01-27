@@ -34,8 +34,9 @@ export function HostHubSubHeader() {
     open: false,
     pathname,
   }));
+  const role = user?.publicMetadata?.role as string | null | undefined;
   const isAdmin =
-    (user?.publicMetadata?.role as string | null | undefined) === 'admin';
+    role === 'admin' || role === 'moderator' || role === 'scheduler';
 
   const navItems = useMemo<NavItem[]>(
     () => [

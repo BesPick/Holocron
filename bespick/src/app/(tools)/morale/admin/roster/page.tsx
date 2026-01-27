@@ -35,11 +35,16 @@ export default async function AdminRosterPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const canViewRoster = await checkRole(['admin', 'moderator']);
+  const canViewRoster = await checkRole([
+    'admin',
+    'moderator',
+    'scheduler',
+    'morale-member',
+  ]);
   if (!canViewRoster) {
     redirect('/');
   }
-  const canEditRoster = await checkRole('admin');
+  const canEditRoster = await checkRole(['admin', 'moderator']);
 
   const params = await searchParams;
   const metadataOptions = await getMetadataOptionsConfig();
@@ -69,6 +74,8 @@ export default async function AdminRosterPage({
   const roleFilter =
     rawRole === 'admin' ||
     rawRole === 'moderator' ||
+    rawRole === 'scheduler' ||
+    rawRole === 'morale-member' ||
     rawRole === 'member'
       ? rawRole
       : '';
@@ -172,6 +179,10 @@ export default async function AdminRosterPage({
         ? 'admin'
         : rawRole === 'moderator'
         ? 'moderator'
+        : rawRole === 'scheduler'
+        ? 'scheduler'
+        : rawRole === 'morale-member'
+        ? 'morale-member'
         : 'member';
 
     return {
@@ -192,6 +203,18 @@ export default async function AdminRosterPage({
     if (
       roleFilter === 'moderator' &&
       entry.normalizedRole !== 'moderator'
+    ) {
+      return false;
+    }
+    if (
+      roleFilter === 'scheduler' &&
+      entry.normalizedRole !== 'scheduler'
+    ) {
+      return false;
+    }
+    if (
+      roleFilter === 'morale-member' &&
+      entry.normalizedRole !== 'morale-member'
     ) {
       return false;
     }
@@ -339,6 +362,10 @@ export default async function AdminRosterPage({
           ? 'Admin'
           : entry.role === 'moderator'
           ? 'Moderator'
+          : entry.role === 'scheduler'
+          ? 'Scheduler'
+          : entry.role === 'morale-member'
+          ? 'Morale Member'
           : 'Member';
       return [
         entry.fullName,
@@ -361,12 +388,12 @@ export default async function AdminRosterPage({
     <div className='mx-auto w-full max-w-5xl space-y-8 px-4 py-10'>
       <header className='rounded-2xl border border-border bg-card p-6 shadow-sm'>
         <h1 className='text-3xl font-semibold text-foreground'>
-          {canEditRoster ? 'Admin Dashboard' : 'Moderator Dashboard'}
+          {canEditRoster ? 'Admin Dashboard' : 'Roster Viewer'}
         </h1>
         <p className='mt-2 text-sm text-muted-foreground'>
           {canEditRoster
             ? 'Manage user roles and assignments and other information.'
-            : 'View user roles and assignments.'}
+            : 'View user roles and assignments in read-only mode.'}
         </p>
       </header>
 

@@ -1,11 +1,13 @@
 'use server';
 
-import { auth } from '@clerk/nextjs/server';
-import { eq } from 'drizzle-orm';
+import { auth, clerkClient } from '@clerk/nextjs/server';
+import { and, eq } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
 
 import { db } from '@/server/db/client';
 import {
   demoDayAssignments,
+  scheduleEventOverrideHistory,
   scheduleEventOverrides,
   securityShiftAssignments,
   standupAssignments,
@@ -26,6 +28,25 @@ export type UpdateScheduleEventOverrideResult = {
   message: string;
 };
 
+export type ScheduleEventOverrideHistoryEntry = {
+  id: string;
+  date: string;
+  eventType: HostHubEventType;
+  changedAt: number;
+  changedById: string | null;
+  changedByName: string;
+  previousOverrideUserId: string | null;
+  previousOverrideUserName: string | null;
+  previousTime: string | null;
+  previousMovedToDate: string | null;
+  previousIsCanceled: boolean | null;
+  nextOverrideUserId: string | null;
+  nextOverrideUserName: string | null;
+  nextTime: string | null;
+  nextMovedToDate: string | null;
+  nextIsCanceled: boolean | null;
+};
+
 const normalizeOverrideTime = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -40,10 +61,82 @@ const normalizeMoveDate = (value: string, sourceDate: string) => {
   return { value: trimmed, valid: true };
 };
 
+const resolveUserLabel = async (
+  userId: string | null,
+  cache: Map<string, string>,
+) => {
+  if (!userId) return 'Unknown';
+  if (cache.has(userId)) return cache.get(userId) ?? 'Unknown';
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    const fullName =
+      `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+    const label =
+      fullName ||
+      user.username ||
+      user.emailAddresses[0]?.emailAddress ||
+      userId;
+    cache.set(userId, label);
+    return label;
+  } catch (error) {
+    console.error('Failed to resolve override history user', error);
+    cache.set(userId, userId);
+    return userId;
+  }
+};
+
+const recordOverrideHistory = async ({
+  date,
+  eventType,
+  userId,
+  previous,
+  next,
+}: {
+  date: string;
+  eventType: HostHubEventType;
+  userId: string | null;
+  previous: {
+    overrideUserId: string | null;
+    overrideUserName: string | null;
+    time: string | null;
+    movedToDate: string | null;
+    isCanceled: boolean | null;
+  };
+  next: {
+    overrideUserId: string | null;
+    overrideUserName: string | null;
+    time: string | null;
+    movedToDate: string | null;
+    isCanceled: boolean | null;
+  };
+}) => {
+  await db.insert(scheduleEventOverrideHistory).values({
+    id: randomUUID(),
+    date,
+    eventType,
+    changedAt: Date.now(),
+    changedBy: userId,
+    previousOverrideUserId: previous.overrideUserId,
+    previousOverrideUserName: previous.overrideUserName,
+    previousTime: previous.time,
+    previousMovedToDate: previous.movedToDate,
+    previousIsCanceled: previous.isCanceled,
+    nextOverrideUserId: next.overrideUserId,
+    nextOverrideUserName: next.overrideUserName,
+    nextTime: next.time,
+    nextMovedToDate: next.movedToDate,
+    nextIsCanceled: next.isCanceled,
+  });
+};
+
 const getBaseAssignmentUserId = async (
   eventType: HostHubEventType,
   dateKey: string,
 ) => {
+  if (eventType === 'building-892') {
+    return null;
+  }
   if (eventType === 'demo') {
     const row = await db
       .select({ userId: demoDayAssignments.userId })
@@ -86,7 +179,7 @@ export async function updateScheduleEventOverride({
   overrideUserId?: string | null;
   overrideUserName?: string | null;
 }): Promise<UpdateScheduleEventOverrideResult> {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator', 'scheduler']))) {
     return {
       success: false,
       message: 'You are not authorized to perform this action.',
@@ -101,7 +194,8 @@ export async function updateScheduleEventOverride({
   }
 
   const normalizedTime = normalizeOverrideTime(time);
-  const ignoreTime = isSecurityShiftEventType(eventType);
+  const ignoreTime =
+    isSecurityShiftEventType(eventType) || eventType === 'building-892';
   if (!ignoreTime && time.trim() && !normalizedTime) {
     return {
       success: false,
@@ -167,31 +261,53 @@ export async function updateScheduleEventOverride({
         },
       });
 
-    const previousOverrideUserId =
-      existingOverride?.overrideUserId ?? null;
-    const baseAssignmentUserId = await getBaseAssignmentUserId(
-      eventType,
+    await recordOverrideHistory({
       date,
-    );
-    const previousEffectiveUserId =
-      previousOverrideUserId ?? baseAssignmentUserId;
-    const nextEffectiveUserId =
-      normalizedOverrideUserId ?? baseAssignmentUserId;
-    if (previousEffectiveUserId !== nextEffectiveUserId) {
-      try {
-        await notifyHostHubScheduleChanges(
-          [
-            {
-              eventType,
-              dateKey: date,
-              oldUserId: previousEffectiveUserId,
-              newUserId: nextEffectiveUserId,
-            },
-          ],
-          { allowOverrideAssignee: true },
-        );
-      } catch (error) {
-        console.error('Failed to notify HostHub override changes', error);
+      eventType,
+      userId: userId ?? null,
+      previous: {
+        overrideUserId: existingOverride?.overrideUserId ?? null,
+        overrideUserName: existingOverride?.overrideUserName ?? null,
+        time: existingOverride?.time ?? null,
+        movedToDate: existingOverride?.movedToDate ?? null,
+        isCanceled: existingOverride?.isCanceled ?? null,
+      },
+      next: {
+        overrideUserId: payload.overrideUserId,
+        overrideUserName: payload.overrideUserName,
+        time: payload.time,
+        movedToDate: payload.movedToDate,
+        isCanceled: payload.isCanceled,
+      },
+    });
+
+    if (eventType !== 'building-892') {
+      const previousOverrideUserId =
+        existingOverride?.overrideUserId ?? null;
+      const baseAssignmentUserId = await getBaseAssignmentUserId(
+        eventType,
+        date,
+      );
+      const previousEffectiveUserId =
+        previousOverrideUserId ?? baseAssignmentUserId;
+      const nextEffectiveUserId =
+        normalizedOverrideUserId ?? baseAssignmentUserId;
+      if (previousEffectiveUserId !== nextEffectiveUserId) {
+        try {
+          await notifyHostHubScheduleChanges(
+            [
+              {
+                eventType,
+                dateKey: date,
+                oldUserId: previousEffectiveUserId,
+                newUserId: nextEffectiveUserId,
+              },
+            ],
+            { allowOverrideAssignee: true },
+          );
+        } catch (error) {
+          console.error('Failed to notify HostHub override changes', error);
+        }
       }
     }
 
@@ -208,6 +324,72 @@ export async function updateScheduleEventOverride({
   }
 }
 
+export async function getScheduleEventOverrideHistory({
+  date,
+  eventType,
+}: {
+  date: string;
+  eventType: HostHubEventType;
+}): Promise<
+  | { success: true; entries: ScheduleEventOverrideHistoryEntry[] }
+  | { success: false; message: string }
+> {
+  if (!isHostHubEventType(eventType) || !isValidDateKey(date)) {
+    return { success: false, message: 'Invalid event selection.' };
+  }
+
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return { success: false, message: 'You must be signed in.' };
+    }
+    const rows = await db
+      .select()
+      .from(scheduleEventOverrideHistory)
+      .where(
+        and(
+          eq(scheduleEventOverrideHistory.date, date),
+          eq(scheduleEventOverrideHistory.eventType, eventType),
+        ),
+      )
+      .orderBy(scheduleEventOverrideHistory.changedAt);
+    const nameCache = new Map<string, string>();
+    const entries: ScheduleEventOverrideHistoryEntry[] = [];
+    for (const row of rows) {
+      const changedByName = await resolveUserLabel(
+        row.changedBy ?? null,
+        nameCache,
+      );
+      entries.push({
+        id: row.id,
+        date: row.date,
+        eventType: row.eventType as HostHubEventType,
+        changedAt: row.changedAt,
+        changedById: row.changedBy ?? null,
+        changedByName,
+        previousOverrideUserId: row.previousOverrideUserId ?? null,
+        previousOverrideUserName: row.previousOverrideUserName ?? null,
+        previousTime: row.previousTime ?? null,
+        previousMovedToDate: row.previousMovedToDate ?? null,
+        previousIsCanceled: row.previousIsCanceled ?? null,
+        nextOverrideUserId: row.nextOverrideUserId ?? null,
+        nextOverrideUserName: row.nextOverrideUserName ?? null,
+        nextTime: row.nextTime ?? null,
+        nextMovedToDate: row.nextMovedToDate ?? null,
+        nextIsCanceled: row.nextIsCanceled ?? null,
+      });
+    }
+
+    return { success: true, entries };
+  } catch (error) {
+    console.error('Failed to load override history', error);
+    return {
+      success: false,
+      message: 'Loading history failed. Please try again.',
+    };
+  }
+}
+
 export async function clearScheduleEventOverride({
   date,
   eventType,
@@ -215,7 +397,7 @@ export async function clearScheduleEventOverride({
   date: string;
   eventType: HostHubEventType;
 }): Promise<UpdateScheduleEventOverrideResult> {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator', 'scheduler']))) {
     return {
       success: false,
       message: 'You are not authorized to perform this action.',
@@ -241,6 +423,29 @@ export async function clearScheduleEventOverride({
       .where(eq(scheduleEventOverrides.id, id));
 
     if (existingOverride) {
+      const { userId } = await auth();
+      await recordOverrideHistory({
+        date,
+        eventType,
+        userId: userId ?? null,
+        previous: {
+          overrideUserId: existingOverride.overrideUserId ?? null,
+          overrideUserName: existingOverride.overrideUserName ?? null,
+          time: existingOverride.time ?? null,
+          movedToDate: existingOverride.movedToDate ?? null,
+          isCanceled: existingOverride.isCanceled ?? null,
+        },
+        next: {
+          overrideUserId: null,
+          overrideUserName: null,
+          time: null,
+          movedToDate: null,
+          isCanceled: null,
+        },
+      });
+    }
+
+    if (existingOverride && eventType !== 'building-892') {
       const baseAssignmentUserId = await getBaseAssignmentUserId(
         eventType,
         date,

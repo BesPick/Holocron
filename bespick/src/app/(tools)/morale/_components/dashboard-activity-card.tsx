@@ -15,6 +15,7 @@ type DashboardActivityCardProps = {
   archivingId: AnnouncementId | null;
   onOpenPoll?: (id: AnnouncementId) => void;
   onOpenVoting?: (announcement: Announcement) => void;
+  onOpenForm?: (id: AnnouncementId) => void;
   onViewAnnouncement: (announcement: Announcement) => void;
 };
 
@@ -28,6 +29,7 @@ export function DashboardActivityCard({
   archivingId,
   onOpenPoll,
   onOpenVoting,
+  onOpenForm,
   onViewAnnouncement,
 }: DashboardActivityCardProps) {
   const publishedDate = formatDate(activity.publishAt);
@@ -42,6 +44,7 @@ export function DashboardActivityCard({
       : null;
   const isPollCard = activity.eventType === 'poll';
   const isVotingCard = activity.eventType === 'voting';
+  const isFormCard = activity.eventType === 'form';
   const isDeleting = deletingId === activity._id;
   const isArchiving = archivingId === activity._id;
 
@@ -141,7 +144,16 @@ export function DashboardActivityCard({
               View leaderboard
             </button>
           )}
-          {!isPollCard && !isVotingCard && (
+          {isFormCard && onOpenForm && (
+            <button
+              type='button'
+              onClick={() => onOpenForm(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              Open form
+            </button>
+          )}
+          {!isPollCard && !isVotingCard && !isFormCard && (
             <button
               type='button'
               onClick={() => onViewAnnouncement(activity)}

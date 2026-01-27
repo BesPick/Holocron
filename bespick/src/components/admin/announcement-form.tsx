@@ -8,6 +8,8 @@ import type {
   ActivityStatus,
   ActivityType,
   Doc,
+  FormQuestion,
+  FormSubmissionLimit,
   Id,
   StorageImage,
 } from '@/types/db';
@@ -21,6 +23,8 @@ import { PollSettingsSection } from './announcement-form/sections/PollSettingsSe
 import { AutomationSection } from './announcement-form/sections/AutomationSection';
 import { ImageUploadSection } from './announcement-form/sections/ImageUploadSection';
 import { VotingSettingsSection } from './announcement-form/sections/VotingSettingsSection';
+import { FormBuilderSection } from './announcement-form/sections/FormBuilderSection';
+import { FormSettingsSection } from './announcement-form/sections/FormSettingsSection';
 import {
   GROUP_OPTIONS,
   type Group,
@@ -118,6 +122,11 @@ export function AnnouncementForm({
     null,
   );
   const [votingRosterRequested, setVotingRosterRequested] = React.useState(false);
+  const [formQuestions, setFormQuestions] = React.useState<FormQuestion[]>([]);
+  const [formSubmissionLimit, setFormSubmissionLimit] =
+    React.useState<FormSubmissionLimit>('unlimited');
+  const [formPaymentEnabled, setFormPaymentEnabled] = React.useState(false);
+  const [formPrice, setFormPrice] = React.useState('');
 
   const todayLocalISO = React.useMemo(() => {
     const now = new Date();
@@ -597,6 +606,27 @@ export function AnnouncementForm({
       setVotingUsersError(null);
       setVotingLeaderboardMode('all');
     }
+
+    if (activity.eventType === 'form') {
+      const questions = Array.isArray(activity.formQuestions)
+        ? activity.formQuestions
+        : [];
+      setFormQuestions(questions);
+      setFormSubmissionLimit(
+        activity.formSubmissionLimit ?? 'unlimited',
+      );
+      const price =
+        typeof activity.formPrice === 'number' ? activity.formPrice : null;
+      setFormPaymentEnabled(Boolean(price && price > 0));
+      setFormPrice(
+        typeof price === 'number' && price > 0 ? price.toFixed(2) : '',
+      );
+    } else {
+      setFormQuestions([]);
+      setFormSubmissionLimit('unlimited');
+      setFormPaymentEnabled(false);
+      setFormPrice('');
+    }
   }, [ensureMinimumPollOptions]);
 
   const isEditing = Boolean(existingActivity);
@@ -607,6 +637,7 @@ export function AnnouncementForm({
     (existingActivity?.eventType as ActivityType | undefined) ?? activityType;
   const isPoll = activeType === 'poll';
   const isVoting = activeType === 'voting';
+  const isForm = activeType === 'form';
   const activityLabel = ACTIVITY_LABELS[activeType];
   const buttonLabel = isEditing
     ? 'Save and Publish'
@@ -720,6 +751,14 @@ export function AnnouncementForm({
   ]);
 
   React.useEffect(() => {
+    if (isForm) return;
+    setFormQuestions([]);
+    setFormSubmissionLimit('unlimited');
+    setFormPaymentEnabled(false);
+    setFormPrice('');
+  }, [isForm]);
+
+  React.useEffect(() => {
     if (!isPoll) return;
     const trimmedCount = Math.max(
       1,
@@ -806,6 +845,10 @@ export function AnnouncementForm({
     setVotingUsersError(null);
     setVotingRosterRequested(false);
     setVotingLeaderboardMode('all');
+    setFormQuestions([]);
+    setFormSubmissionLimit('unlimited');
+    setFormPaymentEnabled(false);
+    setFormPrice('');
   }, [todayLocalISO]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -904,6 +947,9 @@ export function AnnouncementForm({
     let votingAllowUngroupedPayload: boolean | undefined;
     let votingAllowRemovalsPayload: boolean | undefined;
     let votingLeaderboardModePayload: VotingLeaderboardMode | undefined;
+    let formQuestionsPayload: FormQuestion[] | undefined;
+    let formSubmissionLimitPayload: FormSubmissionLimit | undefined;
+    let formPricePayload: number | null | undefined;
     if (isPoll) {
       const question = title.trim();
       if (!question) {
@@ -1029,6 +1075,119 @@ export function AnnouncementForm({
       votingLeaderboardModePayload = votingLeaderboardMode;
     }
 
+    if (isForm) {
+      try {
+        if (formQuestions.length === 0) {
+          setError('Forms require at least one question.');
+          return;
+        }
+        if (formQuestions.length > 5) {
+          setError('Forms can include up to 5 questions.');
+          return;
+        }
+        const sanitizedQuestions: FormQuestion[] = formQuestions.map(
+          (question, index) => {
+            const prompt = question.prompt?.trim() ?? '';
+            if (!prompt) {
+              throw new Error(`Question ${index + 1} needs a prompt.`);
+            }
+            if (question.type === 'multiple_choice') {
+              const options = (question.options ?? [])
+                .map((option) => option.trim())
+                .filter((option) => option.length > 0);
+              const uniqueOptions = Array.from(new Set(options));
+              if (uniqueOptions.length < 2) {
+                throw new Error(
+                  `Multiple choice questions need at least 2 options.`,
+                );
+              }
+              if (uniqueOptions.length > 10) {
+                throw new Error(
+                  `Multiple choice questions support up to 10 options.`,
+                );
+              }
+              const maxSelectionsRaw =
+                typeof question.maxSelections === 'number'
+                  ? Math.floor(question.maxSelections)
+                  : 2;
+              const maxSelections = Math.min(
+                Math.max(2, maxSelectionsRaw),
+                uniqueOptions.length,
+              );
+              return {
+                ...question,
+                prompt,
+                options: uniqueOptions,
+                maxSelections,
+                required: question.required ?? true,
+                allowAdditionalOptions: Boolean(
+                  question.allowAdditionalOptions,
+                ),
+              };
+            }
+            if (question.type === 'dropdown') {
+              const options = (question.options ?? [])
+                .map((option) => option.trim())
+                .filter((option) => option.length > 0);
+              const uniqueOptions = Array.from(new Set(options));
+              if (uniqueOptions.length < 2) {
+                throw new Error(
+                  `Dropdown questions need at least 2 options.`,
+                );
+              }
+              if (uniqueOptions.length > 10) {
+                throw new Error(
+                  `Dropdown questions support up to 10 options.`,
+                );
+              }
+              return {
+                ...question,
+                prompt,
+                options: uniqueOptions,
+                required: question.required ?? true,
+              };
+            }
+            if (question.type === 'free_text') {
+              return {
+                ...question,
+                prompt,
+                maxLength: 250,
+                required: question.required ?? true,
+              };
+            }
+            if (question.type === 'user_select') {
+              return {
+                ...question,
+                prompt,
+                required: question.required ?? true,
+              };
+            }
+            throw new Error('Unsupported question type.');
+          },
+        );
+
+        formQuestionsPayload = sanitizedQuestions;
+        formSubmissionLimitPayload = formSubmissionLimit;
+        if (formPaymentEnabled) {
+          const priceValue = parseFloat(formPrice);
+          if (!Number.isFinite(priceValue) || priceValue <= 0) {
+            setError('Enter a valid price for the form.');
+            return;
+          }
+          formPricePayload = Math.round(priceValue * 100) / 100;
+        } else {
+          formPricePayload = null;
+        }
+      } catch (formError) {
+        const message =
+          formError instanceof Error
+            ? formError.message
+            : 'Form questions are invalid.';
+        setError(message);
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       if (isEditing && existingActivity) {
@@ -1055,6 +1214,9 @@ export function AnnouncementForm({
           votingAllowUngrouped: votingAllowUngroupedPayload,
           votingAllowRemovals: votingAllowRemovalsPayload,
           votingLeaderboardMode: votingLeaderboardModePayload,
+          formQuestions: formQuestionsPayload,
+          formSubmissionLimit: formSubmissionLimitPayload,
+          formPrice: formPricePayload,
           eventType: activeType,
           imageIds,
         });
@@ -1086,6 +1248,9 @@ export function AnnouncementForm({
           votingAllowUngrouped: votingAllowUngroupedPayload,
           votingAllowRemovals: votingAllowRemovalsPayload,
           votingLeaderboardMode: votingLeaderboardModePayload,
+          formQuestions: formQuestionsPayload,
+          formSubmissionLimit: formSubmissionLimitPayload,
+          formPrice: formPricePayload,
           eventType: activeType,
           imageIds,
         });
@@ -1472,6 +1637,8 @@ export function AnnouncementForm({
                 ? 'Poll question...' :
               isVoting
                 ? 'Voting Event Title...'
+              : isForm
+                ? 'Form title...'
                 : 'Announcement Title...'
             }
             value={title}
@@ -1518,6 +1685,22 @@ export function AnnouncementForm({
           className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
         />
       </label>
+
+      <FormBuilderSection
+        isForm={isForm}
+        questions={formQuestions}
+        setQuestions={setFormQuestions}
+      />
+
+      <FormSettingsSection
+        isForm={isForm}
+        submissionLimit={formSubmissionLimit}
+        onChangeSubmissionLimit={setFormSubmissionLimit}
+        paymentEnabled={formPaymentEnabled}
+        onTogglePayment={setFormPaymentEnabled}
+        price={formPrice}
+        onChangePrice={setFormPrice}
+      />
 
       <VotingSettingsSection
         isVoting={isVoting}

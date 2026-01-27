@@ -25,6 +25,7 @@ export type MattermostNotificationConfig = {
   hosthubDemoEnabled: boolean;
   hosthubSecurityAmEnabled: boolean;
   hosthubSecurityPmEnabled: boolean;
+  hosthubBuilding892Enabled: boolean;
 };
 
 const WARNING_BANNER_ID = 'warning-banner';
@@ -44,6 +45,7 @@ const DEFAULT_MATTERMOST_NOTIFICATIONS: MattermostNotificationConfig = {
   hosthubDemoEnabled: true,
   hosthubSecurityAmEnabled: true,
   hosthubSecurityPmEnabled: true,
+  hosthubBuilding892Enabled: true,
 };
 
 const slugify = (value: string) =>
@@ -189,6 +191,10 @@ const normalizeMattermostNotificationConfig = (
     hosthubDemoEnabled: Boolean(record.hosthubDemoEnabled),
     hosthubSecurityAmEnabled: Boolean(record.hosthubSecurityAmEnabled),
     hosthubSecurityPmEnabled: Boolean(record.hosthubSecurityPmEnabled),
+    hosthubBuilding892Enabled:
+      'hosthubBuilding892Enabled' in record
+        ? Boolean(record.hosthubBuilding892Enabled)
+        : DEFAULT_MATTERMOST_NOTIFICATIONS.hosthubBuilding892Enabled,
   };
 };
 

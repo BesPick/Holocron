@@ -14,6 +14,7 @@ export async function GET() {
       let unsubscribeAnnouncements = () => {};
       let unsubscribePollVotes = () => {};
       let unsubscribeVoting = () => {};
+      let unsubscribeFormSubmissions = () => {};
 
       cleanup = () => {
         if (closed) return;
@@ -25,6 +26,7 @@ export async function GET() {
         unsubscribeAnnouncements();
         unsubscribePollVotes();
         unsubscribeVoting();
+        unsubscribeFormSubmissions();
         try {
           controller.close();
         } catch {
@@ -48,6 +50,7 @@ export async function GET() {
       unsubscribeAnnouncements = subscribe('announcements', listener);
       unsubscribePollVotes = subscribe('pollVotes', listener);
       unsubscribeVoting = subscribe('voting', listener);
+      unsubscribeFormSubmissions = subscribe('formSubmissions', listener);
 
       send({ channel: 'connected' });
       keepAlive = setInterval(() => send({ channel: 'ping' }), 15000);

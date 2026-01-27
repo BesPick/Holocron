@@ -12,7 +12,7 @@ export const metadata = {
 };
 
 export default async function HostHubScheduleSettingsPage() {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator', 'scheduler']))) {
     redirect('/hosthub');
   }
 

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { AlertTriangle, Gamepad2, HeartPulse, Server } from 'lucide-react';
-import { VantaNetBackground } from '@/components/landing/vanta-net-background';
+import { LandingBackgroundToggle } from '@/components/landing/landing-background-toggle';
 import { MissingAssignmentsWarning } from '@/components/landing/missing-assignments-warning';
 import {
   getProfileWarningConfig,
@@ -15,7 +15,7 @@ export default async function HomePage() {
 
   return (
     <section className='relative min-h-[calc(100vh-4rem)] w-full'>
-      <VantaNetBackground />
+      <LandingBackgroundToggle />
       <div className='mx-auto w-full max-w-5xl px-4 py-16 space-y-12 relative'>
         {warningBanner.enabled && warningBanner.message ? (
           <div className='rounded-2xl border border-amber-500/60 bg-[#483418] px-6 py-4 text-sm text-amber-100 shadow-sm'>

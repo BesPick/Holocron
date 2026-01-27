@@ -4,13 +4,18 @@ import { checkRole } from '@/server/auth/check-role';
 import type { HostHubEventType } from '@/lib/hosthub-events';
 import {
   clearScheduleAssignments,
+  buildBuilding892BlockedUsers,
   getEligibleDemoDayRoster,
   getEligibleSecurityShiftRoster,
   getEligibleStandupRoster,
+  getBuilding892TeamRoster,
+  listBuilding892AssignmentsInRange,
   listDemoDayAssignmentsInRange,
+  listScheduleEventOverridesInRange,
   listSecurityShiftAssignmentsInRange,
   listStandupAssignmentsInRange,
   markScheduleRefreshComplete,
+  refreshBuilding892AssignmentsForWindow,
   refreshDemoDayAssignmentsForWindow,
   refreshSecurityShiftAssignmentsForWindow,
   refreshStandupAssignmentsForWindow,
@@ -24,6 +29,7 @@ import {
 export type RefreshScheduleAssignmentsResult = {
   success: boolean;
   message: string;
+  building892?: RefreshAssignmentsSummary;
   demoDay?: RefreshAssignmentsSummary;
   standup?: RefreshAssignmentsSummary;
   securityShift?: RefreshAssignmentsSummary;
@@ -114,7 +120,7 @@ const diffSnapshots = (
 };
 
 export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssignmentsResult> {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator', 'scheduler']))) {
     return {
       success: false,
       message: 'You are not authorized to perform this action.',
@@ -128,17 +134,48 @@ export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssig
     const demoRoster = await getEligibleDemoDayRoster();
     const standupRoster = await getEligibleStandupRoster();
     const securityRoster = await getEligibleSecurityShiftRoster();
+    const building892Roster = await getBuilding892TeamRoster();
+    const building892 = await refreshBuilding892AssignmentsForWindow({
+      baseDate,
+      eligibleTeams: building892Roster.eligibleTeams,
+    });
+    const overridesStart = new Date(start);
+    overridesStart.setDate(overridesStart.getDate() - 7);
+    const overrides = await listScheduleEventOverridesInRange({
+      startDate: overridesStart,
+      endDate: end,
+    });
+    const building892Overrides = new Map(
+      overrides
+        .filter((override) => override.eventType === 'building-892')
+        .map((override) => [override.date, override]),
+    );
+    const building892Rows = await listBuilding892AssignmentsInRange({
+      startDate: start,
+      endDate: end,
+    });
+    const building892Assignments = Object.fromEntries(
+      building892Rows.map((row) => [row.weekStart, row]),
+    );
+    const blockedUsersByWeek = buildBuilding892BlockedUsers({
+      assignments: building892Assignments,
+      teamMembers: building892Roster.teamMembers,
+      overrides: building892Overrides,
+    });
     const demoDay = await refreshDemoDayAssignmentsForWindow({
       baseDate,
       eligibleUsers: demoRoster,
+      blockedUsersByWeek,
     });
     const standup = await refreshStandupAssignmentsForWindow({
       baseDate,
       eligibleUsers: standupRoster,
+      blockedUsersByWeek,
     });
     const securityShift = await refreshSecurityShiftAssignmentsForWindow({
       baseDate,
       eligibleUsers: securityRoster,
+      blockedUsersByWeek,
     });
     await markScheduleRefreshComplete();
     const afterSnapshot = await buildAssignmentSnapshot(start, end);
@@ -150,6 +187,7 @@ export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssig
     }
     const message = [
       'Assignments refreshed.',
+      formatSummary('892 Manning', building892),
       formatSummary('Demo Day', demoDay),
       formatSummary('Standup', standup),
       formatSummary('Security Shift', securityShift),
@@ -157,6 +195,7 @@ export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssig
     return {
       success: true,
       message,
+      building892,
       demoDay,
       standup,
       securityShift,
@@ -171,7 +210,7 @@ export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssig
 }
 
 export async function resetScheduleAssignments(): Promise<RefreshScheduleAssignmentsResult> {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator', 'scheduler']))) {
     return {
       success: false,
       message: 'You are not authorized to perform this action.',
@@ -186,17 +225,48 @@ export async function resetScheduleAssignments(): Promise<RefreshScheduleAssignm
     const demoRoster = await getEligibleDemoDayRoster();
     const standupRoster = await getEligibleStandupRoster();
     const securityRoster = await getEligibleSecurityShiftRoster();
+    const building892Roster = await getBuilding892TeamRoster();
+    const building892 = await refreshBuilding892AssignmentsForWindow({
+      baseDate,
+      eligibleTeams: building892Roster.eligibleTeams,
+    });
+    const overridesStart = new Date(start);
+    overridesStart.setDate(overridesStart.getDate() - 7);
+    const overrides = await listScheduleEventOverridesInRange({
+      startDate: overridesStart,
+      endDate: end,
+    });
+    const building892Overrides = new Map(
+      overrides
+        .filter((override) => override.eventType === 'building-892')
+        .map((override) => [override.date, override]),
+    );
+    const building892Rows = await listBuilding892AssignmentsInRange({
+      startDate: start,
+      endDate: end,
+    });
+    const building892Assignments = Object.fromEntries(
+      building892Rows.map((row) => [row.weekStart, row]),
+    );
+    const blockedUsersByWeek = buildBuilding892BlockedUsers({
+      assignments: building892Assignments,
+      teamMembers: building892Roster.teamMembers,
+      overrides: building892Overrides,
+    });
     const demoDay = await refreshDemoDayAssignmentsForWindow({
       baseDate,
       eligibleUsers: demoRoster,
+      blockedUsersByWeek,
     });
     const standup = await refreshStandupAssignmentsForWindow({
       baseDate,
       eligibleUsers: standupRoster,
+      blockedUsersByWeek,
     });
     const securityShift = await refreshSecurityShiftAssignmentsForWindow({
       baseDate,
       eligibleUsers: securityRoster,
+      blockedUsersByWeek,
     });
     await markScheduleRefreshComplete();
     const afterSnapshot = await buildAssignmentSnapshot(start, end);
@@ -208,6 +278,7 @@ export async function resetScheduleAssignments(): Promise<RefreshScheduleAssignm
     }
     const message = [
       'Schedule reset and regenerated.',
+      formatSummary('892 Manning', building892),
       formatSummary('Demo Day', demoDay),
       formatSummary('Standup', standup),
       formatSummary('Security Shift', securityShift),
@@ -215,6 +286,7 @@ export async function resetScheduleAssignments(): Promise<RefreshScheduleAssignm
     return {
       success: true,
       message,
+      building892,
       demoDay,
       standup,
       securityShift,

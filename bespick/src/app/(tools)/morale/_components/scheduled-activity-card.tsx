@@ -11,6 +11,7 @@ type ScheduledActivityCardProps = {
   onDelete: (id: AnnouncementId) => Promise<void>;
   deletingId: AnnouncementId | null;
   onViewAnnouncement: (announcement: Announcement) => void;
+  onOpenForm?: (id: AnnouncementId) => void;
 };
 
 export function ScheduledActivityCard({
@@ -19,8 +20,10 @@ export function ScheduledActivityCard({
   onEdit,
   deletingId,
   onViewAnnouncement,
+  onOpenForm,
 }: ScheduledActivityCardProps) {
   const isPollCard = activity.eventType === 'poll';
+  const isFormCard = activity.eventType === 'form';
   const scheduledFor = new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -82,7 +85,16 @@ export function ScheduledActivityCard({
           <span className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
             Scheduled
           </span>
-          {!isPollCard && (
+          {isFormCard && onOpenForm && (
+            <button
+              type='button'
+              onClick={() => onOpenForm(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View form
+            </button>
+          )}
+          {!isPollCard && !isFormCard && (
             <button
               type='button'
               onClick={() => onViewAnnouncement(activity)}

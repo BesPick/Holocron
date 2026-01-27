@@ -71,7 +71,11 @@ export function HeaderActions() {
 
   const role = user?.publicMetadata?.role as string | null | undefined;
   const isAdmin = role === 'admin';
-  const isMoraleAdmin = isAdmin || role === 'moderator';
+  const canViewRoster =
+    role === 'admin' ||
+    role === 'moderator' ||
+    role === 'scheduler' ||
+    role === 'morale-member';
   const rawGroup = user?.publicMetadata?.group;
   const normalizedGroup = isValidGroup(rawGroup, groupOptions)
     ? rawGroup
@@ -145,7 +149,7 @@ export function HeaderActions() {
       { href: '/games', label: 'Games', icon: Gamepad2 },
     ];
 
-    if (isMoraleAdmin) {
+    if (canViewRoster) {
       items.push({
         href: '/morale/admin/roster',
         label: 'Roster',
@@ -162,7 +166,7 @@ export function HeaderActions() {
     }
 
     return items;
-  }, [isAdmin, isMoraleAdmin]);
+  }, [canViewRoster, isAdmin]);
 
   useEffect(() => {
     if (!open) {

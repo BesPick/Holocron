@@ -37,6 +37,9 @@ export const announcements = sqliteTable(
     }),
     votingAllowRemovals: integer('voting_allow_removals', { mode: 'boolean' }),
     votingLeaderboardMode: text('voting_leaderboard_mode'),
+    formQuestionsJson: text('form_questions_json'),
+    formSubmissionLimit: text('form_submission_limit'),
+    formPrice: real('form_price'),
     imageIdsJson: text('image_ids_json'),
   },
   (table) => ({
@@ -83,6 +86,29 @@ export const pollVotes = sqliteTable(
   (table) => ({
     announcementIdx: index('idx_poll_votes_announcement').on(table.announcementId),
     userIdx: index('idx_poll_votes_user').on(
+      table.announcementId,
+      table.userId,
+    ),
+  }),
+);
+
+export const formSubmissions = sqliteTable(
+  'form_submissions',
+  {
+    id: text('id').primaryKey(),
+    announcementId: text('announcement_id').notNull(),
+    userId: text('user_id').notNull(),
+    userName: text('user_name'),
+    answersJson: text('answers_json').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    paypalOrderId: text('paypal_order_id'),
+    paymentAmount: real('payment_amount'),
+  },
+  (table) => ({
+    announcementIdx: index('idx_form_submissions_announcement').on(
+      table.announcementId,
+    ),
+    userIdx: index('idx_form_submissions_user').on(
       table.announcementId,
       table.userId,
     ),
@@ -145,6 +171,18 @@ export const securityShiftAssignments = sqliteTable(
   }),
 );
 
+export const building892Assignments = sqliteTable(
+  'building_892_assignments',
+  {
+    weekStart: text('week_start').primaryKey(),
+    team: text('team').notNull(),
+    assignedAt: integer('assigned_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    teamIdx: index('idx_building_892_assignments_team').on(table.team),
+  }),
+);
+
 export const scheduleRules = sqliteTable('schedule_rules', {
   id: text('id').primaryKey(),
   configJson: text('config_json').notNull(),
@@ -178,6 +216,36 @@ export const scheduleEventOverrides = sqliteTable(
   }),
 );
 
+export const scheduleEventOverrideHistory = sqliteTable(
+  'schedule_event_override_history',
+  {
+    id: text('id').primaryKey(),
+    date: text('date').notNull(),
+    eventType: text('event_type').notNull(),
+    changedAt: integer('changed_at', { mode: 'number' }).notNull(),
+    changedBy: text('changed_by'),
+    previousOverrideUserId: text('previous_override_user_id'),
+    previousOverrideUserName: text('previous_override_user_name'),
+    previousTime: text('previous_time'),
+    previousMovedToDate: text('previous_moved_to_date'),
+    previousIsCanceled: integer('previous_is_canceled', { mode: 'boolean' }),
+    nextOverrideUserId: text('next_override_user_id'),
+    nextOverrideUserName: text('next_override_user_name'),
+    nextTime: text('next_time'),
+    nextMovedToDate: text('next_moved_to_date'),
+    nextIsCanceled: integer('next_is_canceled', { mode: 'boolean' }),
+  },
+  (table) => ({
+    eventIdx: index('idx_schedule_event_override_history_event').on(
+      table.date,
+      table.eventType,
+    ),
+    changedAtIdx: index('idx_schedule_event_override_history_changed').on(
+      table.changedAt,
+    ),
+  }),
+);
+
 export const shiftNotifications = sqliteTable(
   'shift_notifications',
   {
@@ -202,6 +270,8 @@ export type VotingPurchaseRow = typeof votingPurchases.$inferSelect;
 export type VotingPurchaseInsert = typeof votingPurchases.$inferInsert;
 export type PollVoteRow = typeof pollVotes.$inferSelect;
 export type PollVoteInsert = typeof pollVotes.$inferInsert;
+export type FormSubmissionRow = typeof formSubmissions.$inferSelect;
+export type FormSubmissionInsert = typeof formSubmissions.$inferInsert;
 export type SiteSettingRow = typeof siteSettings.$inferSelect;
 export type SiteSettingInsert = typeof siteSettings.$inferInsert;
 export type DemoDayAssignmentRow = typeof demoDayAssignments.$inferSelect;
@@ -212,6 +282,10 @@ export type SecurityShiftAssignmentRow =
   typeof securityShiftAssignments.$inferSelect;
 export type SecurityShiftAssignmentInsert =
   typeof securityShiftAssignments.$inferInsert;
+export type Building892AssignmentRow =
+  typeof building892Assignments.$inferSelect;
+export type Building892AssignmentInsert =
+  typeof building892Assignments.$inferInsert;
 export type ScheduleRuleRow = typeof scheduleRules.$inferSelect;
 export type ScheduleRuleInsert = typeof scheduleRules.$inferInsert;
 export type ScheduleRefreshRow = typeof scheduleRefresh.$inferSelect;
@@ -220,5 +294,9 @@ export type ScheduleEventOverrideRow =
   typeof scheduleEventOverrides.$inferSelect;
 export type ScheduleEventOverrideInsert =
   typeof scheduleEventOverrides.$inferInsert;
+export type ScheduleEventOverrideHistoryRow =
+  typeof scheduleEventOverrideHistory.$inferSelect;
+export type ScheduleEventOverrideHistoryInsert =
+  typeof scheduleEventOverrideHistory.$inferInsert;
 export type ShiftNotificationRow = typeof shiftNotifications.$inferSelect;
 export type ShiftNotificationInsert = typeof shiftNotifications.$inferInsert;

@@ -3,6 +3,7 @@ import { and, desc, eq, gt, gte, inArray, lt, lte, or } from 'drizzle-orm';
 
 import { db } from '@/server/db/client';
 import {
+  building892Assignments,
   demoDayAssignments,
   scheduleEventOverrides,
   scheduleRefresh,
@@ -31,6 +32,7 @@ import {
   type ScheduleRuleConfig,
   type ScheduleRuleId,
 } from '@/lib/hosthub-schedule-rules';
+import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 
 export type DemoDayAssignee = {
   userId: string;
@@ -75,6 +77,18 @@ export type SecurityShiftAssignment = {
   assignedAt: number;
 };
 
+export type Building892Assignment = {
+  weekStart: string;
+  team: string;
+  assignedAt: number;
+};
+
+export type Building892TeamRoster = {
+  eligibleTeams: string[];
+  teamMembers: Map<string, string[]>;
+  teamLabels: Map<string, string>;
+};
+
 export type ScheduleEventOverride = {
   id: string;
   date: string;
@@ -106,6 +120,7 @@ const HISTORY_MONTH_LIMIT = 12;
 const DEMO_DAY_WEEKDAY = 3;
 const STANDUP_DAYS = new Set([1, 4]);
 const SECURITY_SHIFT_DAYS = new Set([1, 2, 3, 4, 5]);
+const BUILDING_892_WEEK_START_DAY = 1;
 const RULE_IDS: ScheduleRuleId[] = [
   'demo-day',
   'standup',
@@ -119,6 +134,37 @@ export const toDateKey = (date: Date) =>
   `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
     date.getDate(),
   )}`;
+
+const parseDateKey = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+  if ([year, month, day].some((part) => Number.isNaN(part))) return null;
+  return new Date(year, month - 1, day);
+};
+
+const getWeekStart = (date: Date) => {
+  const start = new Date(date);
+  const offset =
+    (start.getDay() - BUILDING_892_WEEK_START_DAY + 7) % 7;
+  start.setDate(start.getDate() - offset);
+  start.setHours(0, 0, 0, 0);
+  return start;
+};
+
+const getWeekStartKey = (date: Date) => toDateKey(getWeekStart(date));
+
+const getWeekStartKeyForDateKey = (dateKey: string) => {
+  const date = parseDateKey(dateKey);
+  return date ? getWeekStartKey(date) : dateKey;
+};
+
+const getBlockedUsersForDateKey = (
+  dateKey: string,
+  blockedUsersByWeek?: Map<string, Set<string>>,
+) => {
+  if (!blockedUsersByWeek) return null;
+  const weekKey = getWeekStartKeyForDateKey(dateKey);
+  return blockedUsersByWeek.get(weekKey) ?? null;
+};
 
 const getDefaultRule = (ruleId: ScheduleRuleId) =>
   DEFAULT_SCHEDULE_RULES[ruleId];
@@ -219,6 +265,34 @@ const getMonthRange = (date: Date) => {
   return { start, end };
 };
 
+const getWeekStartKeysForRange = (startDate: Date, endDate: Date) => {
+  const keys: string[] = [];
+  const startWeek = getWeekStart(startDate);
+  const endWeek = getWeekStart(endDate);
+  const cursor = new Date(startWeek);
+  while (cursor <= endWeek) {
+    keys.push(toDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  return keys;
+};
+
+const getWeekStartKeysForWindow = (baseDate: Date) => {
+  const monthStart = addMonths(baseDate, MONTH_WINDOW[0] ?? 0);
+  const monthEnd = addMonths(
+    baseDate,
+    MONTH_WINDOW[MONTH_WINDOW.length - 1] ?? 0,
+  );
+  const { start } = getMonthRange(monthStart);
+  const { end } = getMonthRange(monthEnd);
+  return getWeekStartKeysForRange(start, end);
+};
+
+const getWeekStartKeysForMonth = (date: Date) => {
+  const { start, end } = getMonthRange(date);
+  return getWeekStartKeysForRange(start, end);
+};
+
 const getNextMonthStart = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth() + 1, 1);
 
@@ -243,6 +317,7 @@ export async function clearScheduleAssignments() {
   await db.delete(demoDayAssignments);
   await db.delete(standupAssignments);
   await db.delete(securityShiftAssignments);
+  await db.delete(building892Assignments);
   await db.delete(scheduleRefresh);
 }
 
@@ -418,12 +493,266 @@ const buildAvailability = <T extends { userId: string }>(
   return eligibleUsers.filter((user) => !used.has(user.userId));
 };
 
+const normalizeTeamValue = (value: unknown) =>
+  typeof value === 'string' ? value.trim() : '';
+
+const isExcludedTeamValue = (value: string) =>
+  value.trim().toLowerCase() === 'n/a';
+
+const buildTeamAvailability = (
+  eligibleTeams: string[],
+  historyRows: Array<{ team: string }>,
+) => {
+  const eligibleSet = new Set(eligibleTeams);
+  const used = new Set<string>();
+  for (const row of historyRows) {
+    if (row.team && eligibleSet.has(row.team)) {
+      used.add(row.team);
+      if (used.size >= eligibleTeams.length) break;
+    }
+  }
+  return eligibleTeams.filter((team) => !used.has(team));
+};
+
+export const resolveBuilding892Team = ({
+  assignment,
+  override,
+}: {
+  assignment?: Building892Assignment;
+  override?: ScheduleEventOverride | null;
+}) => {
+  if (override?.isCanceled) return null;
+  if (override?.overrideUserId) return override.overrideUserId;
+  return assignment?.team ?? null;
+};
+
+export const buildBuilding892BlockedUsers = ({
+  assignments,
+  teamMembers,
+  overrides,
+}: {
+  assignments: Record<string, Building892Assignment>;
+  teamMembers: Map<string, string[]>;
+  overrides?: Map<string, ScheduleEventOverride>;
+}) => {
+  const blocked = new Map<string, Set<string>>();
+  const weekKeys = new Set([
+    ...Object.keys(assignments),
+    ...(overrides ? Array.from(overrides.keys()) : []),
+  ]);
+  weekKeys.forEach((weekStart) => {
+    const assignment = assignments[weekStart];
+    const override = overrides?.get(weekStart);
+    const team = resolveBuilding892Team({ assignment, override });
+    if (!team) return;
+    const members = teamMembers.get(team);
+    if (!members || members.length === 0) return;
+    blocked.set(weekStart, new Set(members));
+  });
+  return blocked;
+};
+
+export async function ensureBuilding892AssignmentsForWindow({
+  baseDate,
+  eligibleTeams,
+  scope = 'month',
+}: {
+  baseDate: Date;
+  eligibleTeams: string[];
+  scope?: 'month' | 'window';
+}): Promise<Record<string, Building892Assignment>> {
+  const { end: currentMonthEnd } = getMonthRange(baseDate);
+  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  await db
+    .delete(building892Assignments)
+    .where(gt(building892Assignments.weekStart, currentMonthEndKey));
+
+  const weekKeys = getWeekStartKeysForWindow(baseDate);
+  const assignableKeys =
+    scope === 'window'
+      ? weekKeys
+      : getWeekStartKeysForMonth(baseDate);
+
+  const existingRows = await db
+    .select()
+    .from(building892Assignments)
+    .where(inArray(building892Assignments.weekStart, weekKeys));
+
+  const assignments = new Map<string, Building892Assignment>();
+  existingRows.forEach((row) => {
+    assignments.set(row.weekStart, {
+      weekStart: row.weekStart,
+      team: row.team,
+      assignedAt: row.assignedAt,
+    });
+  });
+
+  const missingKeys = assignableKeys.filter(
+    (weekStart) => !assignments.has(weekStart),
+  );
+
+  if (missingKeys.length === 0) {
+    return Object.fromEntries(assignments.entries());
+  }
+
+  const history = await db
+    .select()
+    .from(building892Assignments)
+    .orderBy(desc(building892Assignments.weekStart));
+  let available = buildTeamAvailability(eligibleTeams, history);
+
+  for (const weekStart of missingKeys) {
+    let team = 'TBD';
+    if (eligibleTeams.length > 0) {
+      if (available.length === 0) {
+        available = [...eligibleTeams];
+      }
+      const picked = pickRandom(available);
+      if (picked) {
+        team = picked;
+        available = available.filter((value) => value !== picked);
+      }
+    }
+
+    const row: Building892Assignment = {
+      weekStart,
+      team,
+      assignedAt: Date.now(),
+    };
+
+    await db
+      .insert(building892Assignments)
+      .values({
+        weekStart: row.weekStart,
+        team: row.team,
+        assignedAt: row.assignedAt,
+      })
+      .onConflictDoUpdate({
+        target: building892Assignments.weekStart,
+        set: {
+          team: row.team,
+          assignedAt: row.assignedAt,
+        },
+      });
+
+    assignments.set(weekStart, row);
+  }
+
+  return Object.fromEntries(assignments.entries());
+}
+
+export async function refreshBuilding892AssignmentsForWindow({
+  baseDate,
+  eligibleTeams,
+  scope = 'month',
+}: {
+  baseDate: Date;
+  eligibleTeams: string[];
+  scope?: 'month' | 'window';
+}): Promise<RefreshAssignmentsSummary> {
+  const { end: currentMonthEnd } = getMonthRange(baseDate);
+  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  await db
+    .delete(building892Assignments)
+    .where(gt(building892Assignments.weekStart, currentMonthEndKey));
+
+  const todayKey = toDateKey(new Date());
+  const weekKeys = getWeekStartKeysForWindow(baseDate);
+  const assignableKeys =
+    scope === 'window'
+      ? weekKeys
+      : getWeekStartKeysForMonth(baseDate);
+
+  const existingRows = await db
+    .select()
+    .from(building892Assignments)
+    .where(inArray(building892Assignments.weekStart, weekKeys));
+  const existingByWeek = new Map(
+    existingRows.map((row) => [row.weekStart, row]),
+  );
+
+  const eligibleSet = new Set(eligibleTeams);
+  const futureKeys = assignableKeys.filter((weekStart) => weekStart >= todayKey);
+  const toAssign: string[] = [];
+  let kept = 0;
+
+  for (const weekStart of futureKeys) {
+    const row = existingByWeek.get(weekStart);
+    if (row?.team && eligibleSet.has(row.team)) {
+      kept += 1;
+      continue;
+    }
+    toAssign.push(weekStart);
+  }
+
+  const history = await db
+    .select()
+    .from(building892Assignments)
+    .orderBy(desc(building892Assignments.weekStart));
+  let available = buildTeamAvailability(eligibleTeams, history);
+  let updated = 0;
+  let replaced = 0;
+  let filled = 0;
+
+  for (const weekStart of toAssign) {
+    let team = 'TBD';
+    if (eligibleTeams.length > 0) {
+      if (available.length === 0) {
+        available = [...eligibleTeams];
+      }
+      const picked = pickRandom(available);
+      if (picked) {
+        team = picked;
+        available = available.filter((value) => value !== picked);
+      }
+    }
+
+    const row: Building892Assignment = {
+      weekStart,
+      team,
+      assignedAt: Date.now(),
+    };
+
+    await db
+      .insert(building892Assignments)
+      .values({
+        weekStart: row.weekStart,
+        team: row.team,
+        assignedAt: row.assignedAt,
+      })
+      .onConflictDoUpdate({
+        target: building892Assignments.weekStart,
+        set: {
+          team: row.team,
+          assignedAt: row.assignedAt,
+        },
+      });
+
+    updated += 1;
+    if (existingByWeek.get(weekStart)) {
+      replaced += 1;
+    } else {
+      filled += 1;
+    }
+  }
+
+  return {
+    checked: futureKeys.length,
+    kept,
+    updated,
+    replaced,
+    filled,
+  };
+}
+
 export async function ensureDemoDayAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  blockedUsersByWeek,
 }: {
   baseDate: Date;
   eligibleUsers: DemoDayAssignee[];
+  blockedUsersByWeek?: Map<string, Set<string>>;
 }): Promise<Record<string, DemoDayAssignment>> {
   await pruneDemoDayHistory(new Date());
   const { end: currentMonthEnd } = getMonthRange(baseDate);
@@ -445,6 +774,12 @@ export async function ensureDemoDayAssignmentsForWindow({
   const assignments = new Map<string, DemoDayAssignment>();
   existingRows.forEach((row) => {
     const isFutureOrToday = row.date >= todayKey;
+    const blockedUsers = row.userId
+      ? getBlockedUsersForDateKey(row.date, blockedUsersByWeek)
+      : null;
+    if (row.userId && blockedUsers?.has(row.userId) && isFutureOrToday) {
+      return;
+    }
     if (!row.userId && isFutureOrToday) {
       return;
     }
@@ -486,11 +821,22 @@ export async function ensureDemoDayAssignmentsForWindow({
     if (assignments.has(dateKey)) continue;
 
     let assignee: DemoDayAssignee | null = null;
-    if (eligibleUsers.length > 0) {
-      if (available.length === 0) {
-        available = [...eligibleUsers];
+    const blockedUsers = getBlockedUsersForDateKey(
+      dateKey,
+      blockedUsersByWeek,
+    );
+    const eligibleForDate = blockedUsers
+      ? eligibleUsers.filter((user) => !blockedUsers.has(user.userId))
+      : eligibleUsers;
+    if (eligibleForDate.length > 0) {
+      let availableForDate = blockedUsers
+        ? available.filter((user) => !blockedUsers.has(user.userId))
+        : available;
+      if (availableForDate.length === 0) {
+        available = [...eligibleForDate];
+        availableForDate = available;
       }
-      assignee = pickRandom(available);
+      assignee = pickRandom(availableForDate);
       if (assignee) {
         available = available.filter(
           (user) => user.userId !== assignee?.userId,
@@ -531,10 +877,12 @@ export async function ensureDemoDayAssignmentsForWindow({
 export async function refreshDemoDayAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  blockedUsersByWeek,
   scope = 'month',
 }: {
   baseDate: Date;
   eligibleUsers: DemoDayAssignee[];
+  blockedUsersByWeek?: Map<string, Set<string>>;
   scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
   await pruneDemoDayHistory(new Date());
@@ -566,7 +914,14 @@ export async function refreshDemoDayAssignmentsForWindow({
 
   for (const dateKey of futureKeys) {
     const row = existingByDate.get(dateKey);
-    if (row?.userId && eligibleIds.has(row.userId)) {
+    const blockedUsers = row?.userId
+      ? getBlockedUsersForDateKey(dateKey, blockedUsersByWeek)
+      : null;
+    if (
+      row?.userId &&
+      eligibleIds.has(row.userId) &&
+      !blockedUsers?.has(row.userId)
+    ) {
       kept += 1;
       continue;
     }
@@ -584,13 +939,26 @@ export async function refreshDemoDayAssignmentsForWindow({
 
   for (const dateKey of toAssign) {
     let assignee: DemoDayAssignee | null = null;
-    if (eligibleUsers.length > 0) {
-      if (available.length === 0) {
-        available = [...eligibleUsers];
+    const blockedUsers = getBlockedUsersForDateKey(
+      dateKey,
+      blockedUsersByWeek,
+    );
+    const eligibleForDate = blockedUsers
+      ? eligibleUsers.filter((user) => !blockedUsers.has(user.userId))
+      : eligibleUsers;
+    if (eligibleForDate.length > 0) {
+      let availableForDate = blockedUsers
+        ? available.filter((user) => !blockedUsers.has(user.userId))
+        : available;
+      if (availableForDate.length === 0) {
+        available = [...eligibleForDate];
+        availableForDate = available;
       }
-      assignee = pickRandom(available);
+      assignee = pickRandom(availableForDate);
       if (assignee) {
-        available = available.filter((user) => user.userId !== assignee?.userId);
+        available = available.filter(
+          (user) => user.userId !== assignee?.userId,
+        );
       }
     }
 
@@ -699,6 +1067,45 @@ export async function getHostHubRoster(): Promise<HostHubRosterMember[]> {
   }
 }
 
+export async function getBuilding892TeamRoster(): Promise<Building892TeamRoster> {
+  const metadataOptions = await getMetadataOptionsConfig();
+  const teamLabels = new Map<string, string>();
+  const allowedTeams: string[] = [];
+  metadataOptions.teamOptions.forEach((option) => {
+    const value = normalizeTeamValue(option.value);
+    if (!value || isExcludedTeamValue(value)) return;
+    if (teamLabels.has(value)) return;
+    teamLabels.set(value, option.label?.trim() || value);
+    allowedTeams.push(value);
+  });
+
+  const teamMembers = new Map<string, string[]>();
+  if (allowedTeams.length === 0) {
+    return { eligibleTeams: [], teamMembers, teamLabels };
+  }
+
+  try {
+    const client = await clerkClient();
+    const users = await client.users.getUserList({ limit: 200 });
+    users.data.forEach((rosterUser) => {
+      const teamValue = normalizeTeamValue(rosterUser.publicMetadata.team);
+      if (!teamValue || isExcludedTeamValue(teamValue)) return;
+      if (!teamLabels.has(teamValue)) return;
+      const list = teamMembers.get(teamValue) ?? [];
+      list.push(rosterUser.id);
+      teamMembers.set(teamValue, list);
+    });
+  } catch (error) {
+    console.error('Failed to load 892 team roster', error);
+  }
+
+  const eligibleTeams = allowedTeams.filter(
+    (team) => (teamMembers.get(team)?.length ?? 0) > 0,
+  );
+
+  return { eligibleTeams, teamMembers, teamLabels };
+}
+
 export async function getEligibleStandupRoster(): Promise<StandupAssignee[]> {
   const user = await currentUser();
   if (!user) return [];
@@ -780,9 +1187,11 @@ export async function getEligibleSecurityShiftRoster(): Promise<
 export async function ensureStandupAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  blockedUsersByWeek,
 }: {
   baseDate: Date;
   eligibleUsers: StandupAssignee[];
+  blockedUsersByWeek?: Map<string, Set<string>>;
 }): Promise<Record<string, StandupAssignment>> {
   const { end: currentMonthEnd } = getMonthRange(baseDate);
   const currentMonthEndKey = toDateKey(currentMonthEnd);
@@ -801,6 +1210,12 @@ export async function ensureStandupAssignmentsForWindow({
   const assignments = new Map<string, StandupAssignment>();
   existingRows.forEach((row) => {
     const isFutureOrToday = row.date >= todayKey;
+    const blockedUsers = row.userId
+      ? getBlockedUsersForDateKey(row.date, blockedUsersByWeek)
+      : null;
+    if (row.userId && blockedUsers?.has(row.userId) && isFutureOrToday) {
+      return;
+    }
     if (!row.userId && isFutureOrToday) {
       return;
     }
@@ -842,11 +1257,22 @@ export async function ensureStandupAssignmentsForWindow({
     if (assignments.has(dateKey)) continue;
 
     let assignee: StandupAssignee | null = null;
-    if (eligibleUsers.length > 0) {
-      if (available.length === 0) {
-        available = [...eligibleUsers];
+    const blockedUsers = getBlockedUsersForDateKey(
+      dateKey,
+      blockedUsersByWeek,
+    );
+    const eligibleForDate = blockedUsers
+      ? eligibleUsers.filter((user) => !blockedUsers.has(user.userId))
+      : eligibleUsers;
+    if (eligibleForDate.length > 0) {
+      let availableForDate = blockedUsers
+        ? available.filter((user) => !blockedUsers.has(user.userId))
+        : available;
+      if (availableForDate.length === 0) {
+        available = [...eligibleForDate];
+        availableForDate = available;
       }
-      assignee = pickRandom(available);
+      assignee = pickRandom(availableForDate);
       if (assignee) {
         available = available.filter(
           (user) => user.userId !== assignee?.userId,
@@ -887,10 +1313,12 @@ export async function ensureStandupAssignmentsForWindow({
 export async function refreshStandupAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  blockedUsersByWeek,
   scope = 'month',
 }: {
   baseDate: Date;
   eligibleUsers: StandupAssignee[];
+  blockedUsersByWeek?: Map<string, Set<string>>;
   scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
   const { end: currentMonthEnd } = getMonthRange(baseDate);
@@ -919,7 +1347,14 @@ export async function refreshStandupAssignmentsForWindow({
 
   for (const dateKey of futureKeys) {
     const row = existingByDate.get(dateKey);
-    if (row?.userId && eligibleIds.has(row.userId)) {
+    const blockedUsers = row?.userId
+      ? getBlockedUsersForDateKey(dateKey, blockedUsersByWeek)
+      : null;
+    if (
+      row?.userId &&
+      eligibleIds.has(row.userId) &&
+      !blockedUsers?.has(row.userId)
+    ) {
       kept += 1;
       continue;
     }
@@ -937,13 +1372,26 @@ export async function refreshStandupAssignmentsForWindow({
 
   for (const dateKey of toAssign) {
     let assignee: StandupAssignee | null = null;
-    if (eligibleUsers.length > 0) {
-      if (available.length === 0) {
-        available = [...eligibleUsers];
+    const blockedUsers = getBlockedUsersForDateKey(
+      dateKey,
+      blockedUsersByWeek,
+    );
+    const eligibleForDate = blockedUsers
+      ? eligibleUsers.filter((user) => !blockedUsers.has(user.userId))
+      : eligibleUsers;
+    if (eligibleForDate.length > 0) {
+      let availableForDate = blockedUsers
+        ? available.filter((user) => !blockedUsers.has(user.userId))
+        : available;
+      if (availableForDate.length === 0) {
+        available = [...eligibleForDate];
+        availableForDate = available;
       }
-      assignee = pickRandom(available);
+      assignee = pickRandom(availableForDate);
       if (assignee) {
-        available = available.filter((user) => user.userId !== assignee?.userId);
+        available = available.filter(
+          (user) => user.userId !== assignee?.userId,
+        );
       }
     }
 
@@ -991,9 +1439,11 @@ export async function refreshStandupAssignmentsForWindow({
 export async function ensureSecurityShiftAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  blockedUsersByWeek,
 }: {
   baseDate: Date;
   eligibleUsers: SecurityShiftAssignee[];
+  blockedUsersByWeek?: Map<string, Set<string>>;
 }): Promise<Record<string, SecurityShiftAssignment>> {
   const { end: currentMonthEnd } = getMonthRange(baseDate);
   const currentMonthEndKey = toDateKey(currentMonthEnd);
@@ -1014,6 +1464,12 @@ export async function ensureSecurityShiftAssignmentsForWindow({
     const eventType = row.eventType as SecurityShiftEventType;
     if (!SECURITY_SHIFT_EVENT_TYPES.includes(eventType)) return;
     const isFutureOrToday = row.date >= todayKey;
+    const blockedUsers = row.userId
+      ? getBlockedUsersForDateKey(row.date, blockedUsersByWeek)
+      : null;
+    if (row.userId && blockedUsers?.has(row.userId) && isFutureOrToday) {
+      return;
+    }
     if (!row.userId && isFutureOrToday) {
       return;
     }
@@ -1056,11 +1512,22 @@ export async function ensureSecurityShiftAssignmentsForWindow({
     if (assignments.has(entry.id)) continue;
 
     let assignee: SecurityShiftAssignee | null = null;
-    if (eligibleUsers.length > 0) {
-      if (available.length === 0) {
-        available = [...eligibleUsers];
+    const blockedUsers = getBlockedUsersForDateKey(
+      entry.dateKey,
+      blockedUsersByWeek,
+    );
+    const eligibleForDate = blockedUsers
+      ? eligibleUsers.filter((user) => !blockedUsers.has(user.userId))
+      : eligibleUsers;
+    if (eligibleForDate.length > 0) {
+      let availableForDate = blockedUsers
+        ? available.filter((user) => !blockedUsers.has(user.userId))
+        : available;
+      if (availableForDate.length === 0) {
+        available = [...eligibleForDate];
+        availableForDate = available;
       }
-      assignee = pickRandom(available);
+      assignee = pickRandom(availableForDate);
       if (assignee) {
         available = available.filter(
           (user) => user.userId !== assignee?.userId,
@@ -1106,10 +1573,12 @@ export async function ensureSecurityShiftAssignmentsForWindow({
 export async function refreshSecurityShiftAssignmentsForWindow({
   baseDate,
   eligibleUsers,
+  blockedUsersByWeek,
   scope = 'month',
 }: {
   baseDate: Date;
   eligibleUsers: SecurityShiftAssignee[];
+  blockedUsersByWeek?: Map<string, Set<string>>;
   scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
   const { end: currentMonthEnd } = getMonthRange(baseDate);
@@ -1147,7 +1616,14 @@ export async function refreshSecurityShiftAssignmentsForWindow({
     for (const eventType of SECURITY_SHIFT_EVENT_TYPES) {
       const id = getSecurityShiftAssignmentId(dateKey, eventType);
       const row = existingById.get(id);
-      if (row?.userId && eligibleIds.has(row.userId)) {
+      const blockedUsers = row?.userId
+        ? getBlockedUsersForDateKey(dateKey, blockedUsersByWeek)
+        : null;
+      if (
+        row?.userId &&
+        eligibleIds.has(row.userId) &&
+        !blockedUsers?.has(row.userId)
+      ) {
         kept += 1;
         continue;
       }
@@ -1171,11 +1647,22 @@ export async function refreshSecurityShiftAssignmentsForWindow({
 
   for (const entry of toAssign) {
     let assignee: SecurityShiftAssignee | null = null;
-    if (eligibleUsers.length > 0) {
-      if (available.length === 0) {
-        available = [...eligibleUsers];
+    const blockedUsers = getBlockedUsersForDateKey(
+      entry.dateKey,
+      blockedUsersByWeek,
+    );
+    const eligibleForDate = blockedUsers
+      ? eligibleUsers.filter((user) => !blockedUsers.has(user.userId))
+      : eligibleUsers;
+    if (eligibleForDate.length > 0) {
+      let availableForDate = blockedUsers
+        ? available.filter((user) => !blockedUsers.has(user.userId))
+        : available;
+      if (availableForDate.length === 0) {
+        available = [...eligibleForDate];
+        availableForDate = available;
       }
-      assignee = pickRandom(available);
+      assignee = pickRandom(availableForDate);
       if (assignee) {
         available = available.filter(
           (user) => user.userId !== assignee?.userId,
@@ -1253,6 +1740,33 @@ export async function listStandupAssignmentsInRange({
     date: row.date,
     userId: row.userId ?? null,
     userName: row.userName,
+    assignedAt: row.assignedAt,
+  }));
+}
+
+export async function listBuilding892AssignmentsInRange({
+  startDate,
+  endDate,
+}: {
+  startDate: Date;
+  endDate: Date;
+}): Promise<Building892Assignment[]> {
+  const startKey = getWeekStartKey(startDate);
+  const endKey = getWeekStartKey(endDate);
+  const rows = await db
+    .select()
+    .from(building892Assignments)
+    .where(
+      and(
+        gte(building892Assignments.weekStart, startKey),
+        lte(building892Assignments.weekStart, endKey),
+      ),
+    )
+    .orderBy(desc(building892Assignments.weekStart));
+
+  return rows.map((row) => ({
+    weekStart: row.weekStart,
+    team: row.team,
     assignedAt: row.assignedAt,
   }));
 }

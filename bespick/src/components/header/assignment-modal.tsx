@@ -74,7 +74,7 @@ export function AssignmentModal({
           Update assignments
         </h2>
         <p className='mt-1 text-sm text-muted-foreground'>
-          Choose a rank, group, team, and portfolio for your profile.
+          Choose a rank, group, portfolio, and team for your profile.
         </p>
 
         <div className='mt-5 space-y-4'>
@@ -136,23 +136,6 @@ export function AssignmentModal({
           </label>
 
           <label className='flex flex-col gap-2 text-sm text-foreground'>
-            Team
-            <select
-              value={team}
-              onChange={(event) => onChangeTeam(event.target.value)}
-              autoFocus={focus === 'team'}
-              className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-            >
-              <option value=''>No team assigned</option>
-              {teamOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className='flex flex-col gap-2 text-sm text-foreground'>
             Portfolio
             <select
               value={portfolio}
@@ -173,6 +156,23 @@ export function AssignmentModal({
                 ? 'Select a group with portfolios to enable this field.'
                 : ''}
             </span>
+          </label>
+
+          <label className='flex flex-col gap-2 text-sm text-foreground'>
+            Team
+            <select
+              value={team}
+              onChange={(event) => onChangeTeam(event.target.value)}
+              autoFocus={focus === 'team'}
+              className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+            >
+              <option value=''>No team assigned</option>
+              {teamOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 

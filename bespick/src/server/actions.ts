@@ -4,17 +4,21 @@ import {
   getAnnouncement,
   getPoll,
   getPollVoteBreakdown,
+  getForm,
   listAnnouncements,
   listArchived,
+  listFormSubmissions,
   listScheduled,
   nextPublishAt,
   publishDue,
   purchaseVotes,
   removeAnnouncement,
+  submitForm,
   updateAnnouncement,
   votePoll,
   type CreateAnnouncementArgs,
   type PurchaseVotesArgs,
+  type SubmitFormArgs,
   type UpdateAnnouncementArgs,
   type VotePollArgs,
 } from '@/server/services/announcements';
@@ -32,6 +36,9 @@ export type RpcAction =
   | 'announcements.getPoll'
   | 'announcements.getPollVoteBreakdown'
   | 'announcements.votePoll'
+  | 'announcements.getForm'
+  | 'announcements.submitForm'
+  | 'announcements.listFormSubmissions'
   | 'announcements.purchaseVotes'
   | 'announcements.nextPublishAt'
   | 'announcements.publishDue'
@@ -69,6 +76,18 @@ export async function handleAction(
       );
     case 'announcements.votePoll':
       return votePoll(args as VotePollArgs, identity);
+    case 'announcements.getForm':
+      return getForm(
+        (args as { id: Id<'announcements'> }).id,
+        identity?.userId,
+      );
+    case 'announcements.submitForm':
+      return submitForm(args as SubmitFormArgs, identity);
+    case 'announcements.listFormSubmissions':
+      return listFormSubmissions(
+        (args as { id: Id<'announcements'> }).id,
+        identity,
+      );
     case 'announcements.purchaseVotes':
       return purchaseVotes(args as PurchaseVotesArgs, identity);
     case 'announcements.nextPublishAt':

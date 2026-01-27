@@ -295,9 +295,17 @@ export async function sendMattermostTestDm({
       };
     }
 
-    const date = new Date();
+  const date = new Date();
+  const isBuilding892 = eventType === 'building-892';
+  if (isBuilding892) {
+    const day = date.getDay();
+    const offset = (8 - day) % 7;
+    const daysUntilMonday = offset === 0 ? 7 : offset;
+    date.setDate(date.getDate() + daysUntilMonday);
+  } else {
     date.setDate(date.getDate() + 1);
-    const dateLabel = formatShortDateLabel(date);
+  }
+  const dateLabel = formatShortDateLabel(date);
     const label = (() => {
       if (isSecurityShiftEventType(eventType)) {
         const window = getSecurityShiftWindow(eventType);
@@ -306,32 +314,37 @@ export async function sendMattermostTestDm({
       return getHostHubEventLabel(eventType);
     })();
 
-    let timeLabel = 'TBD';
-    if (isSecurityShiftEventType(eventType)) {
-      const window = getSecurityShiftWindow(eventType);
-      if (window) {
-        timeLabel = formatTimeRangeLabel(
-          window.startTime,
-          window.endTime,
-        );
-      }
-    } else {
-      const ruleId = eventType === 'demo' ? 'demo-day' : 'standup';
-      const rule = await getScheduleRuleConfig(ruleId);
-      timeLabel = formatTimeLabel(resolveEventTime(null, rule.defaultTime));
+  let timeLabel = 'TBD';
+  if (isBuilding892) {
+    timeLabel = 'Mon-Fri';
+  } else if (isSecurityShiftEventType(eventType)) {
+    const window = getSecurityShiftWindow(eventType);
+    if (window) {
+      timeLabel = formatTimeRangeLabel(
+        window.startTime,
+        window.endTime,
+      );
     }
+  } else {
+    const ruleId = eventType === 'demo' ? 'demo-day' : 'standup';
+    const rule = await getScheduleRuleConfig(ruleId);
+    timeLabel = formatTimeLabel(resolveEventTime(null, rule.defaultTime));
+  }
 
     const baseUrl = getAppBaseUrl();
     const docsUrl = baseUrl
       ? new URL('/hosthub/docs', baseUrl).toString()
       : null;
-    const message = [
-      `Test notification: You are scheduled for ${label} on ${dateLabel} at ${timeLabel}.`,
-      'This is a test DM sent from Settings.',
-      docsUrl ? `Details: ${docsUrl}` : null,
-    ]
-      .filter(Boolean)
-      .join(' ');
+  const scheduleLabel = isBuilding892
+    ? `Test notification: Your team is scheduled to work at ${label} the week of ${dateLabel} (${timeLabel}).`
+    : `Test notification: You are scheduled for ${label} on ${dateLabel} at ${timeLabel}.`;
+  const message = [
+    scheduleLabel,
+    'This is a test DM sent from Settings.',
+    docsUrl ? `Details: ${docsUrl}` : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
     const result = await postMattermostDirectMessage(
       mattermostUserId,

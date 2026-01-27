@@ -9,6 +9,11 @@ export type { ShiftEntry, ShiftResource } from './types';
 type MyScheduleListProps = {
   currentShifts: ShiftEntry[];
   pastShifts: ShiftEntry[];
+  building892Weeks?: Array<{
+    id: string;
+    label: string;
+    range: string;
+  }>;
 };
 
 type ScheduleSectionProps = {
@@ -65,9 +70,37 @@ function ScheduleSection({
   );
 }
 
+type Building892SectionProps = {
+  weeks: Array<{ id: string; label: string; range: string }>;
+};
+
+function Building892Section({ weeks }: Building892SectionProps) {
+  return (
+    <div className='rounded-2xl border border-border bg-card/70 p-4 shadow-sm sm:p-6'>
+      <h3 className='mb-2 text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground'>
+        892 Manning
+      </h3>
+      <p className='text-sm text-muted-foreground'>
+        Your assigned weeks for the current month.
+      </p>
+      <ul className='mt-4 divide-y divide-border'>
+        {weeks.map((week) => (
+          <li key={week.id} className='py-3'>
+            <p className='text-sm font-semibold text-foreground'>
+              {week.label}
+            </p>
+            <p className='text-xs text-muted-foreground'>{week.range}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function MyScheduleList({
   currentShifts,
   pastShifts,
+  building892Weeks = [],
 }: MyScheduleListProps) {
   const [activeShiftId, setActiveShiftId] = useState<string | null>(null);
   const allShifts = useMemo(
@@ -84,6 +117,9 @@ export function MyScheduleList({
   return (
     <>
       <div className='space-y-6'>
+        {building892Weeks.length > 0 ? (
+          <Building892Section weeks={building892Weeks} />
+        ) : null}
         <ScheduleSection
           title='Current Shifts'
           shifts={currentShifts}

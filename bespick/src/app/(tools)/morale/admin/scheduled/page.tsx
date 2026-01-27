@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { AnnouncementModal } from '@/components/announcements/announcement-modal';
+import { FormModal } from '@/components/forms/form-modal';
 import { MoraleSubHeader } from '@/components/header/morale-subheader';
 import { api } from '@/lib/api';
 import { useApiMutation, useApiQuery } from '@/lib/apiClient';
@@ -23,7 +24,8 @@ export default function ScheduledPage() {
   const router = useRouter();
   const { user, isLoaded } = useUser();
   const role = user?.publicMetadata?.role as string | null | undefined;
-  const isMoraleAdmin = role === 'admin' || role === 'moderator';
+  const isMoraleAdmin =
+    role === 'admin' || role === 'moderator' || role === 'morale-member';
 
   React.useEffect(() => {
     if (!isLoaded || isMoraleAdmin) {
@@ -57,12 +59,18 @@ function ScheduledContent() {
   const { now } = useMinuteTicker();
   const [viewingAnnouncement, setViewingAnnouncement] =
     React.useState<Announcement | null>(null);
+  const [viewingFormId, setViewingFormId] =
+    React.useState<AnnouncementId | null>(null);
   const handleViewAnnouncement = React.useCallback(
     (announcement: Announcement) => {
       setViewingAnnouncement(announcement);
     },
     [],
   );
+
+  const handleOpenForm = React.useCallback((id: AnnouncementId) => {
+    setViewingFormId(id);
+  }, []);
 
   const scheduledActivities = useApiQuery<{ now: number }, Announcement[]>(
     api.announcements.listScheduled,
@@ -134,6 +142,7 @@ function ScheduledContent() {
               onEdit={handleEdit}
               deletingId={deletingId}
               onViewAnnouncement={handleViewAnnouncement}
+              onOpenForm={handleOpenForm}
             />
           ))}
       </div>
@@ -142,6 +151,15 @@ function ScheduledContent() {
         <AnnouncementModal
           announcement={viewingAnnouncement}
           onClose={() => setViewingAnnouncement(null)}
+        />
+      )}
+
+      {viewingFormId && (
+        <FormModal
+          formId={viewingFormId}
+          onClose={() => setViewingFormId(null)}
+          isAdmin={true}
+          canSubmit={false}
         />
       )}
     </section>

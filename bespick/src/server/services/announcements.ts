@@ -1,26 +1,38 @@
 import crypto from 'node:crypto';
 import { clerkClient } from '@clerk/nextjs/server';
-import { and, asc, eq, gt, lte, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lte, ne, or } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import {
   AnnouncementInsert,
   AnnouncementRow,
   announcements,
+  formSubmissions,
   pollVotes,
   votingPurchases,
 } from '@/server/db/schema';
 import { deleteUploads } from '@/server/services/storage';
 import { notifyMoraleAnnouncementPublished } from '@/server/services/mattermost-notifications';
 import { broadcast } from '@/server/events';
-import { isValidGroup, isValidPortfolioForGroup } from '@/lib/org';
+import {
+  isValidGroup,
+  isValidPortfolioForGroup,
+  isValidRankCategory,
+  isValidRankForCategory,
+  isValidTeam,
+} from '@/lib/org';
 import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 import type {
   AnnouncementDoc,
+  FormAnswer,
+  FormQuestion,
+  FormQuestionType,
+  FormSubmissionLimit,
   Id,
   VotingLeaderboardMode,
   VotingParticipant,
 } from '@/types/db';
 import type { Identity } from '../auth';
+import { checkRole } from '@/server/auth/check-role';
 
 export type CreateAnnouncementArgs = {
   title: string;
@@ -44,7 +56,10 @@ export type CreateAnnouncementArgs = {
   votingAllowUngrouped?: boolean;
   votingAllowRemovals?: boolean;
   votingLeaderboardMode?: string;
-  eventType?: 'announcements' | 'poll' | 'voting';
+  formQuestions?: FormQuestion[];
+  formSubmissionLimit?: FormSubmissionLimit;
+  formPrice?: number | null;
+  eventType?: 'announcements' | 'poll' | 'voting' | 'form';
   imageIds?: Id<'_storage'>[];
 };
 
@@ -87,6 +102,44 @@ export type PollBreakdown = {
     voteCount: number;
   }[];
   totalVotes: number;
+};
+
+export type FormDetails = {
+  _id: Id<'announcements'>;
+  title: string;
+  description: string;
+  publishAt: number;
+  status: AnnouncementDoc['status'];
+  createdBy?: string;
+  updatedAt?: number;
+  updatedBy?: string;
+  formQuestions: FormQuestion[];
+  formSubmissionLimit: FormSubmissionLimit;
+  formPrice: number | null;
+  imageIds: Id<'_storage'>[];
+  userOptionsByQuestionId: Record<string, { userId: string; name: string }[]>;
+  userHasSubmitted: boolean;
+};
+
+export type SubmitFormArgs = {
+  id: Id<'announcements'>;
+  answers: FormAnswer[];
+  paypalOrderId?: string | null;
+  paymentAmount?: number | null;
+};
+
+export type FormSubmissionEntry = {
+  id: Id<'formSubmissions'>;
+  userId: string;
+  userName: string | null;
+  createdAt: number;
+  answers: FormAnswer[];
+};
+
+export type FormSubmissionSummary = {
+  announcementId: Id<'announcements'>;
+  questions: FormQuestion[];
+  submissions: FormSubmissionEntry[];
 };
 
 function parseJson<T>(value?: string | null): T | undefined {
@@ -138,6 +191,10 @@ function mapAnnouncementRow(row: AnnouncementRow): AnnouncementDoc {
     votingAllowRemovals: row.votingAllowRemovals ?? undefined,
     votingLeaderboardMode: (row.votingLeaderboardMode ??
       undefined) as VotingLeaderboardMode | undefined,
+    formQuestions: parseJson<FormQuestion[]>(row.formQuestionsJson),
+    formSubmissionLimit: (row.formSubmissionLimit ??
+      undefined) as FormSubmissionLimit | undefined,
+    formPrice: row.formPrice ?? null,
     imageIds: parseJson<Id<'_storage'>[]>(row.imageIdsJson),
   };
 }
@@ -175,6 +232,257 @@ function normalizeVotingParticipants(
     });
   }
   return normalized;
+}
+
+const MAX_FORM_QUESTIONS = 5;
+const MIN_FORM_OPTIONS = 2;
+const MAX_FORM_OPTIONS = 10;
+const MAX_FREE_TEXT_LENGTH = 250;
+
+function normalizeFormOptions(options: unknown, label: string): string[] {
+  if (!Array.isArray(options)) {
+    throw new Error(`${label} options must be a list.`);
+  }
+  const cleaned = options
+    .map((option) => (typeof option === 'string' ? option.trim() : ''))
+    .filter((option) => option.length > 0);
+  const unique = Array.from(new Set(cleaned));
+  if (unique.length < MIN_FORM_OPTIONS) {
+    throw new Error(`${label} requires at least ${MIN_FORM_OPTIONS} options.`);
+  }
+  if (unique.length > MAX_FORM_OPTIONS) {
+    throw new Error(`${label} supports up to ${MAX_FORM_OPTIONS} options.`);
+  }
+  return unique;
+}
+
+function normalizeFormSubmissionLimit(
+  limit: unknown,
+): FormSubmissionLimit {
+  return limit === 'once' ? 'once' : 'unlimited';
+}
+
+function normalizeFormQuestions(
+  questions: FormQuestion[] | undefined,
+): FormQuestion[] {
+  if (!Array.isArray(questions)) return [];
+  if (questions.length === 0) return [];
+  if (questions.length > MAX_FORM_QUESTIONS) {
+    throw new Error(`Forms can include up to ${MAX_FORM_QUESTIONS} questions.`);
+  }
+  return questions.map((question) => {
+    const prompt =
+      typeof question.prompt === 'string' ? question.prompt.trim() : '';
+    if (!prompt) {
+      throw new Error('Each form question needs a prompt.');
+    }
+    const type = question.type as FormQuestionType;
+    const id =
+      typeof question.id === 'string' && question.id.trim().length > 0
+        ? question.id.trim()
+        : crypto.randomUUID();
+    const required =
+      typeof question.required === 'boolean' ? question.required : true;
+
+    if (type === 'multiple_choice') {
+      const options = normalizeFormOptions(question.options, 'Multiple choice');
+      const maxSelectionsRaw =
+        typeof question.maxSelections === 'number'
+          ? Math.floor(question.maxSelections)
+          : MIN_FORM_OPTIONS;
+      const maxSelections = Math.min(
+        Math.max(MIN_FORM_OPTIONS, maxSelectionsRaw),
+        Math.min(MAX_FORM_OPTIONS, options.length),
+      );
+      return {
+        id,
+        type,
+        prompt,
+        required,
+        options,
+        allowAdditionalOptions: Boolean(question.allowAdditionalOptions),
+        maxSelections,
+      } satisfies FormQuestion;
+    }
+
+    if (type === 'dropdown') {
+      const options = normalizeFormOptions(question.options, 'Dropdown');
+      return {
+        id,
+        type,
+        prompt,
+        required,
+        options,
+      } satisfies FormQuestion;
+    }
+
+    if (type === 'free_text') {
+      const maxLengthRaw =
+        typeof question.maxLength === 'number'
+          ? Math.floor(question.maxLength)
+          : MAX_FREE_TEXT_LENGTH;
+      const maxLength = Math.min(
+        MAX_FREE_TEXT_LENGTH,
+        Math.max(1, maxLengthRaw),
+      );
+      return {
+        id,
+        type,
+        prompt,
+        required,
+        maxLength,
+      } satisfies FormQuestion;
+    }
+
+    if (type === 'user_select') {
+      return {
+        id,
+        type,
+        prompt,
+        required,
+        userFilters:
+          typeof question.userFilters === 'object' &&
+          question.userFilters !== null
+            ? { ...question.userFilters }
+            : {},
+      } satisfies FormQuestion;
+    }
+
+    throw new Error('Unsupported form question type.');
+  });
+}
+
+type FormRosterEntry = {
+  userId: string;
+  name: string;
+  email: string;
+  team: string | null;
+  group: string | null;
+  portfolio: string | null;
+  rankCategory: string | null;
+  rank: string | null;
+  role: string;
+};
+
+const UNASSIGNED_VALUE = 'unassigned';
+
+function normalizeRoleValue(role: unknown) {
+  return role === 'admin' ||
+    role === 'moderator' ||
+    role === 'scheduler' ||
+    role === 'morale-member'
+    ? role
+    : 'member';
+}
+
+async function loadFormRoster(): Promise<FormRosterEntry[]> {
+  try {
+    const client = await clerkClient();
+    const metadataOptions = await getMetadataOptionsConfig();
+    const groupOptions = metadataOptions.groupOptions;
+    const teamOptions = metadataOptions.teamOptions;
+    const users = await client.users.getUserList({ limit: 500 });
+    return users.data.map((user) => {
+      const firstName = (user.firstName ?? '').trim();
+      const lastName = (user.lastName ?? '').trim();
+      const fullName = `${firstName} ${lastName}`.trim();
+      const fallbackName =
+        user.username ||
+        user.emailAddresses[0]?.emailAddress ||
+        user.id;
+      const email =
+        user.emailAddresses.find(
+          (entry) => entry.id === user.primaryEmailAddressId,
+        )?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? '';
+      const rawTeam = user.publicMetadata.team;
+      const normalizedTeam = isValidTeam(rawTeam, teamOptions)
+        ? rawTeam
+        : null;
+      const rawGroup = user.publicMetadata.group;
+      const normalizedGroup = isValidGroup(rawGroup, groupOptions)
+        ? rawGroup
+        : null;
+      const rawPortfolio = user.publicMetadata.portfolio;
+      const normalizedPortfolio =
+        normalizedGroup &&
+        isValidPortfolioForGroup(
+          normalizedGroup,
+          rawPortfolio,
+          groupOptions,
+        )
+          ? rawPortfolio
+          : null;
+      const rawRankCategory = user.publicMetadata.rankCategory;
+      const normalizedRankCategory = isValidRankCategory(rawRankCategory)
+        ? rawRankCategory
+        : null;
+      const rawRank = user.publicMetadata.rank;
+      const normalizedRank =
+        normalizedRankCategory &&
+        isValidRankForCategory(normalizedRankCategory, rawRank)
+          ? rawRank
+          : null;
+      const rawRole = user.publicMetadata.role;
+      return {
+        userId: user.id,
+        name: fullName || fallbackName,
+        email,
+        team: normalizedTeam,
+        group: normalizedGroup,
+        portfolio: normalizedPortfolio,
+        rankCategory: normalizedRankCategory,
+        rank: normalizedRank,
+        role: normalizeRoleValue(rawRole),
+      };
+    });
+  } catch (error) {
+    console.error('Failed to load roster for form questions', error);
+    return [];
+  }
+}
+
+function matchUnassigned(
+  value: string | null,
+  filter: string | undefined,
+) {
+  if (!filter) return true;
+  if (filter === UNASSIGNED_VALUE) return value === null;
+  return value === filter;
+}
+
+function applyRosterFilters(
+  roster: FormRosterEntry[],
+  filters: FormQuestion['userFilters'],
+) {
+  if (!filters) return roster;
+  const search = filters.search?.trim().toLowerCase() ?? '';
+  return roster.filter((entry) => {
+    if (filters.role && entry.role !== filters.role) {
+      return false;
+    }
+    if (!matchUnassigned(entry.team, filters.team)) {
+      return false;
+    }
+    if (!matchUnassigned(entry.group, filters.group)) {
+      return false;
+    }
+    if (!matchUnassigned(entry.portfolio, filters.portfolio)) {
+      return false;
+    }
+    if (!matchUnassigned(entry.rankCategory, filters.rankCategory)) {
+      return false;
+    }
+    if (!matchUnassigned(entry.rank, filters.rank)) {
+      return false;
+    }
+    if (search.length > 0) {
+      const haystack = `${entry.name} ${entry.email}`.toLowerCase();
+      if (!haystack.includes(search)) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
 type VotingRosterEntry = {
@@ -422,7 +730,9 @@ export async function createAnnouncement(
   if (!cleanedTitle) throw new Error('Title is required');
 
   const eventType =
-    args.eventType === 'poll' || args.eventType === 'voting'
+    args.eventType === 'poll' ||
+    args.eventType === 'voting' ||
+    args.eventType === 'form'
       ? args.eventType
       : 'announcements';
 
@@ -539,6 +849,32 @@ export async function createAnnouncement(
     );
   }
 
+  let formQuestions: FormQuestion[] | null = null;
+  let formSubmissionLimit: FormSubmissionLimit | null = null;
+  let formPrice: number | null = null;
+  if (eventType === 'form') {
+    const normalizedQuestions = normalizeFormQuestions(args.formQuestions);
+    if (normalizedQuestions.length === 0) {
+      throw new Error('Forms require at least one question.');
+    }
+    formQuestions = normalizedQuestions;
+    formSubmissionLimit = normalizeFormSubmissionLimit(
+      args.formSubmissionLimit,
+    );
+    const rawPrice =
+      typeof args.formPrice === 'number'
+        ? args.formPrice
+        : args.formPrice === null
+          ? null
+          : null;
+    if (rawPrice !== null) {
+      if (!Number.isFinite(rawPrice) || rawPrice < 0) {
+        throw new Error('Form price must be a non-negative number.');
+      }
+      formPrice = Math.round(rawPrice * 100) / 100;
+    }
+  }
+
   const providedImageIds =
     Array.isArray(args.imageIds) && args.imageIds.length > 0
       ? args.imageIds
@@ -592,6 +928,13 @@ export async function createAnnouncement(
       eventType === 'voting' ? votingAllowRemovals : null,
     votingLeaderboardMode:
       eventType === 'voting' ? votingLeaderboardMode : null,
+    formQuestionsJson:
+      eventType === 'form' && formQuestions
+        ? JSON.stringify(formQuestions)
+        : null,
+    formSubmissionLimit:
+      eventType === 'form' ? formSubmissionLimit ?? 'unlimited' : null,
+    formPrice: eventType === 'form' ? formPrice : null,
     imageIdsJson: normalizedImageIds.length
       ? JSON.stringify(normalizedImageIds)
       : null,
@@ -673,7 +1016,9 @@ export async function updateAnnouncement(
   const cleanedDescription = args.description.trim();
   if (!cleanedTitle) throw new Error('Title is required');
   const eventType =
-    args.eventType === 'poll' || args.eventType === 'voting'
+    args.eventType === 'poll' ||
+    args.eventType === 'voting' ||
+    args.eventType === 'form'
       ? args.eventType
       : existing.eventType;
   if (!cleanedDescription && eventType === 'announcements') {
@@ -852,6 +1197,37 @@ export async function updateAnnouncement(
     );
   }
 
+  let formQuestions: FormQuestion[] | null = null;
+  let formSubmissionLimit: FormSubmissionLimit | null = null;
+  let formPrice: number | null = null;
+  if (eventType === 'form') {
+    const sourceQuestions =
+      args.formQuestions ??
+      (Array.isArray(existing.formQuestions) ? existing.formQuestions : []);
+    const normalizedQuestions = normalizeFormQuestions(sourceQuestions);
+    if (normalizedQuestions.length === 0) {
+      throw new Error('Forms require at least one question.');
+    }
+    formQuestions = normalizedQuestions;
+    formSubmissionLimit = normalizeFormSubmissionLimit(
+      args.formSubmissionLimit ?? existing.formSubmissionLimit,
+    );
+    const rawPrice =
+      typeof args.formPrice === 'number'
+        ? args.formPrice
+        : args.formPrice === null
+          ? null
+          : typeof existing.formPrice === 'number'
+            ? existing.formPrice
+            : null;
+    if (rawPrice !== null) {
+      if (!Number.isFinite(rawPrice) || rawPrice < 0) {
+        throw new Error('Form price must be a non-negative number.');
+      }
+      formPrice = Math.round(rawPrice * 100) / 100;
+    }
+  }
+
   const providedImageIds = Array.isArray(args.imageIds)
     ? args.imageIds
     : existing.imageIds ?? [];
@@ -940,6 +1316,18 @@ export async function updateAnnouncement(
         eventType === 'voting'
           ? votingLeaderboardMode ?? existing.votingLeaderboardMode ?? 'all'
           : null,
+      formQuestionsJson:
+        eventType === 'form'
+          ? serializeJson(formQuestions ?? existing.formQuestions ?? undefined)
+          : null,
+      formSubmissionLimit:
+        eventType === 'form'
+          ? formSubmissionLimit ?? existing.formSubmissionLimit ?? 'unlimited'
+          : null,
+      formPrice:
+        eventType === 'form'
+          ? formPrice ?? existing.formPrice ?? null
+          : null,
       imageIdsJson:
         normalizedImageIds.length > 0
           ? JSON.stringify(normalizedImageIds)
@@ -1020,6 +1408,11 @@ export async function publishDue(now: number) {
         .delete(votingPurchases)
         .where(eq(votingPurchases.announcementId, announcement.id));
     }
+    if (announcement.eventType === 'form') {
+      await db
+        .delete(formSubmissions)
+        .where(eq(formSubmissions.announcementId, announcement.id));
+    }
     if (imageIds.length) {
       await deleteUploads(imageIds);
     }
@@ -1051,6 +1444,10 @@ export async function publishDue(now: number) {
       archiveDue.some((a) => a.eventType === 'voting');
     if (hasVotingChange) {
       affectedChannels.add('voting');
+    }
+    const hasFormChange = deleteDue.some((a) => a.eventType === 'form');
+    if (hasFormChange) {
+      affectedChannels.add('formSubmissions');
     }
     broadcast(Array.from(affectedChannels));
   }
@@ -1126,6 +1523,78 @@ export async function getPoll(
   };
 }
 
+export async function getForm(
+  id: Id<'announcements'>,
+  userId?: string | null,
+): Promise<FormDetails> {
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, id))
+    .get();
+  if (!row || row.eventType !== 'form') {
+    throw new Error('Form not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  const questions = Array.isArray(announcement.formQuestions)
+    ? announcement.formQuestions
+    : [];
+  if (questions.length === 0) {
+    throw new Error('Form is missing questions.');
+  }
+
+  const roster = await loadFormRoster();
+  const userOptionsByQuestionId: Record<
+    string,
+    { userId: string; name: string }[]
+  > = {};
+  questions.forEach((question) => {
+    if (question.type !== 'user_select') return;
+    const filtered = applyRosterFilters(roster, question.userFilters);
+    userOptionsByQuestionId[question.id] = filtered
+      .map((entry) => ({
+        userId: entry.userId,
+        name: entry.name,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  let userHasSubmitted = false;
+  if (userId) {
+    const existing = await db
+      .select()
+      .from(formSubmissions)
+      .where(
+        and(
+          eq(formSubmissions.announcementId, id),
+          eq(formSubmissions.userId, userId),
+        ),
+      )
+      .get();
+    userHasSubmitted = Boolean(existing);
+  }
+
+  return {
+    _id: announcement._id,
+    title: announcement.title,
+    description: announcement.description,
+    publishAt: announcement.publishAt,
+    status: announcement.status,
+    createdBy: announcement.createdBy,
+    updatedAt: announcement.updatedAt,
+    updatedBy: announcement.updatedBy,
+    formQuestions: questions,
+    formSubmissionLimit: announcement.formSubmissionLimit ?? 'unlimited',
+    formPrice:
+      typeof announcement.formPrice === 'number'
+        ? announcement.formPrice
+        : null,
+    imageIds: announcement.imageIds ?? [],
+    userOptionsByQuestionId,
+    userHasSubmitted,
+  };
+}
+
 export async function getPollVoteBreakdown(
   id: Id<'announcements'>,
   identity: Identity | null,
@@ -1185,6 +1654,284 @@ export async function getPollVoteBreakdown(
     pollId: id,
     options,
     totalVotes,
+  };
+}
+
+export async function submitForm(
+  args: SubmitFormArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'form') {
+    throw new Error('Form not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  const questions = normalizeFormQuestions(announcement.formQuestions ?? []);
+  if (questions.length === 0) {
+    throw new Error('Form is missing questions.');
+  }
+
+  if (announcement.status === 'archived') {
+    throw new Error('This form is no longer accepting submissions.');
+  }
+
+  const submissionLimit = announcement.formSubmissionLimit ?? 'unlimited';
+  if (submissionLimit === 'once') {
+    const existing = await db
+      .select()
+      .from(formSubmissions)
+      .where(
+        and(
+          eq(formSubmissions.announcementId, args.id),
+          eq(formSubmissions.userId, identity.userId),
+        ),
+      )
+      .get();
+    if (existing) {
+      throw new Error('You have already submitted this form.');
+    }
+  }
+
+  const price =
+    typeof announcement.formPrice === 'number' && announcement.formPrice > 0
+      ? announcement.formPrice
+      : null;
+  if (price) {
+    if (!args.paypalOrderId) {
+      throw new Error('Payment is required to submit this form.');
+    }
+    const paymentAmount =
+      typeof args.paymentAmount === 'number' ? args.paymentAmount : null;
+    if (paymentAmount === null) {
+      throw new Error('Payment amount is required.');
+    }
+    if (Math.abs(paymentAmount - price) > 0.01) {
+      throw new Error('Payment amount does not match the form price.');
+    }
+  }
+
+  if (!Array.isArray(args.answers)) {
+    throw new Error('Invalid form submission.');
+  }
+
+  const answerByQuestion = new Map<string, FormAnswer>();
+  for (const answer of args.answers) {
+    if (!answer || typeof answer.questionId !== 'string') {
+      throw new Error('Invalid form answers.');
+    }
+    if (answerByQuestion.has(answer.questionId)) {
+      throw new Error('Duplicate answers for a question.');
+    }
+    answerByQuestion.set(answer.questionId, answer);
+  }
+
+  const needsUserSelect = questions.some(
+    (question) => question.type === 'user_select',
+  );
+  const roster = needsUserSelect ? await loadFormRoster() : [];
+  const userOptionsByQuestionId: Record<string, FormRosterEntry[]> = {};
+  if (needsUserSelect) {
+    questions.forEach((question) => {
+      if (question.type !== 'user_select') return;
+      userOptionsByQuestionId[question.id] = applyRosterFilters(
+        roster,
+        question.userFilters,
+      );
+    });
+  }
+
+  const normalizedAnswers: FormAnswer[] = questions.map((question) => {
+    const answer = answerByQuestion.get(question.id);
+    const isRequired = question.required ?? true;
+    if (!answer) {
+      if (!isRequired) {
+        return {
+          questionId: question.id,
+          value: question.type === 'multiple_choice' ? [] : '',
+        };
+      }
+      throw new Error(`Missing response for "${question.prompt}".`);
+    }
+
+    if (question.type === 'multiple_choice') {
+      const selectionsRaw = Array.isArray(answer.value)
+        ? answer.value
+        : typeof answer.value === 'string'
+          ? [answer.value]
+          : [];
+      const selections = selectionsRaw
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0);
+      const uniqueSelections = Array.from(new Set(selections));
+      if (uniqueSelections.length === 0) {
+        if (!isRequired) {
+          return { questionId: question.id, value: [] };
+        }
+        throw new Error(`Select at least one option for "${question.prompt}".`);
+      }
+      const maxSelections = Math.max(
+        MIN_FORM_OPTIONS,
+        Math.min(
+          question.maxSelections ?? MIN_FORM_OPTIONS,
+          question.options?.length ?? MIN_FORM_OPTIONS,
+        ),
+      );
+      if (uniqueSelections.length > maxSelections) {
+        throw new Error(
+          `Select up to ${maxSelections} options for "${question.prompt}".`,
+        );
+      }
+      const optionSet = new Set(
+        (question.options ?? []).map((option) => option.toLowerCase()),
+      );
+      if (!question.allowAdditionalOptions) {
+        const invalid = uniqueSelections.find(
+          (option) => !optionSet.has(option.toLowerCase()),
+        );
+        if (invalid) {
+          throw new Error(`"${invalid}" is not a valid option.`);
+        }
+      }
+      return {
+        questionId: question.id,
+        value: uniqueSelections,
+      };
+    }
+
+    if (question.type === 'dropdown') {
+      const selection =
+        typeof answer.value === 'string' ? answer.value.trim() : '';
+      if (!selection) {
+        if (!isRequired) {
+          return { questionId: question.id, value: '' };
+        }
+        throw new Error(`Select a value for "${question.prompt}".`);
+      }
+      if (
+        !Array.isArray(question.options) ||
+        !question.options.includes(selection)
+      ) {
+        throw new Error(`"${selection}" is not a valid option.`);
+      }
+      return {
+        questionId: question.id,
+        value: selection,
+      };
+    }
+
+    if (question.type === 'free_text') {
+      const text = typeof answer.value === 'string' ? answer.value.trim() : '';
+      if (!text) {
+        if (!isRequired) {
+          return { questionId: question.id, value: '' };
+        }
+        throw new Error(`Add a response for "${question.prompt}".`);
+      }
+      const maxLength = Math.min(
+        MAX_FREE_TEXT_LENGTH,
+        question.maxLength ?? MAX_FREE_TEXT_LENGTH,
+      );
+      if (text.length > maxLength) {
+        throw new Error(
+          `"${question.prompt}" exceeds ${maxLength} characters.`,
+        );
+      }
+      return {
+        questionId: question.id,
+        value: text,
+      };
+    }
+
+    if (question.type === 'user_select') {
+      const selection =
+        typeof answer.value === 'string' ? answer.value.trim() : '';
+      if (!selection) {
+        if (!isRequired) {
+          return { questionId: question.id, value: '' };
+        }
+        throw new Error(`Select a user for "${question.prompt}".`);
+      }
+      const allowed =
+        userOptionsByQuestionId[question.id] ?? [];
+      const match = allowed.find((entry) => entry.userId === selection);
+      if (!match) {
+        throw new Error('Selected user is not allowed for this question.');
+      }
+      return {
+        questionId: question.id,
+        value: selection,
+        displayValue: match.name,
+      };
+    }
+
+    throw new Error('Unsupported form response.');
+  });
+
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  await db.insert(formSubmissions).values({
+    id,
+    announcementId: args.id,
+    userId: identity.userId,
+    userName: identity.name ?? identity.email ?? null,
+    answersJson: JSON.stringify(normalizedAnswers),
+    createdAt: now,
+    paypalOrderId: args.paypalOrderId ?? null,
+    paymentAmount: price ?? null,
+  });
+
+  broadcast('formSubmissions');
+  return { id: id as Id<'formSubmissions'> };
+}
+
+export async function listFormSubmissions(
+  id: Id<'announcements'>,
+  identity: Identity | null,
+): Promise<FormSubmissionSummary> {
+  if (!identity) throw new Error('Unauthorized');
+  const canView = await checkRole([
+    'admin',
+    'moderator',
+    'morale-member',
+  ]);
+  if (!canView) {
+    throw new Error('Unauthorized');
+  }
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, id))
+    .get();
+  if (!row || row.eventType !== 'form') {
+    throw new Error('Form not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  const questions = normalizeFormQuestions(announcement.formQuestions ?? []);
+
+  const rows = await db
+    .select()
+    .from(formSubmissions)
+    .where(eq(formSubmissions.announcementId, id))
+    .orderBy(desc(formSubmissions.createdAt));
+
+  const submissions = rows.map((entry) => ({
+    id: entry.id as Id<'formSubmissions'>,
+    userId: entry.userId,
+    userName: entry.userName ?? null,
+    createdAt: entry.createdAt,
+    answers: parseJson<FormAnswer[]>(entry.answersJson) ?? [],
+  }));
+
+  return {
+    announcementId: announcement._id,
+    questions,
+    submissions,
   };
 }
 
@@ -1476,6 +2223,10 @@ export async function removeAnnouncement(
     await db
       .delete(votingPurchases)
       .where(eq(votingPurchases.announcementId, id));
+  } else if (existing.eventType === 'form') {
+    await db
+      .delete(formSubmissions)
+      .where(eq(formSubmissions.announcementId, id));
   }
   if (imageIds.length) {
     await deleteUploads(imageIds);
@@ -1485,6 +2236,7 @@ export async function removeAnnouncement(
     'announcements',
     ...(existing.eventType === 'voting' ? ['voting'] : []),
     ...(existing.eventType === 'poll' ? ['pollVotes'] : []),
+    ...(existing.eventType === 'form' ? ['formSubmissions'] : []),
   ]);
 }
 

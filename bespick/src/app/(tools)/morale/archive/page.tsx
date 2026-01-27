@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { AnnouncementModal } from '@/components/announcements/announcement-modal';
+import { FormModal } from '@/components/forms/form-modal';
 import { PollModal } from '@/components/poll/poll-modal';
 import { VotingModal } from '@/components/voting/voting-modal';
 import { MoraleSubHeader } from '@/components/header/morale-subheader';
@@ -35,13 +36,16 @@ export default function ArchivePage() {
     React.useState<AnnouncementId | null>(null);
   const [viewingAnnouncement, setViewingAnnouncement] =
     React.useState<Announcement | null>(null);
+  const [viewingFormId, setViewingFormId] =
+    React.useState<AnnouncementId | null>(null);
   const [viewingVoting, setViewingVoting] =
     React.useState<Announcement | null>(null);
   const { activities, setLocalActivities } =
     useLocalActivities(archivedActivities);
   const isLoading = archivedActivities === undefined;
   const role = user?.publicMetadata?.role as string | null | undefined;
-  const isMoraleAdmin = role === 'admin' || role === 'moderator';
+  const isMoraleAdmin =
+    role === 'admin' || role === 'moderator' || role === 'morale-member';
 
   const handleDelete = React.useCallback(
     async (id: AnnouncementId) => {
@@ -81,6 +85,10 @@ export default function ArchivePage() {
     },
     [],
   );
+
+  const handleOpenForm = React.useCallback((id: AnnouncementId) => {
+    setViewingFormId(id);
+  }, []);
   const handleOpenVoting = React.useCallback((announcement: Announcement) => {
     setViewingVoting(announcement);
   }, []);
@@ -114,6 +122,7 @@ export default function ArchivePage() {
               deletingId={deletingId}
               onOpenPoll={handleOpenPoll}
               onOpenVoting={handleOpenVoting}
+              onOpenForm={handleOpenForm}
               onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
@@ -139,6 +148,15 @@ export default function ArchivePage() {
         <VotingModal
           event={viewingVoting}
           onClose={() => setViewingVoting(null)}
+        />
+      )}
+
+      {viewingFormId && (
+        <FormModal
+          formId={viewingFormId}
+          onClose={() => setViewingFormId(null)}
+          isAdmin={isMoraleAdmin}
+          canSubmit={false}
         />
       )}
     </section>

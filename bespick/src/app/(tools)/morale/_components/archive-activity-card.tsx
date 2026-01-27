@@ -13,6 +13,7 @@ type ArchiveActivityCardProps = {
   deletingId: AnnouncementId | null;
   onOpenPoll?: (id: AnnouncementId) => void;
   onOpenVoting?: (announcement: Announcement) => void;
+  onOpenForm?: (id: AnnouncementId) => void;
   onViewAnnouncement: (announcement: Announcement) => void;
 };
 
@@ -24,10 +25,12 @@ export function ArchiveActivityCard({
   deletingId,
   onOpenPoll,
   onOpenVoting,
+  onOpenForm,
   onViewAnnouncement,
 }: ArchiveActivityCardProps) {
   const isPollCard = activity.eventType === 'poll';
   const isVotingCard = activity.eventType === 'voting';
+  const isFormCard = activity.eventType === 'form';
   const publishedDate = formatDate(activity.publishAt);
   const editedDate = activity.updatedAt ? formatDate(activity.updatedAt) : null;
   const isDeleting = deletingId === activity._id;
@@ -107,7 +110,16 @@ export function ArchiveActivityCard({
               View leaderboard
             </button>
           )}
-          {!isPollCard && !isVotingCard && (
+          {isFormCard && onOpenForm && (
+            <button
+              type='button'
+              onClick={() => onOpenForm(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View form
+            </button>
+          )}
+          {!isPollCard && !isVotingCard && !isFormCard && (
             <button
               type='button'
               onClick={() => onViewAnnouncement(activity)}

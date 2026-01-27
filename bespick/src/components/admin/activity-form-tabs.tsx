@@ -27,6 +27,11 @@ const ACTIVITY_OPTIONS: Array<{
     label: 'Voting',
     description: 'Vote to fight it out on the leaderboard.',
   },
+  {
+    value: 'form',
+    label: 'Form',
+    description: 'Collect submissions with custom questions.',
+  },
 ];
 
 type AnnouncementDoc = Doc<'announcements'>;

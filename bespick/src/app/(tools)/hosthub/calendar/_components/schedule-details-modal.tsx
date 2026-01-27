@@ -2,6 +2,7 @@
 
 import type { CalendarEvent, EventOverride } from './calendar-types';
 import {
+  BUILDING_892_TONE,
   DEMO_TONE,
   MY_TONE,
   SECURITY_TONE,
@@ -17,8 +18,10 @@ type ScheduleDetailsModalProps = {
   selectedDate: Date;
   events: CalendarEvent[];
   currentUserId: string | null;
+  currentUserTeam?: string | null;
   isAdmin: boolean;
   rosterOptions: Array<{ userId: string; name: string }>;
+  teamOptions?: Array<{ value: string; label: string }>;
   editingEventId: string | null;
   editTime: string;
   editCanceled: boolean;
@@ -42,8 +45,10 @@ export function ScheduleDetailsModal({
   selectedDate,
   events,
   currentUserId,
+  currentUserTeam = null,
   isAdmin,
   rosterOptions,
+  teamOptions = [],
   editingEventId,
   editTime,
   editCanceled,
@@ -96,20 +101,46 @@ export function ScheduleDetailsModal({
           {events.length > 0 ? (
             events.map((event) => {
               const isMine =
-                event.assigneeId && event.assigneeId === currentUserId;
+                event.variant === 'building-892'
+                  ? Boolean(
+                      currentUserTeam &&
+                        event.assigneeId === currentUserTeam,
+                    )
+                  : Boolean(
+                      event.assigneeId &&
+                        event.assigneeId === currentUserId,
+                    );
               const tone = isMine
                 ? MY_TONE
-                : event.variant === 'standup'
-                  ? STANDUP_TONE
-                  : isSecurityShiftEventType(event.variant)
-                    ? SECURITY_TONE
-                    : DEMO_TONE;
+                : event.variant === 'building-892'
+                  ? BUILDING_892_TONE
+                  : event.variant === 'standup'
+                    ? STANDUP_TONE
+                    : isSecurityShiftEventType(event.variant)
+                      ? SECURITY_TONE
+                      : DEMO_TONE;
               const override = getOverrideForEvent(event);
               const originalDemoDate =
                 event.variant === 'demo'
                   ? parseDateKey(event.dateKey)
                   : null;
               const isEditing = editingEventId === event.id;
+              const isBuilding892 = event.variant === 'building-892';
+              const hasOptions = isBuilding892
+                ? teamOptions.length > 0
+                : rosterOptions.length > 0;
+              const selectValueLabel = isBuilding892
+                ? 'Team override'
+                : 'Host override';
+              const selectEmptyLabel = isBuilding892
+                ? `Use assigned team (${event.assignee ?? 'TBD'})`
+                : `Use assigned host (${event.assignee ?? 'TBD'})`;
+              const selectHelperText = isBuilding892
+                ? 'Overrides update the team assigned to 892 for the full week.'
+                : 'All members are available, even if they do not meet eligibility rules.';
+              const selectEmptyMessage = isBuilding892
+                ? 'No team options available for overrides.'
+                : 'No roster data available for overrides.';
               return (
                 <div
                   key={event.id}
@@ -139,7 +170,7 @@ export function ScheduleDetailsModal({
                   </div>
                   {event.assignee ? (
                     <p className='mt-2 text-sm text-muted-foreground'>
-                      Assigned:{' '}
+                      {isBuilding892 ? 'Assigned team:' : 'Assigned:'}{' '}
                       <span className='text-foreground'>
                         {event.assignee}
                       </span>
@@ -169,35 +200,44 @@ export function ScheduleDetailsModal({
                       {isEditing ? (
                         <div className='mt-3 space-y-3'>
                           <label className='flex flex-col gap-2 text-sm text-foreground'>
-                            Host override
+                            {selectValueLabel}
                             <select
                               value={editHostId}
                               onChange={(eventValue) =>
                                 onEditHostIdChange(eventValue.target.value)
                               }
-                              disabled={isSaving || rosterOptions.length === 0}
+                              disabled={isSaving || !hasOptions}
                               className='w-full max-w-64 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
                             >
                               <option value=''>
-                                Use assigned host ({event.assignee ?? 'TBD'})
+                                {selectEmptyLabel}
                               </option>
-                              {rosterOptions.map((member) => (
-                                <option key={member.userId} value={member.userId}>
-                                  {member.name}
-                                </option>
-                              ))}
+                              {isBuilding892
+                                ? teamOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))
+                                : rosterOptions.map((member) => (
+                                    <option
+                                      key={member.userId}
+                                      value={member.userId}
+                                    >
+                                      {member.name}
+                                    </option>
+                                  ))}
                             </select>
                             <span className='text-xs text-muted-foreground'>
-                              All members are available, even if they do not meet
-                              eligibility rules.
+                              {selectHelperText}
                             </span>
-                            {rosterOptions.length === 0 ? (
+                            {!hasOptions ? (
                               <span className='text-xs text-muted-foreground'>
-                                No roster data available for overrides.
+                                {selectEmptyMessage}
                               </span>
                             ) : null}
                           </label>
-                          {!isSecurityShiftEventType(event.variant) ? (
+                          {!isSecurityShiftEventType(event.variant) &&
+                          !isBuilding892 ? (
                             <label className='flex flex-col gap-2 text-sm text-foreground'>
                               Time
                               <input

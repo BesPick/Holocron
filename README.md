@@ -83,6 +83,7 @@ once and then move between tools from the same header.
 
 - Personal schedule view for standup, demo day, and security shifts.
 - Calendar view for upcoming assignments across the roster.
+- Weekly 892 Manning assignments (team-based) with admin override controls.
 - Docs hub embedding the standup schedule, "About Me" guidance, and Demo Day docs.
 - Demo Day history export (CSV download).
 - Admin scheduling settings UI is in development.
@@ -92,6 +93,9 @@ HostHub assignment rules (current):
 - Standup shifts auto-assign for Mondays and Thursdays.
 - Demo Day auto-assigns the first Wednesday of each month.
 - Security shifts auto-assign Monday through Friday with AM/PM windows.
+- 892 Manning assigns one eligible team per week (Monday start). Teams with no members or `N/A` are excluded.
+- When a team is assigned to 892, its members are blocked from other shifts that week.
+- Admins can override the assigned 892 team per week in the calendar modal.
 - Eligibility is derived from Clerk publicMetadata (rankCategory + rank).
 
 ### Admin Settings (Live)
@@ -133,7 +137,7 @@ Next.js App Router -> Server Actions / API Routes -> SQLite (Drizzle)
 - The app lives in `bespick/` (this README sits at the repo root).
 - SQLite database file is created at `bespick/data/bespick.sqlite` on first run.
 - HostHub schedule rules and Google Docs links live in `src/server/services/hosthub-schedule.ts` and `src/lib/hosthub-docs.ts`.
-- Database tables of note: `announcements`, `poll_votes`, `uploads`, `demo_day_assignments`, `standup_assignments`, `security_shift_assignments`, `site_settings`.
+- Database tables of note: `announcements`, `poll_votes`, `uploads`, `demo_day_assignments`, `standup_assignments`, `security_shift_assignments`, `building_892_assignments`, `site_settings`.
 - Clerk `publicMetadata` fields in use today: `role`, `group`, `portfolio`, `rankCategory`, `rank`, `team`.
 - `publishDue` is invoked by the Morale dashboard to auto-publish, archive, and delete scheduled items.
 - If you change Node versions, run `npm rebuild better-sqlite3` to refresh the native module.
@@ -241,7 +245,7 @@ If port 3000 is already in use, Next.js will pick 3001 and print it.
 1. Create or reuse a Mattermost bot account and generate a bot token.
 2. Set `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`, and `MATTERMOST_EVENT_CHANNEL_ID` in `.env.local`.
 3. Set `NEXT_PUBLIC_APP_URL` or `APP_BASE_URL` so notifications can link back to Holocron.
-4. Open `/admin/settings` to toggle which notifications are sent and to send a test message.
+4. Open `/admin/settings` to toggle which notifications are sent (including weekly 892 reminders) and to send a test message.
 
 ## Environment Variables
 
@@ -319,12 +323,19 @@ bespick/
 ## Authentication & Roles
 
 - **Clerk middleware** (`src/proxy.ts`) forces authentication for every route except `/sign-in` and `/sign-up`.
-- **Morale admin routes** (`/morale/admin/*`) require role `admin` or `moderator`.
-- **Admin settings** (`/admin/settings`) are restricted to role `admin` via `checkRole` on the server.
-- **Role values** are defined in `src/types/globals.d.ts` (`'admin' | 'moderator' | ''`).
+- **Morale admin routes** (`/morale/admin/*`) require role `admin`, `moderator`, or `morale-member`.
+- **Admin settings** (`/admin/settings`) are restricted to role `admin` only.
+- **Role values** are defined in `src/types/globals.d.ts` (`'admin' | 'moderator' | 'scheduler' | 'morale-member' | ''`).
 - **Granting roles** can be done via `/morale/admin/roster` (uses `updateUserRole`) or directly in the Clerk dashboard by editing a user's `publicMetadata.role`.
 - **Group, portfolio, rank, and team** metadata live in `publicMetadata` and power voting and HostHub eligibility.
 - **Auto-delete disallowed signups**: configure a Clerk webhook pointing to `/api/clerk/webhook` and set `CLERK_WEBHOOK_SECRET`. New users without an allowed email domain are deleted automatically.
+
+Role capabilities (summary):
+
+- **Admin**: Full access across the app, including Settings.
+- **Moderator**: Same access as Admin, except Settings.
+- **Scheduler**: Read-only roster access; full HostHub admin controls; no other admin pages.
+- **Morale Member**: Read-only roster access; full Morale admin controls; no other admin pages.
 
 ## Deployment Notes
 

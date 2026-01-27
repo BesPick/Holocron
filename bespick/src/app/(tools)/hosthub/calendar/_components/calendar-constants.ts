@@ -25,6 +25,11 @@ export const SECURITY_TONE = {
   badge: 'border-sky-500/30 bg-sky-500/10 text-sky-700',
 };
 
+export const BUILDING_892_TONE = {
+  card: 'border-teal-500/30 bg-teal-500/10 text-teal-700',
+  badge: 'border-teal-500/30 bg-teal-500/10 text-teal-700',
+};
+
 export const MY_TONE = {
   card: 'border-primary/30 bg-primary/10 text-primary',
   badge: 'border-primary/30 bg-primary/10 text-primary',

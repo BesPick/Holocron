@@ -3,6 +3,7 @@
 import type { CalendarDay, CalendarEvent } from './calendar-types';
 import {
   DEMO_TONE,
+  BUILDING_892_TONE,
   MY_TONE,
   SECURITY_TONE,
   STANDUP_TONE,
@@ -18,6 +19,7 @@ type CalendarGridProps = {
   calendarDays: CalendarDay[];
   todayKey: string;
   currentUserId: string | null;
+  currentUserTeam?: string | null;
   getEvents: (date: Date) => CalendarEvent[];
   onDayClick: (day: CalendarDay) => void;
 };
@@ -28,6 +30,7 @@ export function CalendarGrid({
   calendarDays,
   todayKey,
   currentUserId,
+  currentUserTeam = null,
   getEvents,
   onDayClick,
 }: CalendarGridProps) {
@@ -37,8 +40,11 @@ export function CalendarGrid({
     .filter((entry) => entry.events.length > 0);
   const resolveTone = (event: CalendarEvent) => {
     const isMine =
-      event.assigneeId && event.assigneeId === currentUserId;
+      event.variant === 'building-892'
+        ? Boolean(currentUserTeam && event.assigneeId === currentUserTeam)
+        : Boolean(event.assigneeId && event.assigneeId === currentUserId);
     if (isMine) return MY_TONE;
+    if (event.variant === 'building-892') return BUILDING_892_TONE;
     if (event.variant === 'standup') return STANDUP_TONE;
     if (isSecurityShiftEventType(event.variant)) return SECURITY_TONE;
     return DEMO_TONE;
@@ -107,6 +113,12 @@ export function CalendarGrid({
                           </span>
                           <span className='text-[11px]'>{event.time}</span>
                         </div>
+                        {event.variant === 'building-892' &&
+                        event.assignee ? (
+                          <p className='mt-1 text-[11px] text-muted-foreground'>
+                            Team: {event.assignee}
+                          </p>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -179,6 +191,12 @@ export function CalendarGrid({
                                     {event.time}
                                   </span>
                                 </div>
+                                {event.variant === 'building-892' &&
+                                event.assignee ? (
+                                  <p className='mt-1 text-[11px] text-muted-foreground'>
+                                    Team: {event.assignee}
+                                  </p>
+                                ) : null}
                               </div>
                             );
                           })}

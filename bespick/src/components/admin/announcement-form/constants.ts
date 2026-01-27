@@ -6,6 +6,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   announcements: 'Announcement',
   poll: 'Poll',
   voting: 'Voting',
+  form: 'Form',
 };
 
 export const MAX_IMAGES = 5;

@@ -16,7 +16,7 @@ type UserOption = {
 };
 
 type EventOption = {
-  value: 'standup' | 'demo' | 'security-am' | 'security-pm';
+  value: 'standup' | 'demo' | 'security-am' | 'security-pm' | 'building-892';
   label: string;
 };
 
@@ -25,6 +25,7 @@ const EVENT_OPTIONS: EventOption[] = [
   { value: 'demo', label: 'Demo Day' },
   { value: 'security-am', label: 'Morning Security' },
   { value: 'security-pm', label: 'Afternoon Security' },
+  { value: 'building-892', label: '892 Manning (Weekly)' },
 ];
 
 export function MattermostTestCard({

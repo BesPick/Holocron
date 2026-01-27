@@ -19,13 +19,17 @@ import {
   resolveEventTime,
 } from '@/lib/hosthub-schedule-utils';
 import {
+  buildBuilding892BlockedUsers,
+  ensureBuilding892AssignmentsForWindow,
   ensureDemoDayAssignmentsForWindow,
   getEligibleDemoDayRoster,
   ensureSecurityShiftAssignmentsForWindow,
   ensureStandupAssignmentsForWindow,
+  getBuilding892TeamRoster,
   getEligibleSecurityShiftRoster,
   getEligibleStandupRoster,
   getScheduleRuleConfig,
+  listBuilding892AssignmentsInRange,
   listDemoDayAssignmentsInRange,
   listSecurityShiftAssignmentsInRange,
   listScheduleEventOverridesInRange,
@@ -44,26 +48,55 @@ export default async function HostHubPage() {
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
   const endDate = new Date(now.getFullYear(), now.getMonth() + 4, 0);
+  const overridesStart = new Date(startDate);
+  overridesStart.setDate(overridesStart.getDate() - 7);
+  const currentTeam =
+    typeof user?.publicMetadata?.team === 'string'
+      ? user.publicMetadata.team
+      : null;
 
   const currentShifts: ShiftEntry[] = [];
   const pastShifts: ShiftEntry[] = [];
+  const building892Weeks: Array<{ id: string; label: string; range: string }> = [];
   const todayKey = toDateKey(now);
 
   if (user) {
     const eligibleRoster = await getEligibleDemoDayRoster();
     const eligibleStandupRoster = await getEligibleStandupRoster();
     const eligibleSecurityRoster = await getEligibleSecurityShiftRoster();
+    const building892Roster = await getBuilding892TeamRoster();
+    const overrides = await listScheduleEventOverridesInRange({
+      startDate: overridesStart,
+      endDate,
+    });
+    const building892Overrides = new Map(
+      overrides
+        .filter((override) => override.eventType === 'building-892')
+        .map((override) => [override.date, override]),
+    );
+    const building892Assignments = await ensureBuilding892AssignmentsForWindow({
+      baseDate: now,
+      eligibleTeams: building892Roster.eligibleTeams,
+    });
+    const blockedUsersByWeek = buildBuilding892BlockedUsers({
+      assignments: building892Assignments,
+      teamMembers: building892Roster.teamMembers,
+      overrides: building892Overrides,
+    });
     await ensureDemoDayAssignmentsForWindow({
       baseDate: now,
       eligibleUsers: eligibleRoster,
+      blockedUsersByWeek,
     });
     await ensureStandupAssignmentsForWindow({
       baseDate: now,
       eligibleUsers: eligibleStandupRoster,
+      blockedUsersByWeek,
     });
     await ensureSecurityShiftAssignmentsForWindow({
       baseDate: now,
       eligibleUsers: eligibleSecurityRoster,
+      blockedUsersByWeek,
     });
     const demoRule = await getScheduleRuleConfig('demo-day');
     const standupRule = await getScheduleRuleConfig('standup');
@@ -79,10 +112,18 @@ export default async function HostHubPage() {
       startDate,
       endDate,
     });
-    const overrides = await listScheduleEventOverridesInRange({
-      startDate,
-      endDate,
-    });
+    const monthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+    );
+    const building892AssignmentsInMonth =
+      currentTeam && currentTeam.trim().length > 0
+        ? await listBuilding892AssignmentsInRange({
+            startDate,
+            endDate: monthEnd,
+          })
+        : [];
     const overridesByKey = new Map(
       overrides.map((override) => [
         getEventOverrideId(override.date, override.eventType),
@@ -110,6 +151,29 @@ export default async function HostHubPage() {
     const securityAssignmentsById = new Map(
       securityAssignments.map((entry) => [entry.id, entry]),
     );
+    if (currentTeam && currentTeam.trim().length > 0) {
+      building892AssignmentsInMonth.forEach((entry) => {
+        const override = overridesByKey.get(
+          getEventOverrideId(entry.weekStart, 'building-892'),
+        );
+        if (override?.isCanceled) return;
+        const effectiveTeam =
+          override?.overrideUserId ?? entry.team ?? null;
+        if (!effectiveTeam || effectiveTeam !== currentTeam) return;
+        const weekStart = new Date(entry.weekStart);
+        if (Number.isNaN(weekStart.getTime())) return;
+        if (weekStart.getMonth() !== now.getMonth()) return;
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 4);
+        building892Weeks.push({
+          id: `building-892-${entry.weekStart}`,
+          label: `Week of ${formatShortDateLabel(weekStart)}`,
+          range: `${formatShortDateLabel(weekStart)} - ${formatShortDateLabel(
+            weekEnd,
+          )}`,
+        });
+      });
+    }
 
     const cursor = new Date(startDate);
     while (cursor <= endDate) {
@@ -226,6 +290,7 @@ export default async function HostHubPage() {
         <MyScheduleList
           currentShifts={currentShifts}
           pastShifts={pastShifts}
+          building892Weeks={building892Weeks}
         />
       )}
     </section>

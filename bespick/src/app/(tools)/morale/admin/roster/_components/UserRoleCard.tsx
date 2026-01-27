@@ -40,12 +40,19 @@ type ToastState = {
 };
 
 const normalizeRole = (role: string | null) =>
-  role === 'admin' || role === 'moderator' ? role : null;
+  role === 'admin' ||
+  role === 'moderator' ||
+  role === 'scheduler' ||
+  role === 'morale-member'
+    ? role
+    : null;
 
 const formatRoleLabel = (role: string | null) => {
   if (!role) return 'No role assigned';
   if (role === 'admin') return 'Admin';
   if (role === 'moderator') return 'Moderator';
+  if (role === 'scheduler') return 'Scheduler';
+  if (role === 'morale-member') return 'Morale Member';
   return role;
 };
 
@@ -81,16 +88,16 @@ export function UserRoleCard({
       value: currentRank ?? 'No rank assigned',
     },
     {
-      label: 'Group',
-      value: currentGroup ?? 'No group assigned',
+      label: 'Portfolio',
+      value: currentPortfolio ?? 'No portfolio assigned',
     },
     {
       label: 'Team',
       value: currentTeam ?? 'No team assigned',
     },
     {
-      label: 'Portfolio',
-      value: currentPortfolio ?? 'No portfolio assigned',
+      label: 'Group',
+      value: currentGroup ?? 'No group assigned',
     },
   ];
 
@@ -290,6 +297,28 @@ export function UserRoleCard({
 
               <button
                 type='button'
+                onClick={() => handleRoleChange('scheduler')}
+                className={`${buttonClasses} text-foreground`}
+                disabled={isPending || currentRole === 'scheduler'}
+              >
+                {currentRole === 'scheduler'
+                  ? 'Already Scheduler'
+                  : 'Make Scheduler'}
+              </button>
+
+              <button
+                type='button'
+                onClick={() => handleRoleChange('morale-member')}
+                className={`${buttonClasses} text-foreground`}
+                disabled={isPending || currentRole === 'morale-member'}
+              >
+                {currentRole === 'morale-member'
+                  ? 'Already Morale Member'
+                  : 'Make Morale Member'}
+              </button>
+
+              <button
+                type='button'
                 onClick={() => handleRoleChange(null)}
                 className={`${buttonClasses} text-danger`}
                 disabled={isPending || currentRole === null}
@@ -310,7 +339,7 @@ export function UserRoleCard({
             </>
           ) : (
             <div className='rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground'>
-              Read-only access. Only admins can edit roles or assignments.
+              Read-only access. Only admins and moderators can edit roles or assignments.
             </div>
           )}
         </div>
@@ -385,25 +414,6 @@ export function UserRoleCard({
                 </label>
 
                 <label className='flex flex-col gap-2 text-sm text-foreground'>
-                  Team
-                  <select
-                    value={currentTeam ?? ''}
-                    onChange={(event) =>
-                      handleTeamChange(event.target.value)
-                    }
-                    disabled={isPending || !canEdit}
-                    className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-                  >
-                    <option value=''>No team assigned</option>
-                    {teamOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className='flex flex-col gap-2 text-sm text-foreground'>
                   Portfolio
                   <select
                     value={currentPortfolio ?? ''}
@@ -426,20 +436,44 @@ export function UserRoleCard({
                       : ''}
                   </span>
                 </label>
+
+                <label className='flex flex-col gap-2 text-sm text-foreground'>
+                  Team
+                  <select
+                    value={currentTeam ?? ''}
+                    onChange={(event) =>
+                      handleTeamChange(event.target.value)
+                    }
+                    disabled={isPending || !canEdit}
+                    className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+                  >
+                    <option value=''>No team assigned</option>
+                    {teamOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </>
           ) : (
-            <div className='mt-4 grid gap-4 sm:grid-cols-2'>
-              {infoFields.map((field) => (
-                <div key={field.label} className='flex flex-col gap-1'>
-                  <span className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                    {field.label}
-                  </span>
-                  <span className='text-sm font-semibold text-foreground'>
-                    {field.value}
-                  </span>
-                </div>
-              ))}
+            <div className='mt-4 space-y-3'>
+              <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                Read-only fields. Editing is disabled.
+              </p>
+              <div className='grid gap-4 sm:grid-cols-2'>
+                {infoFields.map((field) => (
+                  <div key={field.label} className='flex flex-col gap-1'>
+                    <span className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                      {field.label}
+                    </span>
+                    <span className='text-sm font-semibold text-foreground'>
+                      {field.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </details>

@@ -19,6 +19,8 @@ import { db } from '@/server/db/client';
 import { shiftNotifications } from '@/server/db/schema';
 import {
   getScheduleRuleConfig,
+  getBuilding892TeamRoster,
+  listBuilding892AssignmentsInRange,
   listDemoDayAssignmentsInRange,
   listScheduleEventOverridesInRange,
   listSecurityShiftAssignmentsInRange,
@@ -57,6 +59,7 @@ export type HostHubScheduleChange = {
 };
 
 const STANDUP_DAYS = new Set([1, 4]);
+const BUILDING_892_WEEK_START_DAY = 1;
 
 const getAppBaseUrl = () => {
   const raw =
@@ -73,6 +76,17 @@ const parseDateKey = (value: string) => {
   if ([year, month, day].some((part) => Number.isNaN(part))) return null;
   return new Date(year, month - 1, day);
 };
+
+const getWeekStart = (date: Date) => {
+  const start = new Date(date);
+  const offset =
+    (start.getDay() - BUILDING_892_WEEK_START_DAY + 7) % 7;
+  start.setDate(start.getDate() - offset);
+  start.setHours(0, 0, 0, 0);
+  return start;
+};
+
+const getWeekStartKey = (date: Date) => toDateKey(getWeekStart(date));
 
 const formatTimeLabel = (time: string) => {
   if (!time || time === 'TBD') return 'TBD';
@@ -163,11 +177,18 @@ export async function notifyHostHubShiftsForTomorrow() {
   const canNotifySecurity =
     notificationConfig.hosthubSecurityAmEnabled ||
     notificationConfig.hosthubSecurityPmEnabled;
-  if (!canNotifyStandup && !canNotifyDemo && !canNotifySecurity) {
+  const canNotifyBuilding892 = notificationConfig.hosthubBuilding892Enabled;
+  if (
+    !canNotifyStandup &&
+    !canNotifyDemo &&
+    !canNotifySecurity &&
+    !canNotifyBuilding892
+  ) {
     return { sent: 0, skipped: 0, errors: 0 };
   }
 
-  const targetDate = new Date();
+  const now = new Date();
+  const targetDate = new Date(now);
   targetDate.setDate(targetDate.getDate() + 1);
   const targetKey = toDateKey(targetDate);
   const scheduleRules = await Promise.all([
@@ -337,6 +358,7 @@ export async function notifyHostHubShiftsForTomorrow() {
   let errors = 0;
   const userCache = new Map<string, string | null>();
   const docsUrl = new URL('/hosthub/docs', baseUrl).toString();
+  const calendarUrl = new URL('/hosthub/calendar', baseUrl).toString();
 
   for (const event of events) {
     const notificationId = `${event.eventType}:${event.dateKey}:${event.userId}`;
@@ -407,6 +429,93 @@ export async function notifyHostHubShiftsForTomorrow() {
       sentAt: Date.now(),
     });
     sent += 1;
+  }
+
+  if (canNotifyBuilding892 && now.getDay() === 5) {
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() + 3);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekStartKey = getWeekStartKey(weekStart);
+    const [buildingRoster, buildingAssignments, buildingOverrides] =
+      await Promise.all([
+        getBuilding892TeamRoster(),
+        listBuilding892AssignmentsInRange({
+          startDate: weekStart,
+          endDate: weekStart,
+        }),
+        listScheduleEventOverridesInRange({
+          startDate: weekStart,
+          endDate: weekStart,
+        }),
+      ]);
+    const assignment =
+      buildingAssignments.find(
+        (entry) => entry.weekStart === weekStartKey,
+      ) ?? null;
+    const override =
+      buildingOverrides.find(
+        (entry) =>
+          entry.eventType === 'building-892' &&
+          entry.date === weekStartKey,
+      ) ?? null;
+
+    if (!override?.isCanceled) {
+      const teamValue =
+        override?.overrideUserId ?? assignment?.team ?? null;
+      if (teamValue && teamValue !== 'TBD') {
+        const teamLabel =
+          override?.overrideUserName ??
+          buildingRoster.teamLabels.get(teamValue) ??
+          teamValue;
+        const members = buildingRoster.teamMembers.get(teamValue) ?? [];
+        for (const memberId of members) {
+          const notificationId = `building-892:${weekStartKey}:${memberId}`;
+          const existing = await db
+            .select()
+            .from(shiftNotifications)
+            .where(
+              and(
+                eq(shiftNotifications.id, notificationId),
+                eq(shiftNotifications.userId, memberId),
+              ),
+            )
+            .get();
+          if (existing) {
+            skipped += 1;
+            continue;
+          }
+
+          const mattermostUserId = await resolveMattermostUserId(
+            memberId,
+            userCache,
+          );
+          if (!mattermostUserId) {
+            skipped += 1;
+            continue;
+          }
+
+          const dateLabel = formatShortDateLabel(weekStart);
+          const message = `Reminder: Your team (${teamLabel}) is scheduled to work at 892 Manning the week of ${dateLabel} (Mon-Fri). Details: ${calendarUrl}`;
+          const result = await postMattermostDirectMessage(
+            mattermostUserId,
+            message,
+          );
+          if (!result) {
+            errors += 1;
+            continue;
+          }
+
+          await db.insert(shiftNotifications).values({
+            id: notificationId,
+            eventType: 'building-892',
+            eventDate: weekStartKey,
+            userId: memberId,
+            sentAt: Date.now(),
+          });
+          sent += 1;
+        }
+      }
+    }
   }
 
   return { sent, skipped, errors };

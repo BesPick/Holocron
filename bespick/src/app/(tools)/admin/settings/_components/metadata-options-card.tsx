@@ -124,7 +124,7 @@ export function MetadataOptionsCard({
   const [isPending, startTransition] = useTransition();
 
   const roleOptions = useMemo(
-    () => ['Admin', 'Moderator', 'Member'],
+    () => ['Admin', 'Moderator', 'Scheduler', 'Morale Member', 'Member'],
     [],
   );
 

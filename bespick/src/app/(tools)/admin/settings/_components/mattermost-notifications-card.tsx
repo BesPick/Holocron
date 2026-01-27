@@ -60,88 +60,98 @@ export function MattermostNotificationsCard({
 
       <div className='border-t border-border/60 px-6 pb-6'>
         <div className='pt-5 space-y-6'>
-        <div className='space-y-3'>
-          <p className='text-sm font-semibold text-foreground'>Morale</p>
-          <label className='flex items-center gap-3 text-sm text-foreground'>
-            <input
-              type='checkbox'
-              className='h-4 w-4 accent-primary'
-              checked={config.moraleEnabled}
-              onChange={handleToggle('moraleEnabled')}
+          <div className='space-y-3'>
+            <p className='text-sm font-semibold text-foreground'>Morale</p>
+            <label className='flex items-center gap-3 text-sm text-foreground'>
+              <input
+                type='checkbox'
+                className='h-4 w-4 accent-primary'
+                checked={config.moraleEnabled}
+                onChange={handleToggle('moraleEnabled')}
+                disabled={isPending}
+              />
+              Send channel notifications for published morale items
+            </label>
+          </div>
+
+          <div className='space-y-3'>
+            <p className='text-sm font-semibold text-foreground'>HostHub</p>
+            <div className='grid gap-3 sm:grid-cols-2'>
+              <label className='flex items-center gap-3 text-sm text-foreground'>
+                <input
+                  type='checkbox'
+                  className='h-4 w-4 accent-primary'
+                  checked={config.hosthubStandupEnabled}
+                  onChange={handleToggle('hosthubStandupEnabled')}
+                  disabled={isPending}
+                />
+                Standup reminders
+              </label>
+              <label className='flex items-center gap-3 text-sm text-foreground'>
+                <input
+                  type='checkbox'
+                  className='h-4 w-4 accent-primary'
+                  checked={config.hosthubDemoEnabled}
+                  onChange={handleToggle('hosthubDemoEnabled')}
+                  disabled={isPending}
+                />
+                Demo Day reminders
+              </label>
+              <label className='flex items-center gap-3 text-sm text-foreground'>
+                <input
+                  type='checkbox'
+                  className='h-4 w-4 accent-primary'
+                  checked={config.hosthubSecurityAmEnabled}
+                  onChange={handleToggle('hosthubSecurityAmEnabled')}
+                  disabled={isPending}
+                />
+                Morning security reminders
+              </label>
+              <label className='flex items-center gap-3 text-sm text-foreground'>
+                <input
+                  type='checkbox'
+                  className='h-4 w-4 accent-primary'
+                  checked={config.hosthubSecurityPmEnabled}
+                  onChange={handleToggle('hosthubSecurityPmEnabled')}
+                  disabled={isPending}
+                />
+                Afternoon security reminders
+              </label>
+              <label className='flex items-center gap-3 text-sm text-foreground'>
+                <input
+                  type='checkbox'
+                  className='h-4 w-4 accent-primary'
+                  checked={config.hosthubBuilding892Enabled}
+                  onChange={handleToggle('hosthubBuilding892Enabled')}
+                  disabled={isPending}
+                />
+                892 Manning weekly reminders
+              </label>
+            </div>
+          </div>
+
+          <div className='flex flex-wrap items-center gap-3'>
+            <button
+              type='button'
+              onClick={handleSave}
               disabled={isPending}
-            />
-            Send channel notifications for published morale items
-          </label>
-        </div>
-
-        <div className='space-y-3'>
-          <p className='text-sm font-semibold text-foreground'>HostHub</p>
-          <div className='grid gap-3 sm:grid-cols-2'>
-            <label className='flex items-center gap-3 text-sm text-foreground'>
-              <input
-                type='checkbox'
-                className='h-4 w-4 accent-primary'
-                checked={config.hosthubStandupEnabled}
-                onChange={handleToggle('hosthubStandupEnabled')}
-                disabled={isPending}
-              />
-              Standup reminders
-            </label>
-            <label className='flex items-center gap-3 text-sm text-foreground'>
-              <input
-                type='checkbox'
-                className='h-4 w-4 accent-primary'
-                checked={config.hosthubDemoEnabled}
-                onChange={handleToggle('hosthubDemoEnabled')}
-                disabled={isPending}
-              />
-              Demo Day reminders
-            </label>
-            <label className='flex items-center gap-3 text-sm text-foreground'>
-              <input
-                type='checkbox'
-                className='h-4 w-4 accent-primary'
-                checked={config.hosthubSecurityAmEnabled}
-                onChange={handleToggle('hosthubSecurityAmEnabled')}
-                disabled={isPending}
-              />
-              Morning security reminders
-            </label>
-            <label className='flex items-center gap-3 text-sm text-foreground'>
-              <input
-                type='checkbox'
-                className='h-4 w-4 accent-primary'
-                checked={config.hosthubSecurityPmEnabled}
-                onChange={handleToggle('hosthubSecurityPmEnabled')}
-                disabled={isPending}
-              />
-              Afternoon security reminders
-            </label>
+              className='inline-flex items-center justify-center rounded-md border border-border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
+            >
+              {isPending ? 'Saving...' : 'Save changes'}
+            </button>
           </div>
-        </div>
 
-        <div className='flex flex-wrap items-center gap-3'>
-          <button
-            type='button'
-            onClick={handleSave}
-            disabled={isPending}
-            className='inline-flex items-center justify-center rounded-md border border-border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-          >
-            {isPending ? 'Saving...' : 'Save changes'}
-          </button>
-        </div>
-
-        {status ? (
-          <div
-            className={`rounded-xl border px-4 py-3 text-sm ${
-              status.variant === 'success'
-                ? 'border-primary/30 bg-primary/10 text-primary'
-                : 'border-destructive/40 bg-destructive/10 text-destructive'
-            }`}
-          >
-            {status.message}
-          </div>
-        ) : null}
+          {status ? (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                status.variant === 'success'
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive'
+              }`}
+            >
+              {status.message}
+            </div>
+          ) : null}
         </div>
       </div>
     </details>

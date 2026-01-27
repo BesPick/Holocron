@@ -35,7 +35,8 @@ export function MoraleSubHeader() {
     pathname,
   }));
   const role = user?.publicMetadata?.role as string | null | undefined;
-  const isMoraleAdmin = role === 'admin' || role === 'moderator';
+  const isMoraleAdmin =
+    role === 'admin' || role === 'moderator' || role === 'morale-member';
 
   const navItems = useMemo<NavItem[]>(
     () => [

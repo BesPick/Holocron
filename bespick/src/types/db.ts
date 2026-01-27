@@ -11,7 +11,43 @@ export type VotingParticipant = {
 
 export type VotingLeaderboardMode = 'all' | 'group' | 'group_portfolio';
 export type ActivityStatus = 'published' | 'scheduled' | 'archived';
-export type ActivityType = 'announcements' | 'poll' | 'voting';
+export type ActivityType = 'announcements' | 'poll' | 'voting' | 'form';
+
+export type FormQuestionType =
+  | 'multiple_choice'
+  | 'dropdown'
+  | 'free_text'
+  | 'user_select';
+
+export type FormSubmissionLimit = 'once' | 'unlimited';
+
+export type FormUserFilter = {
+  search?: string;
+  role?: string;
+  team?: string;
+  group?: string;
+  portfolio?: string;
+  rankCategory?: string;
+  rank?: string;
+};
+
+export type FormQuestion = {
+  id: string;
+  type: FormQuestionType;
+  prompt: string;
+  required?: boolean;
+  allowAdditionalOptions?: boolean;
+  maxSelections?: number;
+  options?: string[];
+  maxLength?: number;
+  userFilters?: FormUserFilter;
+};
+
+export type FormAnswer = {
+  questionId: string;
+  value: string | string[];
+  displayValue?: string | string[];
+};
 
 export type AnnouncementDoc = {
   _id: Id<'announcements'>;
@@ -42,6 +78,9 @@ export type AnnouncementDoc = {
   votingAllowUngrouped?: boolean;
   votingAllowRemovals?: boolean;
   votingLeaderboardMode?: VotingLeaderboardMode;
+  formQuestions?: FormQuestion[];
+  formSubmissionLimit?: FormSubmissionLimit;
+  formPrice?: number | null;
   imageIds?: Id<'_storage'>[];
 };
 
@@ -55,10 +94,23 @@ export type PollVoteDoc = {
   updatedAt: number;
 };
 
+export type FormSubmissionDoc = {
+  _id: Id<'formSubmissions'>;
+  announcementId: Id<'announcements'>;
+  userId: string;
+  userName?: string | null;
+  answers: FormAnswer[];
+  createdAt: number;
+  paypalOrderId?: string | null;
+  paymentAmount?: number | null;
+};
+
 export type Doc<TableName extends string> = TableName extends 'announcements'
   ? AnnouncementDoc
   : TableName extends 'pollVotes'
     ? PollVoteDoc
+    : TableName extends 'formSubmissions'
+      ? FormSubmissionDoc
     : never;
 
 export type StorageImage = { id: Id<'_storage'>; url: string };

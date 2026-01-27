@@ -35,7 +35,7 @@ export async function updateScheduleRule({
   eligibleOfficerRanks: string[];
   defaultTime: string;
 }): Promise<UpdateScheduleRuleResult> {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator', 'scheduler']))) {
     return {
       success: false,
       message: 'You are not authorized to perform this action.',

@@ -1,12 +1,14 @@
 export type HostHubEventType =
   | 'standup'
   | 'demo'
+  | 'building-892'
   | 'security-am'
   | 'security-pm';
 
 export const HOSTHUB_EVENT_TYPES = [
   'standup',
   'demo',
+  'building-892',
   'security-am',
   'security-pm',
 ] as const;
@@ -48,6 +50,7 @@ export const isSecurityShiftEventType = (
 export const getHostHubEventLabel = (value: HostHubEventType) => {
   if (value === 'standup') return 'Standup';
   if (value === 'demo') return 'Demo Day';
+  if (value === 'building-892') return '892 Manning';
   return 'Security Shift';
 };
 

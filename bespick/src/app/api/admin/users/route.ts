@@ -12,7 +12,12 @@ import {
 } from '@/lib/org';
 
 export async function GET() {
-  const canAccess = await checkRole(['admin', 'moderator']);
+  const canAccess = await checkRole([
+    'admin',
+    'moderator',
+    'scheduler',
+    'morale-member',
+  ]);
   if (!canAccess) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

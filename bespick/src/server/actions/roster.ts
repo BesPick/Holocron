@@ -36,7 +36,12 @@ export type DeleteUserResult = {
 };
 
 const normalizeRole = (role: string | null) =>
-  role === 'admin' || role === 'moderator' ? role : null;
+  role === 'admin' ||
+  role === 'moderator' ||
+  role === 'scheduler' ||
+  role === 'morale-member'
+    ? role
+    : null;
 
 export async function updateUserRole({
   id,
@@ -55,7 +60,7 @@ export async function updateUserRole({
   rankCategory?: string | null;
   rank?: string | null;
 }): Promise<UpdateUserRoleResult> {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator']))) {
     return {
       success: false,
       role: null,
@@ -242,7 +247,7 @@ export async function updateUserRole({
 }
 
 export async function deleteRosterUser(id: string): Promise<DeleteUserResult> {
-  if (!(await checkRole('admin'))) {
+  if (!(await checkRole(['admin', 'moderator']))) {
     return {
       success: false,
       message: 'You are not authorized to perform this action.',

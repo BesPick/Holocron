@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS announcements (
   voting_allow_ungrouped INTEGER,
   voting_allow_removals INTEGER,
   voting_leaderboard_mode TEXT,
+  form_questions_json TEXT,
+  form_submission_limit TEXT,
+  form_price REAL,
   image_ids_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_announcements_publish_at ON announcements(status, publish_at);
@@ -60,6 +63,19 @@ CREATE TABLE IF NOT EXISTS poll_votes (
 );
 CREATE INDEX IF NOT EXISTS idx_poll_votes_announcement ON poll_votes(announcement_id);
 CREATE INDEX IF NOT EXISTS idx_poll_votes_user ON poll_votes(announcement_id, user_id);
+
+CREATE TABLE IF NOT EXISTS form_submissions (
+  id TEXT PRIMARY KEY,
+  announcement_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  user_name TEXT,
+  answers_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  paypal_order_id TEXT,
+  payment_amount REAL
+);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_announcement ON form_submissions(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_user ON form_submissions(announcement_id, user_id);
 
 CREATE TABLE IF NOT EXISTS voting_purchases (
   id TEXT PRIMARY KEY,
@@ -113,6 +129,13 @@ CREATE INDEX IF NOT EXISTS idx_security_shift_assignments_date ON security_shift
 CREATE INDEX IF NOT EXISTS idx_security_shift_assignments_type ON security_shift_assignments(event_type);
 CREATE INDEX IF NOT EXISTS idx_security_shift_assignments_user ON security_shift_assignments(user_id);
 
+CREATE TABLE IF NOT EXISTS building_892_assignments (
+  week_start TEXT PRIMARY KEY,
+  team TEXT NOT NULL,
+  assigned_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_building_892_assignments_team ON building_892_assignments(team);
+
 CREATE TABLE IF NOT EXISTS schedule_rules (
   id TEXT PRIMARY KEY,
   config_json TEXT NOT NULL,
@@ -140,6 +163,26 @@ CREATE TABLE IF NOT EXISTS schedule_event_overrides (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_event_overrides_date ON schedule_event_overrides(date);
 CREATE INDEX IF NOT EXISTS idx_schedule_event_overrides_type ON schedule_event_overrides(event_type);
+
+CREATE TABLE IF NOT EXISTS schedule_event_override_history (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  changed_at INTEGER NOT NULL,
+  changed_by TEXT,
+  previous_override_user_id TEXT,
+  previous_override_user_name TEXT,
+  previous_time TEXT,
+  previous_moved_to_date TEXT,
+  previous_is_canceled INTEGER,
+  next_override_user_id TEXT,
+  next_override_user_name TEXT,
+  next_time TEXT,
+  next_moved_to_date TEXT,
+  next_is_canceled INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_event_override_history_event ON schedule_event_override_history(date, event_type);
+CREATE INDEX IF NOT EXISTS idx_schedule_event_override_history_changed ON schedule_event_override_history(changed_at);
 
 CREATE TABLE IF NOT EXISTS shift_notifications (
   id TEXT PRIMARY KEY,
@@ -170,6 +213,29 @@ if (!hasVotingRemoveLimit) {
   );
 }
 
+const hasFormQuestions = announcementColumns.some(
+  (column) => column.name === 'form_questions_json',
+);
+if (!hasFormQuestions) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN form_questions_json TEXT;',
+  );
+}
+const hasFormSubmissionLimit = announcementColumns.some(
+  (column) => column.name === 'form_submission_limit',
+);
+if (!hasFormSubmissionLimit) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN form_submission_limit TEXT;',
+  );
+}
+const hasFormPrice = announcementColumns.some(
+  (column) => column.name === 'form_price',
+);
+if (!hasFormPrice) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN form_price REAL;');
+}
+
 const overrideColumns = sqlite
   .prepare("PRAGMA table_info('schedule_event_overrides')")
   .all() as Array<{ name: string }>;
@@ -196,6 +262,57 @@ if (!hasOverrideUserName) {
   sqlite.exec(
     'ALTER TABLE schedule_event_overrides ADD COLUMN override_user_name TEXT;',
   );
+}
+
+const historyTableExists = sqlite
+  .prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='schedule_event_override_history'",
+  )
+  .get();
+if (!historyTableExists) {
+  sqlite.exec(`
+    CREATE TABLE schedule_event_override_history (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      changed_at INTEGER NOT NULL,
+      changed_by TEXT,
+      previous_override_user_id TEXT,
+      previous_override_user_name TEXT,
+      previous_time TEXT,
+      previous_moved_to_date TEXT,
+      previous_is_canceled INTEGER,
+      next_override_user_id TEXT,
+      next_override_user_name TEXT,
+      next_time TEXT,
+      next_moved_to_date TEXT,
+      next_is_canceled INTEGER
+    );
+    CREATE INDEX idx_schedule_event_override_history_event ON schedule_event_override_history(date, event_type);
+    CREATE INDEX idx_schedule_event_override_history_changed ON schedule_event_override_history(changed_at);
+  `);
+}
+
+const formSubmissionsTableExists = sqlite
+  .prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='form_submissions'",
+  )
+  .get();
+if (!formSubmissionsTableExists) {
+  sqlite.exec(`
+    CREATE TABLE form_submissions (
+      id TEXT PRIMARY KEY,
+      announcement_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      answers_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      paypal_order_id TEXT,
+      payment_amount REAL
+    );
+    CREATE INDEX idx_form_submissions_announcement ON form_submissions(announcement_id);
+    CREATE INDEX idx_form_submissions_user ON form_submissions(announcement_id, user_id);
+  `);
 }
 
 export const db = drizzle(sqlite);

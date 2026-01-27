@@ -6,6 +6,7 @@ import { useUser } from '@clerk/nextjs';
 import { AnnouncementModal } from '@/components/announcements/announcement-modal';
 import { PollModal } from '@/components/poll/poll-modal';
 import { VotingModal } from '@/components/voting/voting-modal';
+import { FormModal } from '@/components/forms/form-modal';
 import { MoraleSubHeader } from '@/components/header/morale-subheader';
 import { api } from '@/lib/api';
 import { useApiMutation, useApiQuery } from '@/lib/apiClient';
@@ -75,10 +76,13 @@ export default function DashboardPage() {
     React.useState<Announcement | null>(null);
   const [viewingVoting, setViewingVoting] =
     React.useState<Announcement | null>(null);
+  const [viewingFormId, setViewingFormId] =
+    React.useState<AnnouncementId | null>(null);
   const isLoading = activities === undefined;
   const hasActivities = (activities?.length ?? 0) > 0;
   const role = user?.publicMetadata?.role as string | null | undefined;
-  const isMoraleAdmin = role === 'admin' || role === 'moderator';
+  const isMoraleAdmin =
+    role === 'admin' || role === 'moderator' || role === 'morale-member';
 
   const handleDelete = React.useCallback(
     async (id: AnnouncementId) => {
@@ -142,6 +146,10 @@ export default function DashboardPage() {
     setViewingVoting(announcement);
   }, []);
 
+  const handleOpenForm = React.useCallback((id: AnnouncementId) => {
+    setViewingFormId(id);
+  }, []);
+
   return (
     <section className='mx-auto w-full max-w-5xl px-4 py-16'>
       <MoraleSubHeader />
@@ -174,6 +182,7 @@ export default function DashboardPage() {
               archivingId={archivingId}
               onOpenPoll={handleOpenPoll}
               onOpenVoting={handleOpenVoting}
+              onOpenForm={handleOpenForm}
               onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
@@ -199,6 +208,15 @@ export default function DashboardPage() {
         <VotingModal
           event={viewingVoting}
           onClose={() => setViewingVoting(null)}
+        />
+      )}
+
+      {viewingFormId && (
+        <FormModal
+          formId={viewingFormId}
+          onClose={() => setViewingFormId(null)}
+          isAdmin={isMoraleAdmin}
+          canSubmit={Boolean(user)}
         />
       )}
     </section>
