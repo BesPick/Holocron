@@ -236,7 +236,7 @@ export default function ReactionTimePage() {
       <div
         ref={gameAreaRef}
         onMouseDown={handleMouseDown}
-        className={`flex-1 flex flex-col items-center justify-center cursor-pointer select-none min-h-[400px] transition-none ${getBackgroundClass()}`}
+        className={`flex-1 flex flex-col items-center justify-center cursor-pointer select-none min-h-100 transition-none ${getBackgroundClass()}`}
       >
         <div className="text-center">
           {gameState === WAITING && (
@@ -301,7 +301,7 @@ export default function ReactionTimePage() {
 
             {results.length >= 5 && (
               <>
-                <div className="mt-4 p-4 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-xl border border-cyan-500/30 text-center text-white">
+                <div className="mt-4 p-4 bg-linear-to-r from-cyan-500/20 to-blue-500/20 rounded-xl border border-cyan-500/30 text-center text-white">
                   <span className="font-bold text-cyan-400">Final Average: {averageTime} ms</span>
                   <span className="text-slate-400 ml-2">
                     {averageTime && averageTime < 200 ? '🔥 Incredible!' : 
