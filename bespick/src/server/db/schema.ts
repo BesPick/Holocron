@@ -392,3 +392,23 @@ export type ScheduleEventOverrideHistoryInsert =
   typeof scheduleEventOverrideHistory.$inferInsert;
 export type ShiftNotificationRow = typeof shiftNotifications.$inferSelect;
 export type ShiftNotificationInsert = typeof shiftNotifications.$inferInsert;
+
+export const reactionTimeScores = sqliteTable(
+  'reaction_time_scores',
+  {
+    id: text('id').primaryKey(),
+    odUserId: text('user_id').notNull(),
+    userName: text('user_name'),
+    score: integer('score', { mode: 'number' }).notNull(),
+    averageTime: integer('average_time', { mode: 'number' }).notNull(),
+    bestTime: integer('best_time', { mode: 'number' }).notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    userIdx: index('idx_reaction_time_scores_user').on(table.odUserId),
+    scoreIdx: index('idx_reaction_time_scores_score').on(table.score),
+  }),
+);
+
+export type ReactionTimeScoreRow = typeof reactionTimeScores.$inferSelect;
+export type ReactionTimeScoreInsert = typeof reactionTimeScores.$inferInsert;
