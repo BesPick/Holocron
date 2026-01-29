@@ -2,6 +2,7 @@ import { currentUser } from '@clerk/nextjs/server';
 
 import { HostHubSubHeader } from '@/components/header/hosthub-subheader';
 import { MyScheduleList, type ShiftEntry } from './_components/my-schedule-list';
+import { HostHubAutoRefresh } from './_components/hosthub-auto-refresh';
 import {
   DEMO_DAY_RESOURCES,
   SECURITY_SHIFT_RESOURCES,
@@ -192,12 +193,14 @@ export default async function HostHubPage() {
       const standupOverride = overridesByKey.get(
         getEventOverrideId(dateKey, 'standup'),
       );
+      const standupUserId =
+        standupOverride?.overrideUserId ?? standupAssignment?.userId ?? null;
       const standupTime = resolveEventTime(
         standupOverride?.time,
         standupRule.defaultTime,
       );
       const standupCanceled = standupOverride?.isCanceled ?? false;
-      if (standupAssignment?.userId === user.id) {
+      if (standupUserId === user.id) {
         targetShifts.push({
           id: `standup-${dateKey}`,
           date: dateLabel,
@@ -216,12 +219,14 @@ export default async function HostHubPage() {
           const securityId = getEventOverrideId(dateKey, eventType);
           const assignment = securityAssignmentsById.get(securityId);
           const override = overridesByKey.get(securityId);
+          const securityUserId =
+            override?.overrideUserId ?? assignment?.userId ?? null;
           const time = formatTimeRange(
             window.startTime,
             window.endTime,
           );
           const canceled = override?.isCanceled ?? false;
-          if (assignment?.userId === user.id) {
+          if (securityUserId === user.id) {
             targetShifts.push({
               id: securityId,
               date: dateLabel,
@@ -239,12 +244,16 @@ export default async function HostHubPage() {
       if (movedDemoOverrides) {
         movedDemoOverrides.forEach((movedDemoOverride) => {
           const assignment = demoAssignmentsByDate.get(movedDemoOverride.date);
+          const demoUserId =
+            movedDemoOverride.overrideUserId ??
+            assignment?.userId ??
+            null;
           const demoTime = resolveEventTime(
             movedDemoOverride?.time,
             demoRule.defaultTime,
           );
           const demoCanceled = movedDemoOverride?.isCanceled ?? false;
-          if (assignment?.userId === user.id) {
+          if (demoUserId === user.id) {
             targetShifts.push({
               id: `demo-${movedDemoOverride.date}`,
               date: dateLabel,
@@ -263,12 +272,14 @@ export default async function HostHubPage() {
         const demoOverride = overridesByKey.get(
           getEventOverrideId(dateKey, 'demo'),
         );
+        const demoUserId =
+          demoOverride?.overrideUserId ?? assignment?.userId ?? null;
         const demoTime = resolveEventTime(
           demoOverride?.time,
           demoRule.defaultTime,
         );
         const demoCanceled = demoOverride?.isCanceled ?? false;
-        if (assignment?.userId === user.id) {
+        if (demoUserId === user.id) {
           targetShifts.push({
             id: `demo-${dateKey}`,
             date: dateLabel,
@@ -293,12 +304,15 @@ export default async function HostHubPage() {
           Sign in to view your schedule.
         </div>
       ) : (
-        <MyScheduleList
-          currentShifts={currentShifts}
-          pastShifts={pastShifts}
-          building892Weeks={building892Weeks}
-          currentTeamLabel={currentTeamLabel}
-        />
+        <>
+          <HostHubAutoRefresh />
+          <MyScheduleList
+            currentShifts={currentShifts}
+            pastShifts={pastShifts}
+            building892Weeks={building892Weeks}
+            currentTeamLabel={currentTeamLabel}
+          />
+        </>
       )}
     </section>
   );

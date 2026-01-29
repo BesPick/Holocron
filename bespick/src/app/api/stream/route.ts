@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import { getOptionalIdentity } from '@/server/auth';
 import { subscribe } from '@/server/events';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const identity = await getOptionalIdentity();
+  if (!identity) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const encoder = new TextEncoder();
   let cleanup = () => {};
 
@@ -17,6 +22,7 @@ export async function GET() {
       let unsubscribeFormSubmissions = () => {};
       let unsubscribeFundraiserDonations = () => {};
       let unsubscribeGiveawayEntries = () => {};
+      let unsubscribeHostHubSchedule = () => {};
 
       cleanup = () => {
         if (closed) return;
@@ -31,6 +37,7 @@ export async function GET() {
         unsubscribeFormSubmissions();
         unsubscribeFundraiserDonations();
         unsubscribeGiveawayEntries();
+        unsubscribeHostHubSchedule();
         try {
           controller.close();
         } catch {
@@ -63,6 +70,7 @@ export async function GET() {
         'giveawayEntries',
         listener,
       );
+      unsubscribeHostHubSchedule = subscribe('hosthubSchedule', listener);
 
       send({ channel: 'connected' });
       keepAlive = setInterval(() => send({ channel: 'ping' }), 15000);

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { createPayPalOrder } from '@/server/payments/paypal';
+import { requireIdentity } from '@/server/auth';
+import { isTrustedOrigin } from '@/server/security/csrf';
 
 type CreateOrderPayload = {
   amount?: number | string;
@@ -18,6 +20,21 @@ function sanitizeField(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireIdentity();
+  } catch {
+    return NextResponse.json(
+      { error: 'Unauthorized.' },
+      { status: 401 },
+    );
+  }
+  if (!isTrustedOrigin(request)) {
+    return NextResponse.json(
+      { error: 'Invalid origin.' },
+      { status: 403 },
+    );
+  }
+
   let payload: CreateOrderPayload | null = null;
   try {
     payload = (await request.json()) as CreateOrderPayload;

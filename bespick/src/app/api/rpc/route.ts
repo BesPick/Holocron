@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOptionalIdentity } from '@/server/auth';
 import { handleAction, type RpcAction } from '@/server/actions';
+import { isTrustedOrigin } from '@/server/security/csrf';
 
 type RequestBody = {
   action: string;
@@ -9,6 +10,12 @@ type RequestBody = {
 
 export async function POST(request: Request) {
   try {
+    if (!isTrustedOrigin(request)) {
+      return NextResponse.json(
+        { error: 'Invalid origin.' },
+        { status: 403 },
+      );
+    }
     const body = (await request.json()) as RequestBody;
     if (!body?.action) {
       return NextResponse.json(

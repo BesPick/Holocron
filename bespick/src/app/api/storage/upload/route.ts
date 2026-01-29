@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { requireIdentity } from '@/server/auth';
 import { saveUpload } from '@/server/services/storage';
+import { isTrustedOrigin } from '@/server/security/csrf';
 
 export async function POST(request: Request) {
   try {
     await requireIdentity();
+    if (!isTrustedOrigin(request)) {
+      return NextResponse.json(
+        { error: 'Invalid origin.' },
+        { status: 403 },
+      );
+    }
     const formData = await request.formData();
     const file = formData.get('file');
     if (!(file instanceof File)) {

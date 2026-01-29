@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'node:crypto';
 
 import { notifyHostHubShiftsForTomorrow } from '@/server/services/mattermost-notifications';
 
@@ -19,7 +20,12 @@ const handleRequest = async (request: Request) => {
     );
   }
   const token = getAuthToken(request);
-  if (token !== secret) {
+  const tokenBuffer = Buffer.from(token);
+  const secretBuffer = Buffer.from(secret);
+  if (
+    tokenBuffer.length !== secretBuffer.length ||
+    !crypto.timingSafeEqual(tokenBuffer, secretBuffer)
+  ) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {

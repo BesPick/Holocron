@@ -63,9 +63,12 @@ async function getAccessToken() {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(
-      `Failed to obtain PayPal access token (${response.status}): ${errorBody}`,
+    console.error(
+      'PayPal token error:',
+      response.status,
+      errorBody,
     );
+    throw new Error('Payment service temporarily unavailable.');
   }
 
   const payload = (await response.json()) as PayPalAccessTokenResponse;
@@ -106,9 +109,12 @@ export async function createPayPalOrder(options: CreatePayPalOrderOptions) {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(
-      `Failed to create PayPal order (${response.status}): ${errorBody}`,
+    console.error(
+      'PayPal order error:',
+      response.status,
+      errorBody,
     );
+    throw new Error('Payment service temporarily unavailable.');
   }
 
   const payload = (await response.json()) as PayPalOrderResponse;
@@ -133,9 +139,12 @@ export async function capturePayPalOrder(orderId: string) {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(
-      `Failed to capture PayPal order (${response.status}): ${errorBody}`,
+    console.error(
+      'PayPal capture error:',
+      response.status,
+      errorBody,
     );
+    throw new Error('Payment service temporarily unavailable.');
   }
 
   const payload = (await response.json()) as Record<string, unknown>;

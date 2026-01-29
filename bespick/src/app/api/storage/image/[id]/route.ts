@@ -25,7 +25,12 @@ export async function GET(
   const params = (await context.params) ?? {};
   const rawId = params.id;
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
-  if (!id || path.basename(id) !== id) {
+  if (
+    !id ||
+    path.basename(id) !== id ||
+    id.includes('\0') ||
+    id.includes('..')
+  ) {
     return NextResponse.json({ error: 'Invalid image id.' }, { status: 400 });
   }
   const filePath = findUploadPath(id);

@@ -2849,7 +2849,7 @@ function drawGiveawayWinners(
   const winners: { userId: string; userName: string | null }[] = [];
   const used = new Set<string>();
   while (pool.length > 0 && winners.length < winnersCount) {
-    const idx = Math.floor(Math.random() * pool.length);
+    const idx = crypto.randomInt(0, pool.length);
     const picked = pool[idx];
     if (used.has(picked.userId)) {
       pool.splice(idx, 1);

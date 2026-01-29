@@ -1,10 +1,12 @@
 'use server';
 
 import { auth, clerkClient } from '@clerk/nextjs/server';
+import { revalidatePath } from 'next/cache';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { db } from '@/server/db/client';
+import { broadcast } from '@/server/events';
 import {
   demoDayAssignments,
   scheduleEventOverrideHistory,
@@ -311,6 +313,11 @@ export async function updateScheduleEventOverride({
       }
     }
 
+    revalidatePath('/hosthub');
+    revalidatePath('/hosthub/calendar');
+    revalidatePath('/hosthub/schedule');
+    broadcast('hosthubSchedule');
+
     return {
       success: true,
       message: 'Event updated successfully.',
@@ -471,6 +478,11 @@ export async function clearScheduleEventOverride({
         }
       }
     }
+
+    revalidatePath('/hosthub');
+    revalidatePath('/hosthub/calendar');
+    revalidatePath('/hosthub/schedule');
+    broadcast('hosthubSchedule');
 
     return {
       success: true,

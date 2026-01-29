@@ -21,7 +21,6 @@ const normalizeDomain = (value: string) =>
   value.trim().toLowerCase().replace(/^@/, '');
 const allowedEmailDomains = (
   process.env.ALLOWED_EMAIL_DOMAIN ??
-  process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN ??
   DEFAULT_ALLOWED_DOMAIN
 )
   .split(',')
