@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Zap, RotateCcw, Trophy, User } from 'lucide-react';
+import { Zap, RotateCcw, Trophy, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ReactionTimeLeaderboard } from '@/components/games/reaction-time-leaderboard';
 
 const WAITING = 0;
 const READY = 1;
@@ -24,8 +25,8 @@ export default function ReactionTimePage() {
   const [reactionTime, setReactionTime] = useState<number | null>(null);
   const [results, setResults] = useState<number[]>([]);
   const [attempts, setAttempts] = useState(0);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(true);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -37,21 +38,7 @@ export default function ReactionTimePage() {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const subtitleRef = useRef<HTMLParagraphElement>(null);
 
-  const fetchLeaderboard = useCallback(async () => {
-    try {
-      const response = await fetch('/api/games/reaction-time/leaderboard');
-      if (response.ok) {
-        const data = await response.json();
-        setLeaderboard(data.leaderboard || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch leaderboard:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchLeaderboard();
-  }, [fetchLeaderboard]);
+  const [leaderboardKey, setLeaderboardKey] = useState(0);
 
   const saveScore = async (newResults: number[]) => {
     if (newResults.length < 5) return;
@@ -73,10 +60,7 @@ export default function ReactionTimePage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        if (data.leaderboard) {
-          setLeaderboard(data.leaderboard);
-        }
+        setLeaderboardKey(prev => prev + 1);
       }
     } catch (error) {
       console.error('Failed to save score:', error);
@@ -232,7 +216,38 @@ export default function ReactionTimePage() {
   const { title, subtitle } = getMessage();
 
   return (
-    <div className="flex flex-col h-full min-h-screen">
+    <div className="flex h-screen overflow-hidden">
+      {/* Leaderboard Sidebar */}
+      <div
+        className={`transition-all duration-300 border-r border-border bg-card/50 overflow-y-auto ${
+          showLeaderboard ? 'w-80' : 'w-0'
+        }`}
+      >
+        {showLeaderboard && (
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <Trophy size={20} className="text-yellow-400" />
+                Leaderboard
+              </h2>
+            </div>
+            <ReactionTimeLeaderboard key={leaderboardKey} />
+          </div>
+        )}
+      </div>
+
+      {/* Toggle Button */}
+      <button
+        onClick={() => setShowLeaderboard(!showLeaderboard)}
+        className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-card border border-border rounded-r-lg p-2 hover:bg-accent transition-colors shadow-lg"
+        style={{ left: showLeaderboard ? '320px' : '0' }}
+        aria-label="Toggle leaderboard"
+      >
+        {showLeaderboard ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+      </button>
+
+      {/* Game Area */}
+      <div className="flex-1 flex flex-col h-screen">
       <div
         ref={gameAreaRef}
         onMouseDown={handleMouseDown}
@@ -311,34 +326,12 @@ export default function ReactionTimePage() {
                   {isSubmitting && <span className="ml-2 text-sm text-slate-400">(Saving...)</span>}
                 </div>
 
-                {leaderboard.length > 0 && (
-                  <div className="mt-6 border-t border-slate-700 pt-6">
-                    <h3 className="text-base font-bold text-white mb-3 flex items-center gap-2">
-                      <Trophy size={16} className="text-yellow-400" />
-                      Leaderboard (Best Scores)
-                    </h3>
-                    <div className="bg-slate-800/60 rounded-lg overflow-hidden">
-                      {leaderboard.slice(0, 10).map((entry, i) => (
-                        <div 
-                          key={entry.id} 
-                          className="flex items-center justify-between px-3 py-2 border-b border-slate-700/50 last:border-0"
-                        >
-                          <span className="w-6 font-bold text-slate-400">#{i + 1}</span>
-                          <span className="flex-1 text-white ml-2 flex items-center gap-1">
-                            <User size={14} className="text-slate-500" />
-                            {entry.userName || 'Anonymous'}
-                          </span>
-                          <span className="font-bold text-green-400">{entry.averageTime}ms</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </>
             )}
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
