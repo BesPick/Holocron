@@ -46,7 +46,6 @@ export function middleware(request: NextRequest) {
   const ip =
     ipHeader.split(',')[0]?.trim() ||
     request.headers.get('x-real-ip') ||
-    request.ip ||
     'unknown';
   const now = Date.now();
   const entry = rateLimitStore.get(ip);
