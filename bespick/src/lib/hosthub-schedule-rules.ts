@@ -16,6 +16,10 @@ export type ScheduleRuleConfig = {
   defaultTime: string;
 };
 
+export type Building892RuleConfig = {
+  excludedTeams: string[];
+};
+
 export const SCHEDULE_RULE_IDS = [
   'demo-day',
   'standup',
@@ -119,5 +123,26 @@ export const normalizeScheduleRuleConfig = (
     eligibleEnlistedRanks: enlisted,
     eligibleOfficerRanks: officer,
     defaultTime,
+  };
+};
+
+export const normalizeBuilding892RuleConfig = (
+  value: unknown,
+  fallback: Building892RuleConfig,
+): Building892RuleConfig => {
+  if (!value || typeof value !== 'object') {
+    return fallback;
+  }
+
+  const record = value as Record<string, unknown>;
+  const excludedTeams = Array.isArray(record.excludedTeams)
+    ? record.excludedTeams
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    : fallback.excludedTeams;
+
+  return {
+    excludedTeams: Array.from(new Set(excludedTeams)),
   };
 };

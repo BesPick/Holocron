@@ -32,7 +32,7 @@ export default async function HostHubCalendarPage() {
       ? user.publicMetadata.team
       : null;
   const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const endDate = new Date(now.getFullYear(), now.getMonth() + 4, 0);
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
   const overridesStart = new Date(startDate);
   overridesStart.setDate(overridesStart.getDate() - 7);
   const eligibleRoster = await getEligibleDemoDayRoster();

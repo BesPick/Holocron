@@ -48,7 +48,7 @@ export default async function HostHubPage() {
   const user = await currentUser();
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endDate = new Date(now.getFullYear(), now.getMonth() + 4, 0);
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
   const overridesStart = new Date(startDate);
   overridesStart.setDate(overridesStart.getDate() - 7);
   const currentTeam =
@@ -57,6 +57,7 @@ export default async function HostHubPage() {
       : null;
 
   const currentShifts: ShiftEntry[] = [];
+  const futureShifts: ShiftEntry[] = [];
   const pastShifts: ShiftEntry[] = [];
   const building892Weeks: Array<{ id: string; label: string; range: string }> = [];
   let currentTeamLabel: string | null = null;
@@ -121,7 +122,7 @@ export default async function HostHubPage() {
     });
     const monthEnd = new Date(
       now.getFullYear(),
-      now.getMonth() + 1,
+      now.getMonth() + 2,
       0,
     );
     const building892AssignmentsInMonth =
@@ -182,12 +183,30 @@ export default async function HostHubPage() {
       });
     }
 
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const nextMonthDate = new Date(currentYear, currentMonth + 1, 1);
+    const nextMonth = nextMonthDate.getMonth();
+    const nextYear = nextMonthDate.getFullYear();
+
     const cursor = new Date(startDate);
     while (cursor <= endDate) {
       const dateLabel = formatShortDateLabel(cursor);
       const dateKey = toDateKey(cursor);
-      const targetShifts =
-        dateKey < todayKey ? pastShifts : currentShifts;
+      const isPast = dateKey < todayKey;
+      const isCurrentMonth =
+        cursor.getFullYear() === currentYear &&
+        cursor.getMonth() === currentMonth;
+      const isNextMonth =
+        cursor.getFullYear() === nextYear &&
+        cursor.getMonth() === nextMonth;
+      const targetShifts = isPast
+        ? pastShifts
+        : isCurrentMonth
+          ? currentShifts
+          : isNextMonth
+            ? futureShifts
+            : futureShifts;
 
       const standupAssignment = standupAssignmentsByDate.get(dateKey);
       const standupOverride = overridesByKey.get(
@@ -306,12 +325,13 @@ export default async function HostHubPage() {
       ) : (
         <>
           <HostHubAutoRefresh />
-          <MyScheduleList
-            currentShifts={currentShifts}
-            pastShifts={pastShifts}
-            building892Weeks={building892Weeks}
-            currentTeamLabel={currentTeamLabel}
-          />
+        <MyScheduleList
+          currentShifts={currentShifts}
+          futureShifts={futureShifts}
+          pastShifts={pastShifts}
+          building892Weeks={building892Weeks}
+          currentTeamLabel={currentTeamLabel}
+        />
         </>
       )}
     </section>

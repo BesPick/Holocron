@@ -28,7 +28,9 @@ import {
 } from '@/lib/hosthub-events';
 import {
   DEFAULT_SCHEDULE_RULES,
+  normalizeBuilding892RuleConfig,
   normalizeScheduleRuleConfig,
+  type Building892RuleConfig,
   type ScheduleRuleConfig,
   type ScheduleRuleId,
 } from '@/lib/hosthub-schedule-rules';
@@ -115,7 +117,7 @@ export type ScheduleRefreshNotice = {
   nextRefreshAt: number;
 };
 
-const MONTH_WINDOW = [-1, 0, 1, 2, 3];
+const MONTH_WINDOW = [-1, 0, 1];
 const HISTORY_MONTH_LIMIT = 12;
 const DEMO_DAY_WEEKDAY = 3;
 const STANDUP_DAYS = new Set([1, 4]);
@@ -127,6 +129,10 @@ const RULE_IDS: ScheduleRuleId[] = [
   'security-shift',
 ];
 const SCHEDULE_REFRESH_ID = 'hosthub';
+const BUILDING_892_RULE_ID = 'building-892';
+const DEFAULT_BUILDING_892_RULE: Building892RuleConfig = {
+  excludedTeams: [],
+};
 
 const pad2 = (value: number) => value.toString().padStart(2, '0');
 
@@ -231,6 +237,59 @@ export async function saveScheduleRuleConfig({
   return normalized;
 }
 
+export async function getBuilding892RuleConfig(): Promise<Building892RuleConfig> {
+  const rows = await db
+    .select()
+    .from(scheduleRules)
+    .where(eq(scheduleRules.id, BUILDING_892_RULE_ID))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return DEFAULT_BUILDING_892_RULE;
+
+  try {
+    return normalizeBuilding892RuleConfig(
+      JSON.parse(row.configJson),
+      DEFAULT_BUILDING_892_RULE,
+    );
+  } catch (error) {
+    console.error('Failed to parse 892 rule config', error);
+    return DEFAULT_BUILDING_892_RULE;
+  }
+}
+
+export async function saveBuilding892RuleConfig({
+  config,
+  updatedBy,
+}: {
+  config: Building892RuleConfig;
+  updatedBy?: string | null;
+}): Promise<Building892RuleConfig> {
+  const normalized = normalizeBuilding892RuleConfig(
+    config,
+    DEFAULT_BUILDING_892_RULE,
+  );
+  const payload = {
+    id: BUILDING_892_RULE_ID,
+    configJson: JSON.stringify(normalized),
+    updatedAt: Date.now(),
+    updatedBy: updatedBy ?? null,
+  };
+
+  await db
+    .insert(scheduleRules)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: scheduleRules.id,
+      set: {
+        configJson: payload.configJson,
+        updatedAt: payload.updatedAt,
+        updatedBy: payload.updatedBy,
+      },
+    });
+
+  return normalized;
+}
+
 const isEligibleForRule = ({
   rule,
   rankCategory,
@@ -264,6 +323,14 @@ const getMonthRange = (date: Date) => {
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
   return { start, end };
 };
+
+const getCurrentAndNextMonths = (baseDate: Date) => [
+  baseDate,
+  addMonths(baseDate, 1),
+];
+
+export const getAssignmentWindowEnd = (baseDate: Date) =>
+  getMonthRange(addMonths(baseDate, 1)).end;
 
 const getWeekStartKeysForRange = (startDate: Date, endDate: Date) => {
   const keys: string[] = [];
@@ -366,8 +433,7 @@ export async function clearFutureAssignmentsForRule(
   ruleId: ScheduleRuleId,
   baseDate: Date = new Date(),
 ) {
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   if (ruleId === 'demo-day') {
     await db
       .delete(demoDayAssignments)
@@ -385,6 +451,15 @@ export async function clearFutureAssignmentsForRule(
       .delete(securityShiftAssignments)
       .where(gt(securityShiftAssignments.date, currentMonthEndKey));
   }
+}
+
+export async function clearFutureBuilding892Assignments(
+  baseDate: Date = new Date(),
+) {
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
+  await db
+    .delete(building892Assignments)
+    .where(gt(building892Assignments.weekStart, currentMonthEndKey));
 }
 
 const getFirstWednesdayKey = (date: Date) => {
@@ -561,8 +636,7 @@ export async function ensureBuilding892AssignmentsForWindow({
   eligibleTeams: string[];
   scope?: 'month' | 'window';
 }): Promise<Record<string, Building892Assignment>> {
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(building892Assignments)
     .where(gt(building892Assignments.weekStart, currentMonthEndKey));
@@ -571,7 +645,9 @@ export async function ensureBuilding892AssignmentsForWindow({
   const assignableKeys =
     scope === 'window'
       ? weekKeys
-      : getWeekStartKeysForMonth(baseDate);
+      : getCurrentAndNextMonths(baseDate).flatMap((date) =>
+          getWeekStartKeysForMonth(date),
+        );
 
   const existingRows = await db
     .select()
@@ -650,8 +726,7 @@ export async function refreshBuilding892AssignmentsForWindow({
   eligibleTeams: string[];
   scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(building892Assignments)
     .where(gt(building892Assignments.weekStart, currentMonthEndKey));
@@ -661,7 +736,9 @@ export async function refreshBuilding892AssignmentsForWindow({
   const assignableKeys =
     scope === 'window'
       ? weekKeys
-      : getWeekStartKeysForMonth(baseDate);
+      : getCurrentAndNextMonths(baseDate).flatMap((date) =>
+          getWeekStartKeysForMonth(date),
+        );
 
   const existingRows = await db
     .select()
@@ -755,8 +832,7 @@ export async function ensureDemoDayAssignmentsForWindow({
   blockedUsersByWeek?: Map<string, Set<string>>;
 }): Promise<Record<string, DemoDayAssignment>> {
   await pruneDemoDayHistory(new Date());
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(demoDayAssignments)
     .where(gt(demoDayAssignments.date, currentMonthEndKey));
@@ -764,7 +840,11 @@ export async function ensureDemoDayAssignmentsForWindow({
   const dateKeys = MONTH_WINDOW.map((offset) =>
     getFirstWednesdayKey(addMonths(baseDate, offset)),
   );
-  const assignableKeys = new Set([getFirstWednesdayKey(baseDate)]);
+  const assignableKeys = new Set(
+    getCurrentAndNextMonths(baseDate).map((date) =>
+      getFirstWednesdayKey(date),
+    ),
+  );
 
   const existingRows = await db
     .select()
@@ -886,8 +966,7 @@ export async function refreshDemoDayAssignmentsForWindow({
   scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
   await pruneDemoDayHistory(new Date());
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(demoDayAssignments)
     .where(gt(demoDayAssignments.date, currentMonthEndKey));
@@ -899,7 +978,9 @@ export async function refreshDemoDayAssignmentsForWindow({
   const assignableKeys =
     scope === 'window'
       ? dateKeys
-      : [getFirstWednesdayKey(baseDate)];
+      : getCurrentAndNextMonths(baseDate).map((date) =>
+          getFirstWednesdayKey(date),
+        );
 
   const existingRows = await db
     .select()
@@ -1069,11 +1150,15 @@ export async function getHostHubRoster(): Promise<HostHubRosterMember[]> {
 
 export async function getBuilding892TeamRoster(): Promise<Building892TeamRoster> {
   const metadataOptions = await getMetadataOptionsConfig();
+  const rule = await getBuilding892RuleConfig();
   const teamLabels = new Map<string, string>();
+  const excludedTeams = new Set(
+    rule.excludedTeams.map((team) => normalizeTeamValue(team)),
+  );
   const allowedTeams: string[] = [];
   metadataOptions.teamOptions.forEach((option) => {
     const value = normalizeTeamValue(option.value);
-    if (!value || isExcludedTeamValue(value)) return;
+    if (!value || isExcludedTeamValue(value) || excludedTeams.has(value)) return;
     if (teamLabels.has(value)) return;
     teamLabels.set(value, option.label?.trim() || value);
     allowedTeams.push(value);
@@ -1089,7 +1174,13 @@ export async function getBuilding892TeamRoster(): Promise<Building892TeamRoster>
     const users = await client.users.getUserList({ limit: 200 });
     users.data.forEach((rosterUser) => {
       const teamValue = normalizeTeamValue(rosterUser.publicMetadata.team);
-      if (!teamValue || isExcludedTeamValue(teamValue)) return;
+      if (
+        !teamValue ||
+        isExcludedTeamValue(teamValue) ||
+        excludedTeams.has(teamValue)
+      ) {
+        return;
+      }
       if (!teamLabels.has(teamValue)) return;
       const list = teamMembers.get(teamValue) ?? [];
       list.push(rosterUser.id);
@@ -1193,14 +1284,17 @@ export async function ensureStandupAssignmentsForWindow({
   eligibleUsers: StandupAssignee[];
   blockedUsersByWeek?: Map<string, Set<string>>;
 }): Promise<Record<string, StandupAssignment>> {
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(standupAssignments)
     .where(gt(standupAssignments.date, currentMonthEndKey));
   const todayKey = toDateKey(new Date());
   const dateKeys = getStandupDateKeysForWindow(baseDate);
-  const assignableKeys = new Set(getStandupDateKeysForMonth(baseDate));
+  const assignableKeys = new Set(
+    getCurrentAndNextMonths(baseDate).flatMap((date) =>
+      getStandupDateKeysForMonth(date),
+    ),
+  );
 
   const existingRows = await db
     .select()
@@ -1321,8 +1415,7 @@ export async function refreshStandupAssignmentsForWindow({
   blockedUsersByWeek?: Map<string, Set<string>>;
   scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(standupAssignments)
     .where(gt(standupAssignments.date, currentMonthEndKey));
@@ -1332,7 +1425,9 @@ export async function refreshStandupAssignmentsForWindow({
   const assignableKeys =
     scope === 'window'
       ? dateKeys
-      : getStandupDateKeysForMonth(baseDate);
+      : getCurrentAndNextMonths(baseDate).flatMap((date) =>
+          getStandupDateKeysForMonth(date),
+        );
 
   const existingRows = await db
     .select()
@@ -1445,14 +1540,17 @@ export async function ensureSecurityShiftAssignmentsForWindow({
   eligibleUsers: SecurityShiftAssignee[];
   blockedUsersByWeek?: Map<string, Set<string>>;
 }): Promise<Record<string, SecurityShiftAssignment>> {
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(securityShiftAssignments)
     .where(gt(securityShiftAssignments.date, currentMonthEndKey));
   const todayKey = toDateKey(new Date());
   const dateKeys = getSecurityShiftDateKeysForWindow(baseDate);
-  const assignableKeys = new Set(getSecurityShiftDateKeysForMonth(baseDate));
+  const assignableKeys = new Set(
+    getCurrentAndNextMonths(baseDate).flatMap((date) =>
+      getSecurityShiftDateKeysForMonth(date),
+    ),
+  );
 
   const existingRows = await db
     .select()
@@ -1581,8 +1679,7 @@ export async function refreshSecurityShiftAssignmentsForWindow({
   blockedUsersByWeek?: Map<string, Set<string>>;
   scope?: 'month' | 'window';
 }): Promise<RefreshAssignmentsSummary> {
-  const { end: currentMonthEnd } = getMonthRange(baseDate);
-  const currentMonthEndKey = toDateKey(currentMonthEnd);
+  const currentMonthEndKey = toDateKey(getAssignmentWindowEnd(baseDate));
   await db
     .delete(securityShiftAssignments)
     .where(gt(securityShiftAssignments.date, currentMonthEndKey));
@@ -1592,7 +1689,9 @@ export async function refreshSecurityShiftAssignmentsForWindow({
   const assignableKeys =
     scope === 'window'
       ? dateKeys
-      : getSecurityShiftDateKeysForMonth(baseDate);
+      : getCurrentAndNextMonths(baseDate).flatMap((date) =>
+          getSecurityShiftDateKeysForMonth(date),
+        );
 
   const existingRows = await db
     .select()

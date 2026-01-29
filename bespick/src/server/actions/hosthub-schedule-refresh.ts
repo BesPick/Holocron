@@ -5,6 +5,7 @@ import type { HostHubEventType } from '@/lib/hosthub-events';
 import {
   clearScheduleAssignments,
   buildBuilding892BlockedUsers,
+  getAssignmentWindowEnd,
   getEligibleDemoDayRoster,
   getEligibleSecurityShiftRoster,
   getEligibleStandupRoster,
@@ -51,9 +52,9 @@ type AssignmentSnapshot = Map<
   { eventType: HostHubEventType; dateKey: string; userId: string | null }
 >;
 
-const getMonthRange = (date: Date) => {
+const getAssignmentRange = (date: Date) => {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const end = getAssignmentWindowEnd(date);
   return { start, end };
 };
 
@@ -129,7 +130,7 @@ export async function refreshScheduleAssignments(): Promise<RefreshScheduleAssig
 
   try {
     const baseDate = new Date();
-    const { start, end } = getMonthRange(baseDate);
+    const { start, end } = getAssignmentRange(baseDate);
     const beforeSnapshot = await buildAssignmentSnapshot(start, end);
     const demoRoster = await getEligibleDemoDayRoster();
     const standupRoster = await getEligibleStandupRoster();
@@ -219,7 +220,7 @@ export async function resetScheduleAssignments(): Promise<RefreshScheduleAssignm
 
   try {
     const baseDate = new Date();
-    const { start, end } = getMonthRange(baseDate);
+    const { start, end } = getAssignmentRange(baseDate);
     const beforeSnapshot = await buildAssignmentSnapshot(start, end);
     await clearScheduleAssignments();
     const demoRoster = await getEligibleDemoDayRoster();

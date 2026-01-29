@@ -8,6 +8,7 @@ export type { ShiftEntry, ShiftResource } from './types';
 
 type MyScheduleListProps = {
   currentShifts: ShiftEntry[];
+  futureShifts: ShiftEntry[];
   pastShifts: ShiftEntry[];
   building892Weeks?: Array<{
     id: string;
@@ -113,14 +114,15 @@ function Building892Section({
 
 export function MyScheduleList({
   currentShifts,
+  futureShifts,
   pastShifts,
   building892Weeks = [],
   currentTeamLabel = null,
 }: MyScheduleListProps) {
   const [activeShiftId, setActiveShiftId] = useState<string | null>(null);
   const allShifts = useMemo(
-    () => [...currentShifts, ...pastShifts],
-    [currentShifts, pastShifts],
+    () => [...currentShifts, ...futureShifts, ...pastShifts],
+    [currentShifts, futureShifts, pastShifts],
   );
   const activeShift = useMemo(
     () => allShifts.find((shift) => shift.id === activeShiftId) ?? null,
@@ -142,6 +144,12 @@ export function MyScheduleList({
           title='Current Shifts'
           shifts={currentShifts}
           emptyMessage='No current shifts yet. New assignments will appear here.'
+          onSelect={setActiveShiftId}
+        />
+        <ScheduleSection
+          title='Future Shifts'
+          shifts={futureShifts}
+          emptyMessage='No future shifts yet. Check back closer to next month.'
           onSelect={setActiveShiftId}
         />
         <ScheduleSection

@@ -8,7 +8,7 @@ export const WEEKDAY_LABELS = [
   'Sat',
 ];
 
-export const MONTH_WINDOW = [-1, 0, 1, 2, 3];
+export const MONTH_WINDOW = [-1, 0, 1];
 
 export const STANDUP_TONE = {
   card: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',

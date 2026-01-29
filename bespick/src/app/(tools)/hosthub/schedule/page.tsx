@@ -5,7 +5,12 @@ import { checkRole } from '@/server/auth/check-role';
 import { ScheduleRuleCard } from './_components/schedule-rule-card';
 import { RefreshScheduleAssignmentsCard } from './_components/refresh-schedule-card';
 import { ResetScheduleAssignmentsCard } from './_components/reset-schedule-card';
-import { getScheduleRuleConfig } from '@/server/services/hosthub-schedule';
+import { Building892RuleCard } from './_components/building-892-rule-card';
+import {
+  getBuilding892RuleConfig,
+  getScheduleRuleConfig,
+} from '@/server/services/hosthub-schedule';
+import { getMetadataOptionsConfig } from '@/server/services/site-settings';
 
 export const metadata = {
   title: 'Schedule Settings | HostHub',
@@ -19,6 +24,8 @@ export default async function HostHubScheduleSettingsPage() {
   const demoDayRule = await getScheduleRuleConfig('demo-day');
   const standupRule = await getScheduleRuleConfig('standup');
   const securityShiftRule = await getScheduleRuleConfig('security-shift');
+  const building892Rule = await getBuilding892RuleConfig();
+  const metadataOptions = await getMetadataOptionsConfig();
 
   return (
     <section className='mx-auto w-full max-w-5xl px-4 py-16 space-y-10'>
@@ -58,6 +65,10 @@ export default async function HostHubScheduleSettingsPage() {
               { label: 'Morning', value: '07:00-12:00' },
               { label: 'Afternoon', value: '12:00-16:30' },
             ]}
+          />
+          <Building892RuleCard
+            initialConfig={building892Rule}
+            teamOptions={metadataOptions.teamOptions}
           />
         </div>
 
