@@ -489,5 +489,26 @@ if (!giveawayWinnersTableExists) {
   `);
 }
 
+const reactionTimeScoresTableExists = sqlite
+  .prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='reaction_time_scores'",
+  )
+  .get();
+if (!reactionTimeScoresTableExists) {
+  sqlite.exec(`
+    CREATE TABLE reaction_time_scores (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      score INTEGER NOT NULL,
+      average_time INTEGER NOT NULL,
+      best_time INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_reaction_time_scores_user ON reaction_time_scores(user_id);
+    CREATE INDEX idx_reaction_time_scores_score ON reaction_time_scores(score);
+  `);
+}
+
 export const db = drizzle(sqlite);
 export { sqlite };
