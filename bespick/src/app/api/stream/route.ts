@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { getOptionalIdentity } from '@/server/auth';
 import { subscribe } from '@/server/events';
 
@@ -7,7 +8,10 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const identity = await getOptionalIdentity();
   if (!identity) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Authentication required.' },
+      { status: 401 },
+    );
   }
   const encoder = new TextEncoder();
   let cleanup = () => {};

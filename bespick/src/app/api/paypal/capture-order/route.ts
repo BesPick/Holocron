@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
-import { capturePayPalOrder } from '@/server/payments/paypal';
 import { requireIdentity } from '@/server/auth';
+import { capturePayPalOrder } from '@/server/payments/paypal';
 import { isTrustedOrigin } from '@/server/security/csrf';
 
 type CaptureOrderPayload = {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     await requireIdentity();
   } catch {
     return NextResponse.json(
-      { error: 'Unauthorized.' },
+      { error: 'Authentication required.' },
       { status: 401 },
     );
   }
