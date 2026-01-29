@@ -2832,6 +2832,13 @@ export async function enterGiveaway(
   return { success: true };
 }
 
+function secureRandomIndex(max: number): number {
+  if (max <= 0) return 0;
+  const randomBytes = crypto.randomBytes(4);
+  const randomValue = randomBytes.readUInt32BE(0);
+  return randomValue % max;
+}
+
 function drawGiveawayWinners(
   entries: {
     userId: string;
@@ -2849,7 +2856,7 @@ function drawGiveawayWinners(
   const winners: { userId: string; userName: string | null }[] = [];
   const used = new Set<string>();
   while (pool.length > 0 && winners.length < winnersCount) {
-    const idx = crypto.randomInt(0, pool.length);
+    const idx = secureRandomIndex(pool.length);
     const picked = pool[idx];
     if (used.has(picked.userId)) {
       pool.splice(idx, 1);
