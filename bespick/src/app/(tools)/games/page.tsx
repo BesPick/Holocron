@@ -4,7 +4,7 @@ export const metadata = {
 
 export default function GamesPage() {
   return (
-    <section className='mx-auto w-full max-w-5xl px-4 py-16 space-y-10'>
+    <section className='page-shell space-y-10'>
       <div className='rounded-3xl border border-border bg-linear-to-br from-primary/5 via-background to-background px-8 py-10 shadow'>
         <p className='text-sm font-semibold uppercase tracking-[0.3em] text-primary'>
           Tool

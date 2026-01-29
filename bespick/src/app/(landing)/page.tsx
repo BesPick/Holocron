@@ -16,7 +16,7 @@ export default async function HomePage() {
   return (
     <section className='relative min-h-[calc(100vh-4rem)] w-full'>
       <LandingBackgroundToggle />
-      <div className='mx-auto w-full max-w-5xl px-4 py-16 space-y-12 relative'>
+      <div className='page-shell space-y-12 relative'>
         {warningBanner.enabled && warningBanner.message ? (
           <div className='rounded-2xl border border-amber-500/60 bg-[#483418] px-6 py-4 text-sm text-amber-100 shadow-sm'>
             <div className='flex items-start gap-3'>

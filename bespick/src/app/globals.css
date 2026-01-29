@@ -78,6 +78,16 @@
   }
 }
 
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 sm:py-14 lg:px-8 lg:py-16;
+  }
+
+  .page-shell-compact {
+    @apply mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-14;
+  }
+}
+
 @layer clerk {
   .cl-rootBox,
   .cl-cardBox,

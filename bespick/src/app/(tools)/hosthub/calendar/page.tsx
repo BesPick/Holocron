@@ -91,7 +91,7 @@ export default async function HostHubCalendarPage() {
   );
 
   return (
-    <section className='mx-auto w-full max-w-7xl px-4 py-16 space-y-10'>
+    <section className='page-shell space-y-10'>
       <HostHubSubHeader />
       <HostHubCalendar
         demoAssignments={demoAssignments}

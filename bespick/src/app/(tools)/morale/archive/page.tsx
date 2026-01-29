@@ -106,7 +106,7 @@ export default function ArchivePage() {
   }, []);
 
   return (
-    <section className='mx-auto w-full max-w-5xl px-4 py-16'>
+    <section className='page-shell'>
       <MoraleSubHeader />
       <DismissibleHeader
         storageKey={ARCHIVE_HEADER_STORAGE_KEY}

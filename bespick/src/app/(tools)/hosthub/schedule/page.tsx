@@ -28,7 +28,7 @@ export default async function HostHubScheduleSettingsPage() {
   const metadataOptions = await getMetadataOptionsConfig();
 
   return (
-    <section className='mx-auto w-full max-w-5xl px-4 py-16 space-y-10'>
+    <section className='page-shell space-y-10'>
       <HostHubSubHeader />
       <div className='space-y-6'>
         <div className='rounded-2xl border border-border bg-card/70 p-6 shadow-sm'>

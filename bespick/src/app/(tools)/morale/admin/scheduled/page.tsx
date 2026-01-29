@@ -39,7 +39,7 @@ export default function ScheduledPage() {
 
   if (!isLoaded) {
     return (
-      <section className='mx-auto w-full max-w-5xl px-4 py-16'>
+      <section className='page-shell'>
         <MoraleSubHeader />
         <header className='mb-10 sm:mb-12'>
           <div className='h-32 animate-pulse rounded-2xl border border-border/60 bg-card/40' />
@@ -130,7 +130,7 @@ function ScheduledContent() {
   );
 
   return (
-    <section className='mx-auto w-full max-w-5xl px-4 py-16'>
+    <section className='page-shell'>
       <MoraleSubHeader />
       <DismissibleHeader
         storageKey={SCHEDULED_HEADER_STORAGE_KEY}

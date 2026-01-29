@@ -56,7 +56,7 @@ export default async function AdminSettingsPage() {
   const metadataOptions = await getMetadataOptionsConfig();
 
   return (
-    <div className='mx-auto w-full max-w-5xl space-y-8 px-4 py-10'>
+    <div className='page-shell-compact space-y-8'>
       <header className='rounded-2xl border border-border bg-card p-6 shadow-sm'>
         <h1 className='text-3xl font-semibold text-foreground'>Settings</h1>
         <p className='mt-2 text-sm text-muted-foreground'>
