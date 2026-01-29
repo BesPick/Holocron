@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Zap, ExternalLink } from 'lucide-react';
+import { Zap, Bird, ExternalLink } from 'lucide-react';
 
 export const metadata = {
   title: 'Games | BESPIN Holocron',
@@ -15,6 +15,16 @@ const games = [
     color: 'text-green-500',
     bgColor: 'bg-green-500/10',
     borderColor: 'border-green-500/30',
+  },
+  {
+    id: 'flappy-bird',
+    title: 'Flappy Bird',
+    description: 'Navigate through pipes by tapping to flap! A classic arcade game - how far can you fly? Compete for the highest score on the leaderboard.',
+    icon: Bird,
+    href: '/games/flappy-bird',
+    color: 'text-yellow-500',
+    bgColor: 'bg-yellow-500/10',
+    borderColor: 'border-yellow-500/30',
   },
 ];
 
@@ -57,9 +67,11 @@ export default function GamesPage() {
               <p className='mt-2 text-sm text-muted-foreground'>
                 {game.description}
               </p>
-              <div className='mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary'>
-                Play now
-                <ExternalLink size={14} />
+              <div className='mt-6'>
+                <span className='inline-flex items-center gap-2 rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-all hover:bg-primary/20 hover:shadow-lg hover:ring-2 hover:ring-primary/50 hover:ring-offset-2 hover:ring-offset-background'>
+                  Play now
+                  <ExternalLink size={14} />
+                </span>
               </div>
             </Link>
           );

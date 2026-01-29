@@ -412,3 +412,21 @@ export const reactionTimeScores = sqliteTable(
 
 export type ReactionTimeScoreRow = typeof reactionTimeScores.$inferSelect;
 export type ReactionTimeScoreInsert = typeof reactionTimeScores.$inferInsert;
+
+export const flappyBirdScores = sqliteTable(
+  'flappy_bird_scores',
+  {
+    id: text('id').primaryKey(),
+    odUserId: text('user_id').notNull(),
+    userName: text('user_name'),
+    score: integer('score', { mode: 'number' }).notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    userIdx: index('idx_flappy_bird_scores_user').on(table.odUserId),
+    scoreIdx: index('idx_flappy_bird_scores_score').on(table.score),
+  }),
+);
+
+export type FlappyBirdScoreRow = typeof flappyBirdScores.$inferSelect;
+export type FlappyBirdScoreInsert = typeof flappyBirdScores.$inferInsert;
