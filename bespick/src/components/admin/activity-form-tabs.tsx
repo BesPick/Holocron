@@ -32,6 +32,16 @@ const ACTIVITY_OPTIONS: Array<{
     label: 'Form',
     description: 'Collect submissions with custom questions.',
   },
+  {
+    value: 'fundraiser',
+    label: 'Fundraiser',
+    description: 'Run a donation drive with a goal and donation history.',
+  },
+  {
+    value: 'giveaway',
+    label: 'Giveaway',
+    description: 'Collect entries and draw winners automatically.',
+  },
 ];
 
 type AnnouncementDoc = Doc<'announcements'>;
@@ -89,7 +99,7 @@ export function ActivityFormTabs() {
 
   return (
     <div className='space-y-6'>
-      <div className='grid gap-3 sm:grid-cols-3'>
+      <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
         {ACTIVITY_OPTIONS.map((option) => {
           const isActive = option.value === activeType;
           return (

@@ -58,6 +58,7 @@ export default async function HostHubPage() {
   const currentShifts: ShiftEntry[] = [];
   const pastShifts: ShiftEntry[] = [];
   const building892Weeks: Array<{ id: string; label: string; range: string }> = [];
+  let currentTeamLabel: string | null = null;
   const todayKey = toDateKey(now);
 
   if (user) {
@@ -65,6 +66,11 @@ export default async function HostHubPage() {
     const eligibleStandupRoster = await getEligibleStandupRoster();
     const eligibleSecurityRoster = await getEligibleSecurityShiftRoster();
     const building892Roster = await getBuilding892TeamRoster();
+    const trimmedTeam = currentTeam?.trim() ?? '';
+    if (trimmedTeam) {
+      currentTeamLabel =
+        building892Roster.teamLabels.get(trimmedTeam) ?? trimmedTeam;
+    }
     const overrides = await listScheduleEventOverridesInRange({
       startDate: overridesStart,
       endDate,
@@ -291,6 +297,7 @@ export default async function HostHubPage() {
           currentShifts={currentShifts}
           pastShifts={pastShifts}
           building892Weeks={building892Weeks}
+          currentTeamLabel={currentTeamLabel}
         />
       )}
     </section>

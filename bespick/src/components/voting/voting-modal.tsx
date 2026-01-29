@@ -2,9 +2,6 @@
 
 import * as React from 'react';
 import {
-  PayPalButtons,
-  PayPalScriptProvider,
-  usePayPalScriptReducer,
   type PayPalButtonsComponentProps,
   type ReactPayPalScriptOptions,
 } from '@paypal/react-paypal-js';
@@ -14,6 +11,12 @@ import { useApiMutation, useApiQuery } from '@/lib/apiClient';
 import type { PurchaseVotesArgs } from '@/server/services/announcements';
 import type { Doc, Id, VotingParticipant } from '@/types/db';
 import { formatDate, formatEventType } from '@/lib/announcements';
+import {
+  DEFAULT_PAYMENT_METHOD_BUTTONS,
+  PayPalPanel,
+  VENMO_PAYMENT_BUTTON,
+  type FundingButtonConfig,
+} from '@/components/payments/paypal-panel';
 import {
   buildLeaderboardSections,
   getGroupLabel,
@@ -40,75 +43,12 @@ type VoteAdjustmentPayload = {
   remove: number;
 };
 
-type FundingButtonConfig = {
-  id: string;
-  fundingSource: NonNullable<PayPalButtonsComponentProps['fundingSource']>;
-  helper?: string;
-};
-
-type PayPalNamespace = {
-  Buttons?: (
-    options: { fundingSource?: unknown },
-  ) => { isEligible?: () => boolean } | null;
-  FUNDING?: Record<string, unknown>;
-};
-
-const PAYMENT_METHOD_BUTTONS: FundingButtonConfig[] = [
-  {
-    id: 'paypal',
-    fundingSource: 'paypal',
-  },
-  {
-    id: 'venmo',
-    fundingSource: 'venmo',
-    helper: 'Shows on US mobile browsers when paying in USD.',
-  },
-  {
-    id: 'card',
-    fundingSource: 'card',
-  },
-];
-
-const FUNDING_STYLE_OVERRIDES: Partial<
-  Record<
-    FundingButtonConfig['fundingSource'],
-    NonNullable<PayPalButtonsComponentProps['style']>
-  >
-> = {
-  venmo: {
-    color: 'blue',
-  },
-  card: {
-    label: 'pay',
-    color: 'black',
-  },
-};
-
 const createCurrencyFormatter = (currency: string) =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,
   });
-
-const getEligibleFundingSources = (buttons: FundingButtonConfig[]) => {
-  const paypal = (window as typeof window & { paypal?: PayPalNamespace }).paypal;
-  if (!paypal?.Buttons) return null;
-  const eligible = new Set<FundingButtonConfig['fundingSource']>();
-  for (const { fundingSource } of buttons) {
-    const source =
-      paypal.FUNDING?.[String(fundingSource).toUpperCase()] ?? fundingSource;
-    try {
-      const instance = paypal.Buttons({ fundingSource: source });
-      if (instance?.isEligible?.()) {
-        eligible.add(fundingSource);
-      }
-    } catch {
-      // Ignore eligibility failures and fall back to default rendering.
-    }
-  }
-  return eligible;
-};
 
 export function VotingModal({ event, onClose }: VotingModalProps) {
   const liveEvent = useApiQuery<
@@ -144,9 +84,9 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
   }, [allowVenmo]);
   const paymentButtons = React.useMemo(
     () =>
-      PAYMENT_METHOD_BUTTONS.filter((button) =>
-        button.fundingSource === 'venmo' ? allowVenmo : true,
-      ),
+      allowVenmo
+        ? [VENMO_PAYMENT_BUTTON, ...DEFAULT_PAYMENT_METHOD_BUTTONS]
+        : DEFAULT_PAYMENT_METHOD_BUTTONS,
     [allowVenmo],
   );
 
@@ -891,17 +831,16 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
                         </p>
                       </div>
                     ) : (
-                      <PayPalScriptProvider deferLoading={false} options={paypalOptions}>
-                        <VotingPayPalPanel
-                          amountLabel={amountLabel}
-                          paymentButtons={paymentButtons}
-                          paypalButtonsProps={paypalButtonsProps}
-                          checkoutFeedbackMessage={checkoutFeedbackMessage}
-                          checkoutFeedbackClass={checkoutFeedbackClass}
-                          checkoutFeedbackVariant={checkoutFeedbackVariant}
-                          transactionId={transactionId}
-                        />
-                      </PayPalScriptProvider>
+                      <VotingPayPalPanel
+                        amountLabel={amountLabel}
+                        paymentButtons={paymentButtons}
+                        paypalOptions={paypalOptions}
+                        paypalButtonsProps={paypalButtonsProps}
+                        checkoutFeedbackMessage={checkoutFeedbackMessage}
+                        checkoutFeedbackClass={checkoutFeedbackClass}
+                        checkoutFeedbackVariant={checkoutFeedbackVariant}
+                        transactionId={transactionId}
+                      />
                     )
                   ) : (
                     <VotingFreePanel
@@ -1005,6 +944,7 @@ type VotingFreePanelProps = {
 type VotingPayPalPanelProps = {
   amountLabel: string | null;
   paymentButtons: FundingButtonConfig[];
+  paypalOptions: ReactPayPalScriptOptions;
   paypalButtonsProps: PayPalButtonsComponentProps;
   checkoutFeedbackMessage: string | null;
   checkoutFeedbackClass: string;
@@ -1072,89 +1012,21 @@ function VotingFreePanel({
 function VotingPayPalPanel({
   amountLabel,
   paymentButtons,
+  paypalOptions,
   paypalButtonsProps,
   checkoutFeedbackMessage,
   checkoutFeedbackClass,
   checkoutFeedbackVariant,
   transactionId,
 }: VotingPayPalPanelProps) {
-  const [{ isPending, isRejected, isResolved }] = usePayPalScriptReducer();
-  const showButtons = isResolved && !isRejected;
-  const [eligibleFunding, setEligibleFunding] = React.useState<
-    Set<FundingButtonConfig['fundingSource']> | null
-  >(null);
-
-  React.useEffect(() => {
-    if (!showButtons) {
-      setEligibleFunding(null);
-      return;
-    }
-    setEligibleFunding(getEligibleFundingSources(paymentButtons));
-  }, [paymentButtons, showButtons]);
-
-  const visibleButtons = React.useMemo(() => {
-    if (!showButtons) return [];
-    if (!eligibleFunding) {
-      return paymentButtons.filter((button) => button.fundingSource !== 'venmo');
-    }
-    const filtered = paymentButtons.filter((button) =>
-      eligibleFunding.has(button.fundingSource),
-    );
-    return filtered.length
-      ? filtered
-      : paymentButtons.filter((button) => button.fundingSource !== 'venmo');
-  }, [eligibleFunding, paymentButtons, showButtons]);
-
   return (
     <div className='space-y-4'>
-      <div>
-        <p className='text-sm font-medium text-muted-foreground'>Amount due</p>
-        <div className='mt-1 text-3xl font-semibold'>{amountLabel ?? '--'}</div>
-      </div>
-      <div className='space-y-2 rounded-xl border border-border bg-card/60 p-4 text-sm text-muted-foreground'>
-        <div className='flex items-start gap-2'>
-          <Info className='h-4 w-4 shrink-0 text-primary' />
-          <p>
-            Your contribution helps the morale team fund upcoming
-            events, supplies, and recognition moments.
-          </p>
-        </div>
-        <div className='flex items-start gap-2'>
-          <CheckCircle2 className='h-4 w-4 shrink-0 text-primary' />
-          <p>
-            PayPal sends you a receipt immediately after we capture the payment.
-          </p>
-        </div>
-      </div>
-      <div className='space-y-5'>
-        {isRejected && (
-          <div className='rounded-xl border border-destructive/60 bg-destructive/10 px-4 py-3 text-sm text-destructive'>
-            PayPal failed to load. Disable blockers and confirm your
-            client ID is valid.
-          </div>
-        )}
-        {isPending && !isRejected && (
-          <p className='text-xs text-muted-foreground'>
-            Loading PayPal checkout...
-          </p>
-        )}
-        {showButtons &&
-          visibleButtons.map(({ id, fundingSource, helper }) => (
-            <div key={id} className='space-y-1'>
-              <PayPalButtons
-                {...paypalButtonsProps}
-                fundingSource={fundingSource}
-                style={{
-                  ...(paypalButtonsProps.style ?? {}),
-                  ...(FUNDING_STYLE_OVERRIDES[fundingSource] ?? {}),
-                }}
-              />
-              {helper && (
-                <p className='text-[11px] text-muted-foreground'>{helper}</p>
-              )}
-            </div>
-          ))}
-      </div>
+      <PayPalPanel
+        amountLabel={amountLabel}
+        paypalOptions={paypalOptions}
+        paypalButtonsProps={paypalButtonsProps}
+        paymentButtons={paymentButtons}
+      />
       {checkoutFeedbackMessage && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${checkoutFeedbackClass}`}>
           {checkoutFeedbackMessage}

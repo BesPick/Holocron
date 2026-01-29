@@ -10,6 +10,7 @@ import type {
   Doc,
   FormQuestion,
   FormSubmissionLimit,
+  FundraiserAnonymityMode,
   Id,
   StorageImage,
 } from '@/types/db';
@@ -25,6 +26,8 @@ import { ImageUploadSection } from './announcement-form/sections/ImageUploadSect
 import { VotingSettingsSection } from './announcement-form/sections/VotingSettingsSection';
 import { FormBuilderSection } from './announcement-form/sections/FormBuilderSection';
 import { FormSettingsSection } from './announcement-form/sections/FormSettingsSection';
+import { FundraiserSettingsSection } from './announcement-form/sections/FundraiserSettingsSection';
+import { GiveawaySettingsSection } from './announcement-form/sections/GiveawaySettingsSection';
 import {
   GROUP_OPTIONS,
   type Group,
@@ -127,6 +130,21 @@ export function AnnouncementForm({
     React.useState<FormSubmissionLimit>('unlimited');
   const [formPaymentEnabled, setFormPaymentEnabled] = React.useState(false);
   const [formPrice, setFormPrice] = React.useState('');
+  const [fundraiserGoal, setFundraiserGoal] = React.useState('');
+  const [fundraiserAnonymityMode, setFundraiserAnonymityMode] =
+    React.useState<FundraiserAnonymityMode>('user_choice');
+  const [giveawayAllowMultipleEntries, setGiveawayAllowMultipleEntries] =
+    React.useState(false);
+  const [giveawayEntryCap, setGiveawayEntryCap] = React.useState('');
+  const [giveawayWinnersCount, setGiveawayWinnersCount] =
+    React.useState('1');
+  const [giveawayEntryPriceEnabled, setGiveawayEntryPriceEnabled] =
+    React.useState(false);
+  const [giveawayEntryPrice, setGiveawayEntryPrice] = React.useState('');
+  const [giveawayAutoCloseEnabled, setGiveawayAutoCloseEnabled] =
+    React.useState(false);
+  const [giveawayCloseDate, setGiveawayCloseDate] = React.useState('');
+  const [giveawayCloseTime, setGiveawayCloseTime] = React.useState('');
 
   const todayLocalISO = React.useMemo(() => {
     const now = new Date();
@@ -380,6 +398,7 @@ export function AnnouncementForm({
 
   const minAutoDeleteDate = earliestAutomationDate;
   const minAutoArchiveDate = earliestAutomationDate;
+  const minGiveawayCloseDate = earliestAutomationDate;
 
   const handleTogglePollClose = React.useCallback(
     (enabled: boolean) => {
@@ -427,6 +446,21 @@ export function AnnouncementForm({
       } else {
         setArchiveDate('');
         setArchiveTime('');
+      }
+    },
+    [earliestAutomationDate, time],
+  );
+
+  const handleToggleGiveawayAutoClose = React.useCallback(
+    (enabled: boolean) => {
+      setGiveawayAutoCloseEnabled(enabled);
+      if (enabled) {
+        const defaultCloseDate = earliestAutomationDate;
+        setGiveawayCloseDate((prev) => prev || defaultCloseDate);
+        setGiveawayCloseTime((prev) => prev || time || '');
+      } else {
+        setGiveawayCloseDate('');
+        setGiveawayCloseTime('');
       }
     },
     [earliestAutomationDate, time],
@@ -617,7 +651,7 @@ export function AnnouncementForm({
       );
       const price =
         typeof activity.formPrice === 'number' ? activity.formPrice : null;
-      setFormPaymentEnabled(Boolean(price && price > 0));
+      setFormPaymentEnabled(typeof price === 'number');
       setFormPrice(
         typeof price === 'number' && price > 0 ? price.toFixed(2) : '',
       );
@@ -626,6 +660,68 @@ export function AnnouncementForm({
       setFormSubmissionLimit('unlimited');
       setFormPaymentEnabled(false);
       setFormPrice('');
+    }
+
+    if (activity.eventType === 'fundraiser') {
+      const goal =
+        typeof activity.fundraiserGoal === 'number'
+          ? activity.fundraiserGoal
+          : null;
+      setFundraiserGoal(
+        typeof goal === 'number' && goal > 0 ? goal.toFixed(2) : '',
+      );
+      setFundraiserAnonymityMode(
+        activity.fundraiserAnonymityMode ?? 'user_choice',
+      );
+    } else {
+      setFundraiserGoal('');
+      setFundraiserAnonymityMode('user_choice');
+    }
+
+    if (activity.eventType === 'giveaway') {
+      const allowMultiple = Boolean(activity.giveawayAllowMultipleEntries);
+      setGiveawayAllowMultipleEntries(allowMultiple);
+      setGiveawayEntryCap(
+        allowMultiple && typeof activity.giveawayEntryCap === 'number'
+          ? activity.giveawayEntryCap.toString()
+          : '',
+      );
+      setGiveawayWinnersCount(
+        typeof activity.giveawayWinnersCount === 'number'
+          ? activity.giveawayWinnersCount.toString()
+          : '1',
+      );
+      const entryPrice =
+        typeof activity.giveawayEntryPrice === 'number'
+          ? activity.giveawayEntryPrice
+          : null;
+      setGiveawayEntryPriceEnabled(Boolean(entryPrice && entryPrice > 0));
+      setGiveawayEntryPrice(
+        typeof entryPrice === 'number' && entryPrice > 0
+          ? entryPrice.toFixed(2)
+          : '',
+      );
+      if (typeof activity.giveawayAutoCloseAt === 'number') {
+        const closeAt = new Date(activity.giveawayAutoCloseAt);
+        setGiveawayAutoCloseEnabled(true);
+        setGiveawayCloseDate(closeAt.toISOString().slice(0, 10));
+        setGiveawayCloseTime(
+          `${String(closeAt.getHours()).padStart(2, '0')}:${String(closeAt.getMinutes()).padStart(2, '0')}`,
+        );
+      } else {
+        setGiveawayAutoCloseEnabled(false);
+        setGiveawayCloseDate('');
+        setGiveawayCloseTime('');
+      }
+    } else {
+      setGiveawayAllowMultipleEntries(false);
+      setGiveawayEntryCap('');
+      setGiveawayWinnersCount('1');
+      setGiveawayEntryPriceEnabled(false);
+      setGiveawayEntryPrice('');
+      setGiveawayAutoCloseEnabled(false);
+      setGiveawayCloseDate('');
+      setGiveawayCloseTime('');
     }
   }, [ensureMinimumPollOptions]);
 
@@ -638,6 +734,8 @@ export function AnnouncementForm({
   const isPoll = activeType === 'poll';
   const isVoting = activeType === 'voting';
   const isForm = activeType === 'form';
+  const isFundraiser = activeType === 'fundraiser';
+  const isGiveaway = activeType === 'giveaway';
   const activityLabel = ACTIVITY_LABELS[activeType];
   const buttonLabel = isEditing
     ? 'Save and Publish'
@@ -751,12 +849,37 @@ export function AnnouncementForm({
   ]);
 
   React.useEffect(() => {
+    if (!isGiveaway) return;
+    setAutoArchiveEnabled(false);
+    setArchiveDate('');
+    setArchiveTime('');
+  }, [isGiveaway]);
+
+  React.useEffect(() => {
     if (isForm) return;
     setFormQuestions([]);
     setFormSubmissionLimit('unlimited');
     setFormPaymentEnabled(false);
     setFormPrice('');
   }, [isForm]);
+
+  React.useEffect(() => {
+    if (isFundraiser) return;
+    setFundraiserGoal('');
+    setFundraiserAnonymityMode('user_choice');
+  }, [isFundraiser]);
+
+  React.useEffect(() => {
+    if (isGiveaway) return;
+    setGiveawayAllowMultipleEntries(false);
+    setGiveawayEntryCap('');
+    setGiveawayWinnersCount('1');
+    setGiveawayEntryPriceEnabled(false);
+    setGiveawayEntryPrice('');
+    setGiveawayAutoCloseEnabled(false);
+    setGiveawayCloseDate('');
+    setGiveawayCloseTime('');
+  }, [isGiveaway]);
 
   React.useEffect(() => {
     if (!isPoll) return;
@@ -849,6 +972,16 @@ export function AnnouncementForm({
     setFormSubmissionLimit('unlimited');
     setFormPaymentEnabled(false);
     setFormPrice('');
+    setFundraiserGoal('');
+    setFundraiserAnonymityMode('user_choice');
+    setGiveawayAllowMultipleEntries(false);
+    setGiveawayEntryCap('');
+    setGiveawayWinnersCount('1');
+    setGiveawayEntryPriceEnabled(false);
+    setGiveawayEntryPrice('');
+    setGiveawayAutoCloseEnabled(false);
+    setGiveawayCloseDate('');
+    setGiveawayCloseTime('');
   }, [todayLocalISO]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -950,6 +1083,13 @@ export function AnnouncementForm({
     let formQuestionsPayload: FormQuestion[] | undefined;
     let formSubmissionLimitPayload: FormSubmissionLimit | undefined;
     let formPricePayload: number | null | undefined;
+    let fundraiserGoalPayload: number | undefined;
+    let fundraiserAnonymityModePayload: FundraiserAnonymityMode | undefined;
+    let giveawayAllowMultipleEntriesPayload: boolean | undefined;
+    let giveawayEntryCapPayload: number | null | undefined;
+    let giveawayWinnersCountPayload: number | undefined;
+    let giveawayEntryPricePayload: number | null | undefined;
+    let giveawayAutoCloseAtPayload: number | null | undefined;
     if (isPoll) {
       const question = title.trim();
       if (!question) {
@@ -1162,6 +1302,102 @@ export function AnnouncementForm({
                 required: question.required ?? true,
               };
             }
+            if (question.type === 'number') {
+              const allowAnyNumber = Boolean(question.allowAnyNumber);
+              const minValue =
+                typeof question.minValue === 'number' &&
+                Number.isFinite(question.minValue)
+                  ? question.minValue
+                  : 0;
+              const maxValue =
+                typeof question.maxValue === 'number' &&
+                Number.isFinite(question.maxValue)
+                  ? question.maxValue
+                  : minValue;
+              const includeMin =
+                typeof question.includeMin === 'boolean'
+                  ? question.includeMin
+                  : true;
+              const includeMax =
+                typeof question.includeMax === 'boolean'
+                  ? question.includeMax
+                  : true;
+              if (!allowAnyNumber && minValue > maxValue) {
+                throw new Error(
+                  `Number range minimum must be less than or equal to maximum.`,
+                );
+              }
+              if (
+                !allowAnyNumber &&
+                minValue === maxValue &&
+                (!includeMin || !includeMax)
+              ) {
+                throw new Error(
+                  `Number range must include the single allowed value.`,
+                );
+              }
+              const priceSourceIds = Array.from(
+                new Set(
+                  [
+                    ...(question.priceSourceQuestionIds ?? []),
+                    ...(question.priceSourceQuestionId
+                      ? [question.priceSourceQuestionId]
+                      : []),
+                  ]
+                    .map((value) => value.trim())
+                    .filter((value) => value.length > 0),
+                ),
+              );
+              if (priceSourceIds.length > 0) {
+                for (const sourceId of priceSourceIds) {
+                  const sourceIndex = formQuestions.findIndex(
+                    (entry) => entry.id === sourceId,
+                  );
+                  const sourceQuestion =
+                    sourceIndex >= 0 ? formQuestions[sourceIndex] : null;
+                  if (
+                    sourceQuestion === null ||
+                    sourceIndex >= index ||
+                    (sourceQuestion.type !== 'dropdown' &&
+                      sourceQuestion.type !== 'multiple_choice')
+                  ) {
+                    throw new Error(
+                      `Number pricing must reference previous dropdown or multiple choice questions.`,
+                    );
+                  }
+                  const hasPrices = Object.values(
+                    sourceQuestion.optionPrices ?? {},
+                  ).some((value) => value > 0);
+                  if (!hasPrices) {
+                    throw new Error(
+                      `Add option prices to "${sourceQuestion.prompt || 'the selected question'}" to use it for pricing.`,
+                    );
+                  }
+                }
+              }
+              const pricePerUnit =
+                typeof question.pricePerUnit === 'number' &&
+                Number.isFinite(question.pricePerUnit)
+                  ? question.pricePerUnit
+                  : undefined;
+              if (pricePerUnit !== undefined && pricePerUnit < 0) {
+                throw new Error('Price per unit must be non-negative.');
+              }
+              return {
+                ...question,
+                prompt,
+                required: question.required ?? true,
+                minValue: allowAnyNumber ? undefined : minValue,
+                maxValue: allowAnyNumber ? undefined : maxValue,
+                includeMin: allowAnyNumber ? undefined : includeMin,
+                includeMax: allowAnyNumber ? undefined : includeMax,
+                allowAnyNumber,
+                pricePerUnit: priceSourceIds.length > 0 ? undefined : pricePerUnit,
+                priceSourceQuestionId: undefined,
+                priceSourceQuestionIds:
+                  priceSourceIds.length > 0 ? priceSourceIds : undefined,
+              };
+            }
             throw new Error('Unsupported question type.');
           },
         );
@@ -1169,12 +1405,46 @@ export function AnnouncementForm({
         formQuestionsPayload = sanitizedQuestions;
         formSubmissionLimitPayload = formSubmissionLimit;
         if (formPaymentEnabled) {
-          const priceValue = parseFloat(formPrice);
-          if (!Number.isFinite(priceValue) || priceValue <= 0) {
-            setError('Enter a valid price for the form.');
-            return;
+          const hasQuestionPricing = sanitizedQuestions.some((question) => {
+            if (
+              question.type === 'multiple_choice' ||
+              question.type === 'dropdown'
+            ) {
+              return Object.values(question.optionPrices ?? {}).some(
+                (value) => value > 0,
+              );
+            }
+            if (question.type === 'number') {
+              return (
+                (question.pricePerUnit ?? 0) > 0 ||
+                Boolean(
+                  question.priceSourceQuestionIds?.length ||
+                    question.priceSourceQuestionId,
+                )
+              );
+            }
+            return false;
+          });
+          const rawPrice = formPrice.trim();
+          if (!rawPrice) {
+            if (!hasQuestionPricing) {
+              setError(
+                'Enter a base price or assign prices to question options.',
+              );
+              return;
+            }
+            formPricePayload = 0;
+          } else {
+            const priceValue = parseFloat(rawPrice);
+            if (
+              !Number.isFinite(priceValue) ||
+              (priceValue <= 0 && !hasQuestionPricing)
+            ) {
+              setError('Enter a valid price for the form.');
+              return;
+            }
+            formPricePayload = Math.round(priceValue * 100) / 100;
           }
-          formPricePayload = Math.round(priceValue * 100) / 100;
         } else {
           formPricePayload = null;
         }
@@ -1185,6 +1455,82 @@ export function AnnouncementForm({
             : 'Form questions are invalid.';
         setError(message);
         return;
+      }
+    }
+
+    if (isFundraiser) {
+      const goalValue = parseFloat(fundraiserGoal);
+      if (!Number.isFinite(goalValue) || goalValue <= 0) {
+        setError('Enter a valid fundraiser goal amount.');
+        return;
+      }
+      fundraiserGoalPayload = Math.round(goalValue * 100) / 100;
+      fundraiserAnonymityModePayload = fundraiserAnonymityMode;
+    }
+
+    if (isGiveaway) {
+      const winnersValue = Number(giveawayWinnersCount);
+      if (
+        !Number.isFinite(winnersValue) ||
+        winnersValue <= 0 ||
+        !Number.isInteger(winnersValue)
+      ) {
+        setError('Enter a valid winner count.');
+        return;
+      }
+      giveawayWinnersCountPayload = winnersValue;
+      giveawayAllowMultipleEntriesPayload = giveawayAllowMultipleEntries;
+      if (giveawayAllowMultipleEntries) {
+        const capValue = giveawayEntryCap.trim();
+        if (capValue.length > 0) {
+          const parsedCap = Number(capValue);
+          if (
+            !Number.isFinite(parsedCap) ||
+            parsedCap <= 0 ||
+            !Number.isInteger(parsedCap)
+          ) {
+            setError('Entry cap must be a whole number greater than zero.');
+            return;
+          }
+          giveawayEntryCapPayload = parsedCap;
+        } else {
+          giveawayEntryCapPayload = null;
+        }
+      } else {
+        giveawayEntryCapPayload = 1;
+      }
+
+      if (giveawayEntryPriceEnabled) {
+        const priceValue = parseFloat(giveawayEntryPrice);
+        if (!Number.isFinite(priceValue) || priceValue <= 0) {
+          setError('Enter a valid entry price for the giveaway.');
+          return;
+        }
+        giveawayEntryPricePayload = Math.round(priceValue * 100) / 100;
+      } else {
+        giveawayEntryPricePayload = null;
+      }
+
+      if (giveawayAutoCloseEnabled) {
+        if (!giveawayCloseDate || !giveawayCloseTime) {
+          setError('Please select a close date and time.');
+          return;
+        }
+        const autoCloseCandidate = combineDateTimeToEpochMs(
+          giveawayCloseDate,
+          giveawayCloseTime,
+        );
+        if (autoCloseCandidate <= nextPublishAt) {
+          setError('Close time must be after the publish time.');
+          return;
+        }
+        if (autoCloseCandidate <= Date.now()) {
+          setError('Close time must be in the future.');
+          return;
+        }
+        giveawayAutoCloseAtPayload = autoCloseCandidate;
+      } else {
+        giveawayAutoCloseAtPayload = null;
       }
     }
 
@@ -1217,6 +1563,13 @@ export function AnnouncementForm({
           formQuestions: formQuestionsPayload,
           formSubmissionLimit: formSubmissionLimitPayload,
           formPrice: formPricePayload,
+          fundraiserGoal: fundraiserGoalPayload,
+          fundraiserAnonymityMode: fundraiserAnonymityModePayload,
+          giveawayAllowMultipleEntries: giveawayAllowMultipleEntriesPayload,
+          giveawayEntryCap: giveawayEntryCapPayload,
+          giveawayWinnersCount: giveawayWinnersCountPayload,
+          giveawayEntryPrice: giveawayEntryPricePayload,
+          giveawayAutoCloseAt: giveawayAutoCloseAtPayload,
           eventType: activeType,
           imageIds,
         });
@@ -1251,6 +1604,13 @@ export function AnnouncementForm({
           formQuestions: formQuestionsPayload,
           formSubmissionLimit: formSubmissionLimitPayload,
           formPrice: formPricePayload,
+          fundraiserGoal: fundraiserGoalPayload,
+          fundraiserAnonymityMode: fundraiserAnonymityModePayload,
+          giveawayAllowMultipleEntries: giveawayAllowMultipleEntriesPayload,
+          giveawayEntryCap: giveawayEntryCapPayload,
+          giveawayWinnersCount: giveawayWinnersCountPayload,
+          giveawayEntryPrice: giveawayEntryPricePayload,
+          giveawayAutoCloseAt: giveawayAutoCloseAtPayload,
           eventType: activeType,
           imageIds,
         });
@@ -1344,6 +1704,19 @@ export function AnnouncementForm({
       timeStyle: 'short',
     });
   }, [autoArchiveEnabled, archiveDate, archiveTime]);
+
+  const giveawayCloseSummary = React.useMemo(() => {
+    if (!giveawayAutoCloseEnabled || !giveawayCloseDate || !giveawayCloseTime) {
+      return null;
+    }
+    const [y, m, d] = giveawayCloseDate.split('-').map(Number);
+    const [hh, mm] = giveawayCloseTime.split(':').map(Number);
+    const dt = new Date(y, (m as number) - 1, d, hh, mm, 0, 0);
+    return dt.toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  }, [giveawayAutoCloseEnabled, giveawayCloseDate, giveawayCloseTime]);
 
   const minPollCloseDate = React.useMemo(() => {
     return date || todayLocalISO;
@@ -1541,6 +1914,86 @@ export function AnnouncementForm({
     archiveDate === todayLocalISO &&
     availableArchiveTimeSlots.length === 0;
 
+  const availableGiveawayCloseTimeSlots = React.useMemo(() => {
+    if (!giveawayAutoCloseEnabled || !giveawayCloseDate) return timeSlots;
+
+    const publishDateForGuard =
+      showSchedulingControls && date ? date : todayLocalISO;
+    const publishMinutes =
+      showSchedulingControls && time ? slotToMinutes(time) : null;
+
+    return timeSlots.filter((slot) => {
+      const minutes = slotToMinutes(slot);
+
+      if (giveawayCloseDate === todayLocalISO) {
+        const current = new Date(now);
+        const currentMinutes = current.getHours() * 60 + current.getMinutes();
+        if (minutes <= currentMinutes) {
+          return false;
+        }
+      }
+
+      if (
+        showSchedulingControls &&
+        publishMinutes !== null &&
+        giveawayCloseDate === publishDateForGuard
+      ) {
+        if (minutes <= publishMinutes) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [
+    giveawayAutoCloseEnabled,
+    giveawayCloseDate,
+    timeSlots,
+    todayLocalISO,
+    now,
+    slotToMinutes,
+    showSchedulingControls,
+    date,
+    time,
+  ]);
+
+  const displayGiveawayCloseTimeSlots = React.useMemo(() => {
+    if (
+      giveawayCloseTime &&
+      !availableGiveawayCloseTimeSlots.includes(giveawayCloseTime)
+    ) {
+      return [giveawayCloseTime, ...availableGiveawayCloseTimeSlots];
+    }
+    return availableGiveawayCloseTimeSlots;
+  }, [giveawayCloseTime, availableGiveawayCloseTimeSlots]);
+
+  const noGiveawayCloseSlotsLeftToday =
+    giveawayAutoCloseEnabled &&
+    giveawayCloseDate === todayLocalISO &&
+    availableGiveawayCloseTimeSlots.length === 0;
+
+  React.useEffect(() => {
+    if (
+      !giveawayAutoCloseEnabled ||
+      !giveawayCloseTime ||
+      giveawayCloseDate !== todayLocalISO
+    ) {
+      return;
+    }
+    const current = new Date(now);
+    const currentMinutes = current.getHours() * 60 + current.getMinutes();
+    if (slotToMinutes(giveawayCloseTime) <= currentMinutes) {
+      setGiveawayCloseTime('');
+    }
+  }, [
+    giveawayAutoCloseEnabled,
+    giveawayCloseTime,
+    giveawayCloseDate,
+    todayLocalISO,
+    now,
+    slotToMinutes,
+  ]);
+
   React.useEffect(() => {
     if (!autoArchiveEnabled || !archiveTime || archiveDate !== todayLocalISO) {
       return;
@@ -1639,6 +2092,10 @@ export function AnnouncementForm({
                 ? 'Voting Event Title...'
               : isForm
                 ? 'Form title...'
+              : isFundraiser
+                ? 'Fundraiser title...'
+              : isGiveaway
+                ? 'Giveaway title...'
                 : 'Announcement Title...'
             }
             value={title}
@@ -1700,6 +2157,38 @@ export function AnnouncementForm({
         onTogglePayment={setFormPaymentEnabled}
         price={formPrice}
         onChangePrice={setFormPrice}
+      />
+
+      <FundraiserSettingsSection
+        isFundraiser={isFundraiser}
+        goal={fundraiserGoal}
+        onChangeGoal={setFundraiserGoal}
+        anonymityMode={fundraiserAnonymityMode}
+        onChangeAnonymityMode={setFundraiserAnonymityMode}
+      />
+
+      <GiveawaySettingsSection
+        isGiveaway={isGiveaway}
+        allowMultiple={giveawayAllowMultipleEntries}
+        entryCap={giveawayEntryCap}
+        winnersCount={giveawayWinnersCount}
+        entryPriceEnabled={giveawayEntryPriceEnabled}
+        entryPrice={giveawayEntryPrice}
+        autoCloseEnabled={giveawayAutoCloseEnabled}
+        closeDate={giveawayCloseDate}
+        closeTime={giveawayCloseTime}
+        minCloseDate={minGiveawayCloseDate}
+        displayCloseTimeSlots={displayGiveawayCloseTimeSlots}
+        noCloseSlotsLeftToday={noGiveawayCloseSlotsLeftToday}
+        closeSummary={giveawayCloseSummary}
+        onToggleAllowMultiple={setGiveawayAllowMultipleEntries}
+        onChangeEntryCap={setGiveawayEntryCap}
+        onChangeWinnersCount={setGiveawayWinnersCount}
+        onToggleEntryPrice={setGiveawayEntryPriceEnabled}
+        onChangeEntryPrice={setGiveawayEntryPrice}
+        onToggleAutoClose={handleToggleGiveawayAutoClose}
+        onChangeCloseDate={setGiveawayCloseDate}
+        onChangeCloseTime={setGiveawayCloseTime}
       />
 
       <VotingSettingsSection
@@ -1766,6 +2255,7 @@ export function AnnouncementForm({
       <AutomationSection
         autoDeleteEnabled={autoDeleteEnabled}
         autoArchiveEnabled={autoArchiveEnabled}
+        hideAutoArchive={isGiveaway}
         deleteDate={deleteDate}
         deleteTime={deleteTime}
         archiveDate={archiveDate}

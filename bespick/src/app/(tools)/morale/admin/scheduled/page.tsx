@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { AnnouncementModal } from '@/components/announcements/announcement-modal';
 import { FormModal } from '@/components/forms/form-modal';
+import { FundraiserModal } from '@/components/fundraiser/fundraiser-modal';
+import { GiveawayModal } from '@/components/giveaway/giveaway-modal';
 import { MoraleSubHeader } from '@/components/header/morale-subheader';
 import { api } from '@/lib/api';
 import { useApiMutation, useApiQuery } from '@/lib/apiClient';
@@ -61,6 +63,10 @@ function ScheduledContent() {
     React.useState<Announcement | null>(null);
   const [viewingFormId, setViewingFormId] =
     React.useState<AnnouncementId | null>(null);
+  const [viewingFundraiserId, setViewingFundraiserId] =
+    React.useState<AnnouncementId | null>(null);
+  const [viewingGiveawayId, setViewingGiveawayId] =
+    React.useState<AnnouncementId | null>(null);
   const handleViewAnnouncement = React.useCallback(
     (announcement: Announcement) => {
       setViewingAnnouncement(announcement);
@@ -70,6 +76,14 @@ function ScheduledContent() {
 
   const handleOpenForm = React.useCallback((id: AnnouncementId) => {
     setViewingFormId(id);
+  }, []);
+
+  const handleOpenFundraiser = React.useCallback((id: AnnouncementId) => {
+    setViewingFundraiserId(id);
+  }, []);
+
+  const handleOpenGiveaway = React.useCallback((id: AnnouncementId) => {
+    setViewingGiveawayId(id);
   }, []);
 
   const scheduledActivities = useApiQuery<{ now: number }, Announcement[]>(
@@ -143,6 +157,8 @@ function ScheduledContent() {
               deletingId={deletingId}
               onViewAnnouncement={handleViewAnnouncement}
               onOpenForm={handleOpenForm}
+              onOpenFundraiser={handleOpenFundraiser}
+              onOpenGiveaway={handleOpenGiveaway}
             />
           ))}
       </div>
@@ -160,6 +176,24 @@ function ScheduledContent() {
           onClose={() => setViewingFormId(null)}
           isAdmin={true}
           canSubmit={false}
+        />
+      )}
+
+      {viewingFundraiserId && (
+        <FundraiserModal
+          fundraiserId={viewingFundraiserId}
+          onClose={() => setViewingFundraiserId(null)}
+          canDonate={false}
+          isAdmin={true}
+        />
+      )}
+
+      {viewingGiveawayId && (
+        <GiveawayModal
+          giveawayId={viewingGiveawayId}
+          onClose={() => setViewingGiveawayId(null)}
+          canEnter={false}
+          isAdmin={true}
         />
       )}
     </section>

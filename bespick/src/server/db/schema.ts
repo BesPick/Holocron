@@ -40,6 +40,17 @@ export const announcements = sqliteTable(
     formQuestionsJson: text('form_questions_json'),
     formSubmissionLimit: text('form_submission_limit'),
     formPrice: real('form_price'),
+    fundraiserGoal: real('fundraiser_goal'),
+    fundraiserAnonymityMode: text('fundraiser_anonymity_mode'),
+    giveawayAllowMultipleEntries: integer('giveaway_allow_multiple_entries', {
+      mode: 'boolean',
+    }),
+    giveawayEntryCap: integer('giveaway_entry_cap', { mode: 'number' }),
+    giveawayWinnersCount: integer('giveaway_winners_count', { mode: 'number' }),
+    giveawayEntryPrice: real('giveaway_entry_price'),
+    giveawayIsClosed: integer('giveaway_is_closed', { mode: 'boolean' }),
+    giveawayClosedAt: integer('giveaway_closed_at', { mode: 'number' }),
+    giveawayAutoCloseAt: integer('giveaway_auto_close_at', { mode: 'number' }),
     imageIdsJson: text('image_ids_json'),
   },
   (table) => ({
@@ -111,6 +122,81 @@ export const formSubmissions = sqliteTable(
     userIdx: index('idx_form_submissions_user').on(
       table.announcementId,
       table.userId,
+    ),
+  }),
+);
+
+export const fundraiserDonations = sqliteTable(
+  'fundraiser_donations',
+  {
+    id: text('id').primaryKey(),
+    announcementId: text('announcement_id').notNull(),
+    userId: text('user_id').notNull(),
+    userName: text('user_name'),
+    isAnonymous: integer('is_anonymous', { mode: 'boolean' }).notNull(),
+    amount: real('amount').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    paypalOrderId: text('paypal_order_id'),
+  },
+  (table) => ({
+    announcementIdx: index('idx_fundraiser_donations_announcement').on(
+      table.announcementId,
+    ),
+    userIdx: index('idx_fundraiser_donations_user').on(
+      table.announcementId,
+      table.userId,
+    ),
+    createdAtIdx: index('idx_fundraiser_donations_created').on(
+      table.announcementId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const giveawayEntries = sqliteTable(
+  'giveaway_entries',
+  {
+    id: text('id').primaryKey(),
+    announcementId: text('announcement_id').notNull(),
+    userId: text('user_id').notNull(),
+    userName: text('user_name'),
+    tickets: integer('tickets', { mode: 'number' }).notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    paypalOrderId: text('paypal_order_id'),
+    paymentAmount: real('payment_amount'),
+  },
+  (table) => ({
+    announcementIdx: index('idx_giveaway_entries_announcement').on(
+      table.announcementId,
+    ),
+    userIdx: index('idx_giveaway_entries_user').on(
+      table.announcementId,
+      table.userId,
+    ),
+    createdAtIdx: index('idx_giveaway_entries_created').on(
+      table.announcementId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const giveawayWinners = sqliteTable(
+  'giveaway_winners',
+  {
+    id: text('id').primaryKey(),
+    announcementId: text('announcement_id').notNull(),
+    userId: text('user_id').notNull(),
+    userName: text('user_name'),
+    drawOrder: integer('draw_order', { mode: 'number' }).notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    announcementIdx: index('idx_giveaway_winners_announcement').on(
+      table.announcementId,
+    ),
+    orderIdx: index('idx_giveaway_winners_order').on(
+      table.announcementId,
+      table.drawOrder,
     ),
   }),
 );
@@ -272,6 +358,12 @@ export type PollVoteRow = typeof pollVotes.$inferSelect;
 export type PollVoteInsert = typeof pollVotes.$inferInsert;
 export type FormSubmissionRow = typeof formSubmissions.$inferSelect;
 export type FormSubmissionInsert = typeof formSubmissions.$inferInsert;
+export type FundraiserDonationRow = typeof fundraiserDonations.$inferSelect;
+export type FundraiserDonationInsert = typeof fundraiserDonations.$inferInsert;
+export type GiveawayEntryRow = typeof giveawayEntries.$inferSelect;
+export type GiveawayEntryInsert = typeof giveawayEntries.$inferInsert;
+export type GiveawayWinnerRow = typeof giveawayWinners.$inferSelect;
+export type GiveawayWinnerInsert = typeof giveawayWinners.$inferInsert;
 export type SiteSettingRow = typeof siteSettings.$inferSelect;
 export type SiteSettingInsert = typeof siteSettings.$inferInsert;
 export type DemoDayAssignmentRow = typeof demoDayAssignments.$inferSelect;

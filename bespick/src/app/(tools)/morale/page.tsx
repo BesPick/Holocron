@@ -7,6 +7,8 @@ import { AnnouncementModal } from '@/components/announcements/announcement-modal
 import { PollModal } from '@/components/poll/poll-modal';
 import { VotingModal } from '@/components/voting/voting-modal';
 import { FormModal } from '@/components/forms/form-modal';
+import { FundraiserModal } from '@/components/fundraiser/fundraiser-modal';
+import { GiveawayModal } from '@/components/giveaway/giveaway-modal';
 import { MoraleSubHeader } from '@/components/header/morale-subheader';
 import { api } from '@/lib/api';
 import { useApiMutation, useApiQuery } from '@/lib/apiClient';
@@ -77,6 +79,10 @@ export default function DashboardPage() {
   const [viewingVoting, setViewingVoting] =
     React.useState<Announcement | null>(null);
   const [viewingFormId, setViewingFormId] =
+    React.useState<AnnouncementId | null>(null);
+  const [viewingFundraiserId, setViewingFundraiserId] =
+    React.useState<AnnouncementId | null>(null);
+  const [viewingGiveawayId, setViewingGiveawayId] =
     React.useState<AnnouncementId | null>(null);
   const isLoading = activities === undefined;
   const hasActivities = (activities?.length ?? 0) > 0;
@@ -150,6 +156,14 @@ export default function DashboardPage() {
     setViewingFormId(id);
   }, []);
 
+  const handleOpenFundraiser = React.useCallback((id: AnnouncementId) => {
+    setViewingFundraiserId(id);
+  }, []);
+
+  const handleOpenGiveaway = React.useCallback((id: AnnouncementId) => {
+    setViewingGiveawayId(id);
+  }, []);
+
   return (
     <section className='mx-auto w-full max-w-5xl px-4 py-16'>
       <MoraleSubHeader />
@@ -183,6 +197,8 @@ export default function DashboardPage() {
               onOpenPoll={handleOpenPoll}
               onOpenVoting={handleOpenVoting}
               onOpenForm={handleOpenForm}
+              onOpenFundraiser={handleOpenFundraiser}
+              onOpenGiveaway={handleOpenGiveaway}
               onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
@@ -217,6 +233,24 @@ export default function DashboardPage() {
           onClose={() => setViewingFormId(null)}
           isAdmin={isMoraleAdmin}
           canSubmit={Boolean(user)}
+        />
+      )}
+
+      {viewingFundraiserId && (
+        <FundraiserModal
+          fundraiserId={viewingFundraiserId}
+          onClose={() => setViewingFundraiserId(null)}
+          canDonate={Boolean(user)}
+          isAdmin={isMoraleAdmin}
+        />
+      )}
+
+      {viewingGiveawayId && (
+        <GiveawayModal
+          giveawayId={viewingGiveawayId}
+          onClose={() => setViewingGiveawayId(null)}
+          canEnter={Boolean(user)}
+          isAdmin={isMoraleAdmin}
         />
       )}
     </section>

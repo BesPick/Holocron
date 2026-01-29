@@ -14,6 +14,8 @@ type ArchiveActivityCardProps = {
   onOpenPoll?: (id: AnnouncementId) => void;
   onOpenVoting?: (announcement: Announcement) => void;
   onOpenForm?: (id: AnnouncementId) => void;
+  onOpenFundraiser?: (id: AnnouncementId) => void;
+  onOpenGiveaway?: (id: AnnouncementId) => void;
   onViewAnnouncement: (announcement: Announcement) => void;
 };
 
@@ -26,11 +28,15 @@ export function ArchiveActivityCard({
   onOpenPoll,
   onOpenVoting,
   onOpenForm,
+  onOpenFundraiser,
+  onOpenGiveaway,
   onViewAnnouncement,
 }: ArchiveActivityCardProps) {
   const isPollCard = activity.eventType === 'poll';
   const isVotingCard = activity.eventType === 'voting';
   const isFormCard = activity.eventType === 'form';
+  const isFundraiserCard = activity.eventType === 'fundraiser';
+  const isGiveawayCard = activity.eventType === 'giveaway';
   const publishedDate = formatDate(activity.publishAt);
   const editedDate = activity.updatedAt ? formatDate(activity.updatedAt) : null;
   const isDeleting = deletingId === activity._id;
@@ -119,7 +125,29 @@ export function ArchiveActivityCard({
               View form
             </button>
           )}
-          {!isPollCard && !isVotingCard && !isFormCard && (
+          {isFundraiserCard && onOpenFundraiser && (
+            <button
+              type='button'
+              onClick={() => onOpenFundraiser(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View fundraiser
+            </button>
+          )}
+          {isGiveawayCard && onOpenGiveaway && (
+            <button
+              type='button'
+              onClick={() => onOpenGiveaway(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View giveaway
+            </button>
+          )}
+          {!isPollCard &&
+            !isVotingCard &&
+            !isFormCard &&
+            !isFundraiserCard &&
+            !isGiveawayCard && (
             <button
               type='button'
               onClick={() => onViewAnnouncement(activity)}

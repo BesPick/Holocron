@@ -21,6 +21,7 @@ import { CalendarGrid } from './calendar-grid';
 import { MONTH_WINDOW } from './calendar-constants';
 import { CalendarHeader } from './calendar-header';
 import { CalendarMonthSelector } from './calendar-month-selector';
+import { Building892Panel, type Building892Entry } from './building-892-panel';
 import type {
   CalendarDay,
   CalendarEvent,
@@ -174,7 +175,7 @@ export function HostHubCalendar({
     () => getWeekStartsForMonth(selectedMonth),
     [selectedMonth],
   );
-  const building892Entries = useMemo(() => {
+  const building892Entries: Building892Entry[] = useMemo(() => {
     return building892Weeks.map((weekStart) => {
       const weekKey = dateKey(weekStart);
       const assignment = building892Assignments[weekKey];
@@ -641,146 +642,21 @@ export function HostHubCalendar({
           />
         </div>
 
-        <details
-          id='building-892-panel'
-          className='rounded-2xl border border-border bg-background/70 p-4 shadow-sm'
-          open
-        >
-          <summary className='flex cursor-pointer list-none items-center justify-between text-left'>
-            <div>
-              <p className='text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground'>
-                892 Manning
-              </p>
-              <h3 className='mt-2 text-lg font-semibold text-foreground'>
-                Weekly team assignments
-              </h3>
-              <p className='mt-2 text-xs text-muted-foreground'>
-                Assigned teams work at 892 Monday through Friday and are
-                excluded from other HostHub shifts that week.
-              </p>
-            </div>
-            <span className='ml-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
-              Toggle
-            </span>
-          </summary>
-          <div className='mt-4 space-y-3'>
-            {building892Entries.map((entry) => {
-              const rangeLabel = `${formatShortDateLabel(
-                entry.weekStart,
-              )} - ${formatShortDateLabel(entry.weekEnd)}`;
-              const hasOverride = Boolean(entry.override);
-              const isCanceled = entry.override?.isCanceled ?? false;
-              const isEditing = buildingEditWeek === entry.weekKey;
-              const teamDisplay = isCanceled
-                ? 'Canceled'
-                : entry.teamLabel;
-              return (
-                <div
-                  key={entry.weekKey}
-                  className={`rounded-xl border border-border bg-background px-3 py-3 ${
-                    isCanceled ? 'opacity-60' : ''
-                  }`}
-                >
-                  <div className='flex items-start justify-between gap-3'>
-                    <div>
-                      <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
-                        Week of {formatShortDateLabel(entry.weekStart)}
-                      </p>
-                      <p className='mt-1 text-sm font-semibold text-foreground'>
-                        {teamDisplay}
-                      </p>
-                      <p className='text-xs text-muted-foreground'>
-                        {rangeLabel} • Mon-Fri
-                      </p>
-                    </div>
-                    {hasOverride ? (
-                      <button
-                        type='button'
-                        onClick={() => openHistory(entry.weekKey)}
-                        className='rounded-full border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-teal-700 transition hover:bg-teal-500/20'
-                      >
-                        Updated
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {isAdmin ? (
-                    <div className='mt-3 border-t border-border/60 pt-3'>
-                      {!isEditing ? (
-                        <button
-                          type='button'
-                          onClick={() => openBuildingEdit(entry.weekKey)}
-                          className='rounded-full border border-border px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-secondary/70'
-                        >
-                          Change team
-                        </button>
-                      ) : (
-                        <div className='space-y-2'>
-                          <label className='flex flex-col gap-2 text-xs font-semibold text-muted-foreground'>
-                            Team override
-                            <select
-                              value={buildingEditTeam}
-                              onChange={(eventValue) =>
-                                setBuildingEditTeam(eventValue.target.value)
-                              }
-                              disabled={isSaving}
-                              className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60'
-                            >
-                              <option value=''>
-                                Use assigned team ({entry.teamLabel})
-                              </option>
-                              {eligibleTeamOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <div className='flex flex-wrap items-center gap-2'>
-                            <button
-                              type='button'
-                              onClick={() =>
-                                saveBuildingEdit(entry.weekKey)
-                              }
-                              disabled={isSaving}
-                              className='rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60'
-                            >
-                              {isSaving ? 'Saving...' : 'Save'}
-                            </button>
-                            {hasOverride ? (
-                              <button
-                                type='button'
-                                onClick={() =>
-                                  resetBuildingEdit(entry.weekKey)
-                                }
-                                disabled={isSaving}
-                                className='rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-secondary/70 disabled:cursor-not-allowed disabled:opacity-60'
-                              >
-                                Reset
-                              </button>
-                            ) : null}
-                            <button
-                              type='button'
-                              onClick={closeBuildingEdit}
-                              className='rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:bg-secondary/70'
-                            >
-                              Close
-                            </button>
-                          </div>
-                          {buildingEditMessage ? (
-                            <p className='text-xs text-muted-foreground'>
-                              {buildingEditMessage}
-                            </p>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </details>
+        <Building892Panel
+          entries={building892Entries}
+          isAdmin={isAdmin}
+          buildingEditWeek={buildingEditWeek}
+          buildingEditTeam={buildingEditTeam}
+          buildingEditMessage={buildingEditMessage}
+          eligibleTeamOptions={eligibleTeamOptions}
+          isSaving={isSaving}
+          onOpenHistory={openHistory}
+          onOpenEdit={openBuildingEdit}
+          onCloseEdit={closeBuildingEdit}
+          onSaveEdit={saveBuildingEdit}
+          onResetEdit={resetBuildingEdit}
+          onEditTeamChange={setBuildingEditTeam}
+        />
       </div>
 
       {selectedDate ? (

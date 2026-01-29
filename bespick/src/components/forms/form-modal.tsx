@@ -3,15 +3,13 @@
 import * as React from 'react';
 import { X } from 'lucide-react';
 import {
-  PayPalButtons,
-  PayPalScriptProvider,
-  usePayPalScriptReducer,
   type PayPalButtonsComponentProps,
   type ReactPayPalScriptOptions,
 } from '@paypal/react-paypal-js';
 import { api } from '@/lib/api';
 import { useApiMutation, useApiQuery } from '@/lib/apiClient';
 import { formatCreator, formatDate, formatEventType } from '@/lib/announcements';
+import { PayPalPanel } from '@/components/payments/paypal-panel';
 import type {
   FormDetails,
   SubmitFormArgs,
@@ -31,23 +29,39 @@ type PaymentState = {
   orderId: string | null;
   captured: boolean;
   error: string | null;
+  amount: number | null;
 };
 
-type PayPalPanelProps = {
+const formatRangeTip = (question: FormQuestion) => {
+  if (question.allowAnyNumber) {
+    return 'Any number is allowed.';
+  }
+  const minValue = question.minValue ?? 0;
+  const maxValue = question.maxValue ?? minValue;
+  const includeMin = question.includeMin ?? true;
+  const includeMax = question.includeMax ?? true;
+  const minLabel = includeMin ? 'at least' : 'greater than';
+  const maxLabel = includeMax ? 'at most' : 'less than';
+  return `Allowed range: ${minLabel} ${minValue} and ${maxLabel} ${maxValue}.`;
+};
+
+type FormPayPalPanelProps = {
   amount: number;
   description: string;
   referenceId: string;
+  disabled?: boolean;
   onPaid: (orderId: string) => void;
   onError: (message: string) => void;
 };
 
-function PayPalPanel({
+function FormPayPalPanel({
   amount,
   description,
   referenceId,
+  disabled = false,
   onPaid,
   onError,
-}: PayPalPanelProps) {
+}: FormPayPalPanelProps) {
   const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
   const paypalCurrency =
     process.env.NEXT_PUBLIC_PAYPAL_CURRENCY ?? 'USD';
@@ -63,15 +77,32 @@ function PayPalPanel({
     }),
     [paypalBuyerCountry, paypalClientId, paypalCurrency],
   );
+  const amountLabel = React.useMemo(
+    () =>
+      new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: paypalCurrency,
+        minimumFractionDigits: 2,
+      }).format(amount),
+    [amount, paypalCurrency],
+  );
 
   const paypalButtonsProps = React.useMemo<PayPalButtonsComponentProps>(
     () => ({
       style: {
+        background: 'transparent',
+        shape: 'sharp',
         layout: 'vertical',
         label: 'pay',
-        shape: 'rect',
-        height: 44,
+        height: 48,
       },
+      disabled,
+      forceReRender: [
+        amount,
+        paypalCurrency,
+        paypalClientId ?? '',
+        disabled ? 'disabled' : 'enabled',
+      ],
       async createOrder() {
         if (!paypalClientId) {
           onError('PayPal is not configured.');
@@ -141,52 +172,12 @@ function PayPalPanel({
     ],
   );
 
-  if (!paypalClientId) {
-    return (
-      <div className='rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive'>
-        PayPal is not configured. Set `NEXT_PUBLIC_PAYPAL_CLIENT_ID` to enable
-        payments.
-      </div>
-    );
-  }
-
   return (
-    <PayPalScriptProvider deferLoading={false} options={paypalOptions}>
-      <PayPalButtonsPanel paypalButtonsProps={paypalButtonsProps} />
-    </PayPalScriptProvider>
-  );
-}
-
-function PayPalButtonsPanel({
-  paypalButtonsProps,
-}: {
-  paypalButtonsProps: PayPalButtonsComponentProps;
-}) {
-  const [{ isPending, isRejected }] = usePayPalScriptReducer();
-
-  if (isRejected) {
-    return (
-      <p className='text-xs text-destructive'>
-        PayPal failed to load. Disable blockers and refresh.
-      </p>
-    );
-  }
-
-  return (
-    <div className='space-y-2'>
-      {isPending && (
-        <p className='text-xs text-muted-foreground'>
-          Loading PayPal checkout...
-        </p>
-      )}
-      <PayPalButtons
-        {...paypalButtonsProps}
-        style={{
-          ...(paypalButtonsProps.style ?? {}),
-          color: 'gold',
-        }}
-      />
-    </div>
+    <PayPalPanel
+      amountLabel={amountLabel}
+      paypalOptions={paypalOptions}
+      paypalButtonsProps={paypalButtonsProps}
+    />
   );
 }
 
@@ -224,7 +215,19 @@ export function FormModal({
     orderId: null,
     captured: false,
     error: null,
+    amount: null,
   });
+  const displayCurrency =
+    process.env.NEXT_PUBLIC_PAYPAL_CURRENCY ?? 'USD';
+  const currencyFormatter = React.useMemo(
+    () =>
+      new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: displayCurrency,
+        minimumFractionDigits: 2,
+      }),
+    [displayCurrency],
+  );
   const autoSubmitRef = React.useRef(false);
   const successTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -234,7 +237,7 @@ export function FormModal({
     setAnswers({});
     setCustomOptionInputs({});
     setCustomOptions({});
-    setPayment({ orderId: null, captured: false, error: null });
+    setPayment({ orderId: null, captured: false, error: null, amount: null });
     setLocalError(null);
     setSuccessMessage(null);
     if (successTimeoutRef.current) {
@@ -271,10 +274,168 @@ export function FormModal({
   }, [onClose, previewImage, showSubmissions]);
 
   const formQuestions = form?.formQuestions ?? [];
+  const questionsById = React.useMemo(
+    () => new Map(formQuestions.map((question) => [question.id, question])),
+    [formQuestions],
+  );
+  const priceSourceIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    formQuestions.forEach((question) => {
+      const sourceIds = [
+        ...(question.priceSourceQuestionIds ?? []),
+        ...(question.priceSourceQuestionId
+          ? [question.priceSourceQuestionId]
+          : []),
+      ];
+      sourceIds.forEach((id) => ids.add(id));
+    });
+    return ids;
+  }, [formQuestions]);
   const isReadOnly =
     form?.formSubmissionLimit === 'once' && Boolean(form?.userHasSubmitted);
-  const price = typeof form?.formPrice === 'number' ? form?.formPrice : null;
-  const paymentRequired = Boolean(price && price > 0);
+  const basePrice =
+    typeof form?.formPrice === 'number' ? form?.formPrice : null;
+  const getPerUnitPrice = React.useCallback(
+    (question: FormQuestion) => {
+      const sourceIds = [
+        ...(question.priceSourceQuestionIds ?? []),
+        ...(question.priceSourceQuestionId
+          ? [question.priceSourceQuestionId]
+          : []),
+      ];
+      if (sourceIds.length === 0) {
+        return question.pricePerUnit ?? 0;
+      }
+      return sourceIds.reduce((sum, sourceId) => {
+        const sourceQuestion = questionsById.get(sourceId);
+        if (!sourceQuestion || !sourceQuestion.optionPrices) {
+          return sum;
+        }
+        const sourceAnswer = answers[sourceId];
+        if (sourceQuestion.type === 'dropdown') {
+          const selection =
+            typeof sourceAnswer === 'string' ? sourceAnswer : '';
+          return sum + (sourceQuestion.optionPrices[selection] ?? 0);
+        }
+        if (sourceQuestion.type === 'multiple_choice') {
+          const selections = Array.isArray(sourceAnswer)
+            ? sourceAnswer
+            : [];
+          const subtotal = selections.reduce(
+            (innerSum, selection) =>
+              innerSum +
+              (sourceQuestion.optionPrices?.[selection] ?? 0),
+            0,
+          );
+          return sum + subtotal;
+        }
+        return sum;
+      }, 0);
+    },
+    [answers, questionsById],
+  );
+  const computedPrice = React.useMemo(() => {
+    if (basePrice === null) return 0;
+    let total = basePrice;
+    for (const question of formQuestions) {
+      const value = answers[question.id];
+      if (question.type === 'dropdown') {
+        if (priceSourceIds.has(question.id)) {
+          continue;
+        }
+        const selection = typeof value === 'string' ? value : '';
+        const optionPrice =
+          selection && question.optionPrices
+            ? question.optionPrices[selection] ?? 0
+            : 0;
+        total += optionPrice;
+      }
+      if (question.type === 'multiple_choice') {
+        if (priceSourceIds.has(question.id)) {
+          continue;
+        }
+        const selections = Array.isArray(value) ? value : [];
+        if (question.optionPrices && selections.length > 0) {
+          for (const selection of selections) {
+            total += question.optionPrices[selection] ?? 0;
+          }
+        }
+      }
+      if (question.type === 'number') {
+        const raw = typeof value === 'string' ? value.trim() : '';
+        const perUnit = getPerUnitPrice(question);
+        if (raw && Number.isFinite(perUnit) && perUnit > 0) {
+          const parsed = Number(raw);
+          if (Number.isFinite(parsed)) {
+            total += parsed * perUnit;
+          }
+        }
+      }
+    }
+    return Math.round(total * 100) / 100;
+  }, [answers, basePrice, formQuestions, getPerUnitPrice, priceSourceIds]);
+
+  const priceBreakdown = React.useMemo(() => {
+    if (basePrice === null) return [];
+    const items: Array<{ label: string; amount: number }> = [];
+    if (basePrice > 0) {
+      items.push({ label: 'Base price', amount: basePrice });
+    }
+
+    for (const question of formQuestions) {
+      const value = answers[question.id];
+      if (
+        (question.type === 'dropdown' || question.type === 'multiple_choice') &&
+        priceSourceIds.has(question.id)
+      ) {
+        continue;
+      }
+      if (question.type === 'dropdown') {
+        const selection = typeof value === 'string' ? value : '';
+        if (selection && question.optionPrices?.[selection]) {
+          items.push({
+            label: `${question.prompt}: ${selection}`,
+            amount: question.optionPrices[selection] ?? 0,
+          });
+        }
+      }
+      if (question.type === 'multiple_choice') {
+        const selections = Array.isArray(value) ? value : [];
+        selections.forEach((selection) => {
+          const optionPrice = question.optionPrices?.[selection] ?? 0;
+          if (optionPrice > 0) {
+            items.push({
+              label: `${question.prompt}: ${selection}`,
+              amount: optionPrice,
+            });
+          }
+        });
+      }
+      if (question.type === 'number') {
+        const raw = typeof value === 'string' ? value.trim() : '';
+        const parsed = Number(raw);
+        const perUnit = getPerUnitPrice(question);
+        if (Number.isFinite(parsed) && perUnit > 0) {
+          items.push({
+            label: `${question.prompt}: ${parsed} × ${currencyFormatter.format(
+              perUnit,
+            )}`,
+            amount: Math.round(parsed * perUnit * 100) / 100,
+          });
+        }
+      }
+    }
+
+    return items.filter((item) => item.amount > 0);
+  }, [
+    answers,
+    basePrice,
+    currencyFormatter,
+    formQuestions,
+    getPerUnitPrice,
+    priceSourceIds,
+  ]);
+  const paymentRequired = computedPrice > 0;
   const paymentReady = !paymentRequired || payment.captured;
 
   const handleAnswerChange = (
@@ -301,6 +462,71 @@ export function FormModal({
     handleAnswerChange(question.id, nextSelections);
   };
 
+  const getAnswerError = React.useCallback(
+    (question: FormQuestion, value: string | string[] | undefined) => {
+      const isRequired = question.required ?? true;
+      if (!isRequired) {
+        const isEmpty =
+          value === undefined ||
+          value === null ||
+          (typeof value === 'string' && value.trim().length === 0) ||
+          (Array.isArray(value) && value.length === 0);
+        if (isEmpty) return null;
+      }
+
+      if (question.type === 'multiple_choice') {
+        return Array.isArray(value) && value.length > 0
+          ? null
+          : 'Select at least one option.';
+      }
+      if (question.type === 'number') {
+        const raw = typeof value === 'string' ? value.trim() : '';
+        if (!raw) return 'Enter a number.';
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) return 'Enter a valid number.';
+        if (question.allowAnyNumber) return null;
+        const minValue = question.minValue ?? 0;
+        const maxValue = question.maxValue ?? minValue;
+        const includeMin = question.includeMin ?? true;
+        const includeMax = question.includeMax ?? true;
+        const meetsMin = includeMin ? parsed >= minValue : parsed > minValue;
+        const meetsMax = includeMax ? parsed <= maxValue : parsed < maxValue;
+        if (!meetsMin || !meetsMax) {
+          const minLabel = includeMin ? 'at least' : 'greater than';
+          const maxLabel = includeMax ? 'at most' : 'less than';
+          return `Enter a number ${minLabel} ${minValue} and ${maxLabel} ${maxValue}.`;
+        }
+        return null;
+      }
+      if (typeof value === 'string' && value.trim().length > 0) return null;
+      return isRequired ? 'This response is required.' : null;
+    },
+    [],
+  );
+
+  const formReadyForPayment = React.useMemo(() => {
+    if (!canSubmit || isReadOnly) return false;
+    return formQuestions.every((question) =>
+      !getAnswerError(question, answers[question.id]),
+    );
+  }, [answers, canSubmit, formQuestions, getAnswerError, isReadOnly]);
+
+  React.useEffect(() => {
+    if (!payment.captured) return;
+    if (computedPrice <= 0) {
+      setPayment({ orderId: null, captured: false, error: null, amount: null });
+      return;
+    }
+    const paidAmount = payment.amount ?? null;
+    if (paidAmount === null) return;
+    if (Math.abs(paidAmount - computedPrice) > 0.01) {
+      setPayment({ orderId: null, captured: false, error: null, amount: null });
+      setLocalError(
+        'Payment amount changed based on your responses. Please pay again.',
+      );
+    }
+  }, [computedPrice, payment.amount, payment.captured]);
+
   const addCustomOption = (question: FormQuestion) => {
     const input = customOptionInputs[question.id]?.trim() ?? '';
     if (!input) return;
@@ -323,16 +549,10 @@ export function FormModal({
   const canSubmitForm = React.useMemo(() => {
     if (!canSubmit || isReadOnly) return false;
     if (!paymentReady) return false;
-    return formQuestions.every((question) => {
-      const isRequired = question.required ?? true;
-      if (!isRequired) return true;
-      const value = answers[question.id];
-      if (question.type === 'multiple_choice') {
-        return Array.isArray(value) && value.length > 0;
-      }
-      return typeof value === 'string' && value.trim().length > 0;
-    });
-  }, [answers, canSubmit, formQuestions, isReadOnly, paymentReady]);
+    return formQuestions.every((question) =>
+      !getAnswerError(question, answers[question.id]),
+    );
+  }, [answers, canSubmit, formQuestions, getAnswerError, isReadOnly, paymentReady]);
 
   const handleSubmit = async () => {
     autoSubmitRef.current = true;
@@ -362,7 +582,7 @@ export function FormModal({
           value: answers[question.id] ?? '',
         })),
         paypalOrderId: payment.orderId ?? undefined,
-        paymentAmount: price ?? undefined,
+        paymentAmount: paymentRequired ? computedPrice : undefined,
       });
       setSuccessMessage('Submission received!');
       if (successTimeoutRef.current) {
@@ -374,7 +594,7 @@ export function FormModal({
       if (form.formSubmissionLimit === 'unlimited') {
         setAnswers({});
         setCustomOptions({});
-        setPayment({ orderId: null, captured: false, error: null });
+        setPayment({ orderId: null, captured: false, error: null, amount: null });
         autoSubmitRef.current = false;
       }
     } catch (error) {
@@ -451,7 +671,7 @@ export function FormModal({
                   onClick={() => setShowSubmissions(true)}
                   className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
                 >
-                  Form submissions
+                  Form Data
                 </button>
               )}
               <button
@@ -511,7 +731,33 @@ export function FormModal({
                 const selectionAtMax =
                   question.type === 'multiple_choice' &&
                   selectedValues.length >= maxSelections;
+                const priceSourceIdsForQuestion = [
+                  ...(question.priceSourceQuestionIds ?? []),
+                  ...(question.priceSourceQuestionId
+                    ? [question.priceSourceQuestionId]
+                    : []),
+                ];
+                const priceSourceQuestions = priceSourceIdsForQuestion
+                  .map((id) => questionsById.get(id))
+                  .filter(Boolean);
+                const perUnitFromSource = priceSourceIdsForQuestion.length
+                  ? getPerUnitPrice(question)
+                  : 0;
+                const sourcePromptLabel =
+                  priceSourceQuestions.length > 0
+                    ? priceSourceQuestions
+                        .map((entry) => entry?.prompt || 'Untitled question')
+                        .join(', ')
+                    : 'the linked questions';
 
+                const errorMessage = getAnswerError(
+                  question,
+                  selectionValue as string | string[] | undefined,
+                );
+                const showInlineError =
+                  !isReadOnly &&
+                  Boolean(errorMessage) &&
+                  typeof selectionValue !== 'undefined';
                 return (
                   <div
                     key={question.id}
@@ -519,11 +765,9 @@ export function FormModal({
                   >
                     <p className='text-sm font-semibold text-foreground'>
                       {question.prompt}
-                      {question.required === false && (
-                        <span className='ml-2 text-xs font-normal text-muted-foreground'>
-                          Optional
-                        </span>
-                      )}
+                      <span className='ml-2 text-xs font-normal text-muted-foreground'>
+                        {question.required === false ? 'Optional' : 'Required'}
+                      </span>
                     </p>
 
                     {question.type === 'multiple_choice' && (
@@ -532,6 +776,8 @@ export function FormModal({
                           const checked = selectedValues.includes(option);
                           const disableToggle =
                             !checked && selectionAtMax;
+                          const optionPrice =
+                            question.optionPrices?.[option] ?? 0;
                           return (
                             <label
                               key={option}
@@ -546,7 +792,12 @@ export function FormModal({
                                 }
                                 className='h-4 w-4 rounded border-border'
                               />
-                              {option}
+                              <span className='flex-1'>{option}</span>
+                              {optionPrice > 0 && (
+                                <span className='text-xs text-muted-foreground'>
+                                  +{currencyFormatter.format(optionPrice)}
+                                </span>
+                              )}
                             </label>
                           );
                         })}
@@ -598,6 +849,11 @@ export function FormModal({
                         {(question.options ?? []).map((option) => (
                           <option key={option} value={option}>
                             {option}
+                            {question.optionPrices?.[option]
+                              ? ` (+${currencyFormatter.format(
+                                  question.optionPrices[option],
+                                )})`
+                              : ''}
                           </option>
                         ))}
                       </select>
@@ -644,6 +900,57 @@ export function FormModal({
                         )}
                       </select>
                     )}
+
+                    {question.type === 'number' && (
+                      <div className='mt-3 space-y-2'>
+                        <input
+                          type='number'
+                          min={
+                            question.allowAnyNumber ? undefined : question.minValue
+                          }
+                          max={
+                            question.allowAnyNumber ? undefined : question.maxValue
+                          }
+                          step='any'
+                          value={
+                            typeof selectionValue === 'string'
+                              ? selectionValue
+                              : ''
+                          }
+                          onChange={(event) =>
+                            handleAnswerChange(question.id, event.target.value)
+                          }
+                          disabled={isReadOnly || !canSubmit}
+                          className='w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                        />
+                        {priceSourceIdsForQuestion.length ? (
+                          perUnitFromSource > 0 ? (
+                            <p className='text-xs text-muted-foreground'>
+                              {currencyFormatter.format(perUnitFromSource)} per
+                              unit (from {sourcePromptLabel})
+                            </p>
+                          ) : (
+                            <p className='text-xs text-muted-foreground'>
+                              Select options in {sourcePromptLabel} to set the
+                              price.
+                            </p>
+                          )
+                        ) : question.pricePerUnit && question.pricePerUnit > 0 ? (
+                          <p className='text-xs text-muted-foreground'>
+                            {currencyFormatter.format(question.pricePerUnit)} per
+                            unit
+                          </p>
+                        ) : null}
+                        <p className='text-xs text-muted-foreground'>
+                          {formatRangeTip(question)}
+                        </p>
+                      </div>
+                    )}
+                    {showInlineError && (
+                      <p className='mt-2 text-xs text-destructive'>
+                        {errorMessage}
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -654,24 +961,50 @@ export function FormModal({
                 <p className='text-sm font-semibold text-foreground'>
                   Payment required
                 </p>
-                <p className='mt-1 text-sm text-muted-foreground'>
-                  Pay ${price?.toFixed(2)} to submit this form.
+                <p className='mt-1 text-xs text-muted-foreground'>
+                  Amount updates based on your answers.
                 </p>
+                {priceBreakdown.length > 0 && (
+                  <div className='mt-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2 text-xs text-muted-foreground'>
+                    <p className='text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
+                      Price breakdown
+                    </p>
+                    <div className='mt-2 space-y-1'>
+                      {priceBreakdown.map((item, index) => (
+                        <div
+                          key={`${item.label}-${index}`}
+                          className='flex items-center justify-between gap-2'
+                        >
+                          <span className='text-foreground'>{item.label}</span>
+                          <span>
+                            {currencyFormatter.format(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className='mt-2 flex items-center justify-between border-t border-border/60 pt-2 text-sm font-semibold text-foreground'>
+                      <span>Total</span>
+                      <span>{currencyFormatter.format(computedPrice)}</span>
+                    </div>
+                  </div>
+                )}
                 {payment.error && (
                   <p className='mt-2 text-sm text-destructive'>
                     {payment.error}
                   </p>
                 )}
                 <div className='mt-3'>
-                  <PayPalPanel
-                    amount={price ?? 0}
+                  <FormPayPalPanel
+                    amount={computedPrice}
                     description={`Form submission: ${form.title}`}
                     referenceId={form._id}
+                    disabled={!formReadyForPayment}
                     onPaid={(orderId) =>
                       setPayment({
                         orderId,
                         captured: true,
                         error: null,
+                        amount: computedPrice,
                       })
                     }
                     onError={(message) =>
@@ -681,6 +1014,11 @@ export function FormModal({
                       }))
                     }
                   />
+                  {!formReadyForPayment && (
+                    <p className='mt-2 text-xs text-muted-foreground'>
+                      Complete the required fields before paying.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

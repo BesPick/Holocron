@@ -5,6 +5,8 @@ import {
   getPoll,
   getPollVoteBreakdown,
   getForm,
+  getFundraiser,
+  getGiveaway,
   listAnnouncements,
   listArchived,
   listFormSubmissions,
@@ -12,12 +14,22 @@ import {
   nextPublishAt,
   publishDue,
   purchaseVotes,
+  closeGiveaway,
+  enterGiveaway,
+  reopenGiveaway,
+  redrawGiveaway,
   removeAnnouncement,
+  submitFundraiserDonation,
   submitForm,
   updateAnnouncement,
   votePoll,
   type CreateAnnouncementArgs,
   type PurchaseVotesArgs,
+  type CloseGiveawayArgs,
+  type EnterGiveawayArgs,
+  type ReopenGiveawayArgs,
+  type RedrawGiveawayArgs,
+  type SubmitFundraiserDonationArgs,
   type SubmitFormArgs,
   type UpdateAnnouncementArgs,
   type VotePollArgs,
@@ -39,6 +51,13 @@ export type RpcAction =
   | 'announcements.getForm'
   | 'announcements.submitForm'
   | 'announcements.listFormSubmissions'
+  | 'announcements.getFundraiser'
+  | 'announcements.submitFundraiserDonation'
+  | 'announcements.getGiveaway'
+  | 'announcements.enterGiveaway'
+  | 'announcements.closeGiveaway'
+  | 'announcements.reopenGiveaway'
+  | 'announcements.redrawGiveaway'
   | 'announcements.purchaseVotes'
   | 'announcements.nextPublishAt'
   | 'announcements.publishDue'
@@ -81,6 +100,15 @@ export async function handleAction(
         (args as { id: Id<'announcements'> }).id,
         identity?.userId,
       );
+    case 'announcements.getFundraiser':
+      return getFundraiser(
+        (args as { id: Id<'announcements'> }).id,
+      );
+    case 'announcements.getGiveaway':
+      return getGiveaway(
+        (args as { id: Id<'announcements'> }).id,
+        identity,
+      );
     case 'announcements.submitForm':
       return submitForm(args as SubmitFormArgs, identity);
     case 'announcements.listFormSubmissions':
@@ -88,6 +116,19 @@ export async function handleAction(
         (args as { id: Id<'announcements'> }).id,
         identity,
       );
+    case 'announcements.submitFundraiserDonation':
+      return submitFundraiserDonation(
+        args as SubmitFundraiserDonationArgs,
+        identity,
+      );
+    case 'announcements.enterGiveaway':
+      return enterGiveaway(args as EnterGiveawayArgs, identity);
+    case 'announcements.closeGiveaway':
+      return closeGiveaway(args as CloseGiveawayArgs, identity);
+    case 'announcements.reopenGiveaway':
+      return reopenGiveaway(args as ReopenGiveawayArgs, identity);
+    case 'announcements.redrawGiveaway':
+      return redrawGiveaway(args as RedrawGiveawayArgs, identity);
     case 'announcements.purchaseVotes':
       return purchaseVotes(args as PurchaseVotesArgs, identity);
     case 'announcements.nextPublishAt':

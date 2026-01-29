@@ -11,13 +11,22 @@ export type VotingParticipant = {
 
 export type VotingLeaderboardMode = 'all' | 'group' | 'group_portfolio';
 export type ActivityStatus = 'published' | 'scheduled' | 'archived';
-export type ActivityType = 'announcements' | 'poll' | 'voting' | 'form';
+export type ActivityType =
+  | 'announcements'
+  | 'poll'
+  | 'voting'
+  | 'form'
+  | 'fundraiser'
+  | 'giveaway';
+
+export type FundraiserAnonymityMode = 'anonymous' | 'user_choice';
 
 export type FormQuestionType =
   | 'multiple_choice'
   | 'dropdown'
   | 'free_text'
-  | 'user_select';
+  | 'user_select'
+  | 'number';
 
 export type FormSubmissionLimit = 'once' | 'unlimited';
 
@@ -39,8 +48,17 @@ export type FormQuestion = {
   allowAdditionalOptions?: boolean;
   maxSelections?: number;
   options?: string[];
+  optionPrices?: Record<string, number>;
   maxLength?: number;
   userFilters?: FormUserFilter;
+  minValue?: number;
+  maxValue?: number;
+  includeMin?: boolean;
+  includeMax?: boolean;
+  allowAnyNumber?: boolean;
+  pricePerUnit?: number;
+  priceSourceQuestionId?: string;
+  priceSourceQuestionIds?: string[];
 };
 
 export type FormAnswer = {
@@ -81,6 +99,17 @@ export type AnnouncementDoc = {
   formQuestions?: FormQuestion[];
   formSubmissionLimit?: FormSubmissionLimit;
   formPrice?: number | null;
+  fundraiserGoal?: number | null;
+  fundraiserAnonymityMode?: FundraiserAnonymityMode;
+  fundraiserTotalRaised?: number | null;
+  giveawayAllowMultipleEntries?: boolean;
+  giveawayEntryCap?: number | null;
+  giveawayWinnersCount?: number | null;
+  giveawayEntryPrice?: number | null;
+  giveawayIsClosed?: boolean;
+  giveawayClosedAt?: number | null;
+  giveawayAutoCloseAt?: number | null;
+  giveawayTotalEntries?: number | null;
   imageIds?: Id<'_storage'>[];
 };
 
@@ -105,12 +134,38 @@ export type FormSubmissionDoc = {
   paymentAmount?: number | null;
 };
 
+export type FundraiserDonationDoc = {
+  _id: Id<'fundraiserDonations'>;
+  announcementId: Id<'announcements'>;
+  userId: string;
+  userName?: string | null;
+  isAnonymous: boolean;
+  amount: number;
+  createdAt: number;
+  paypalOrderId?: string | null;
+};
+
+export type GiveawayEntryDoc = {
+  _id: Id<'giveawayEntries'>;
+  announcementId: Id<'announcements'>;
+  userId: string;
+  userName?: string | null;
+  tickets: number;
+  createdAt: number;
+  paypalOrderId?: string | null;
+  paymentAmount?: number | null;
+};
+
 export type Doc<TableName extends string> = TableName extends 'announcements'
   ? AnnouncementDoc
   : TableName extends 'pollVotes'
     ? PollVoteDoc
     : TableName extends 'formSubmissions'
       ? FormSubmissionDoc
+      : TableName extends 'fundraiserDonations'
+        ? FundraiserDonationDoc
+        : TableName extends 'giveawayEntries'
+          ? GiveawayEntryDoc
     : never;
 
 export type StorageImage = { id: Id<'_storage'>; url: string };

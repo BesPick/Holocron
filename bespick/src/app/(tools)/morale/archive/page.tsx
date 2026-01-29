@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { AnnouncementModal } from '@/components/announcements/announcement-modal';
 import { FormModal } from '@/components/forms/form-modal';
+import { FundraiserModal } from '@/components/fundraiser/fundraiser-modal';
+import { GiveawayModal } from '@/components/giveaway/giveaway-modal';
 import { PollModal } from '@/components/poll/poll-modal';
 import { VotingModal } from '@/components/voting/voting-modal';
 import { MoraleSubHeader } from '@/components/header/morale-subheader';
@@ -37,6 +39,10 @@ export default function ArchivePage() {
   const [viewingAnnouncement, setViewingAnnouncement] =
     React.useState<Announcement | null>(null);
   const [viewingFormId, setViewingFormId] =
+    React.useState<AnnouncementId | null>(null);
+  const [viewingFundraiserId, setViewingFundraiserId] =
+    React.useState<AnnouncementId | null>(null);
+  const [viewingGiveawayId, setViewingGiveawayId] =
     React.useState<AnnouncementId | null>(null);
   const [viewingVoting, setViewingVoting] =
     React.useState<Announcement | null>(null);
@@ -89,6 +95,12 @@ export default function ArchivePage() {
   const handleOpenForm = React.useCallback((id: AnnouncementId) => {
     setViewingFormId(id);
   }, []);
+  const handleOpenFundraiser = React.useCallback((id: AnnouncementId) => {
+    setViewingFundraiserId(id);
+  }, []);
+  const handleOpenGiveaway = React.useCallback((id: AnnouncementId) => {
+    setViewingGiveawayId(id);
+  }, []);
   const handleOpenVoting = React.useCallback((announcement: Announcement) => {
     setViewingVoting(announcement);
   }, []);
@@ -123,6 +135,8 @@ export default function ArchivePage() {
               onOpenPoll={handleOpenPoll}
               onOpenVoting={handleOpenVoting}
               onOpenForm={handleOpenForm}
+              onOpenFundraiser={handleOpenFundraiser}
+              onOpenGiveaway={handleOpenGiveaway}
               onViewAnnouncement={handleViewAnnouncement}
             />
           ))}
@@ -157,6 +171,24 @@ export default function ArchivePage() {
           onClose={() => setViewingFormId(null)}
           isAdmin={isMoraleAdmin}
           canSubmit={false}
+        />
+      )}
+
+      {viewingFundraiserId && (
+        <FundraiserModal
+          fundraiserId={viewingFundraiserId}
+          onClose={() => setViewingFundraiserId(null)}
+          canDonate={false}
+          isAdmin={isMoraleAdmin}
+        />
+      )}
+
+      {viewingGiveawayId && (
+        <GiveawayModal
+          giveawayId={viewingGiveawayId}
+          onClose={() => setViewingGiveawayId(null)}
+          canEnter={false}
+          isAdmin={isMoraleAdmin}
         />
       )}
     </section>

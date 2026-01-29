@@ -78,16 +78,19 @@ export function FormSettingsSection({
           </label>
           {paymentEnabled && (
             <label className='mt-3 flex flex-col gap-2 text-sm text-foreground'>
-              Price (USD)
+              Base price (USD)
               <input
                 type='number'
-                min='1'
+                min='0'
                 step='0.01'
                 value={price}
                 onChange={(event) => onChangePrice(event.target.value)}
-                placeholder='0.00'
+                placeholder='Optional'
                 className='w-48 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
               />
+              <span className='text-xs text-muted-foreground'>
+                Leave blank if pricing is set by question options.
+              </span>
             </label>
           )}
           {!paymentEnabled && (

@@ -47,6 +47,15 @@ CREATE TABLE IF NOT EXISTS announcements (
   form_questions_json TEXT,
   form_submission_limit TEXT,
   form_price REAL,
+  fundraiser_goal REAL,
+  fundraiser_anonymity_mode TEXT,
+  giveaway_allow_multiple_entries INTEGER,
+  giveaway_entry_cap INTEGER,
+  giveaway_winners_count INTEGER,
+  giveaway_entry_price REAL,
+  giveaway_is_closed INTEGER,
+  giveaway_closed_at INTEGER,
+  giveaway_auto_close_at INTEGER,
   image_ids_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_announcements_publish_at ON announcements(status, publish_at);
@@ -76,6 +85,45 @@ CREATE TABLE IF NOT EXISTS form_submissions (
 );
 CREATE INDEX IF NOT EXISTS idx_form_submissions_announcement ON form_submissions(announcement_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_user ON form_submissions(announcement_id, user_id);
+
+CREATE TABLE IF NOT EXISTS fundraiser_donations (
+  id TEXT PRIMARY KEY,
+  announcement_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  user_name TEXT,
+  is_anonymous INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  created_at INTEGER NOT NULL,
+  paypal_order_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fundraiser_donations_announcement ON fundraiser_donations(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_fundraiser_donations_user ON fundraiser_donations(announcement_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_fundraiser_donations_created ON fundraiser_donations(announcement_id, created_at);
+
+CREATE TABLE IF NOT EXISTS giveaway_entries (
+  id TEXT PRIMARY KEY,
+  announcement_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  user_name TEXT,
+  tickets INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  paypal_order_id TEXT,
+  payment_amount REAL
+);
+CREATE INDEX IF NOT EXISTS idx_giveaway_entries_announcement ON giveaway_entries(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_giveaway_entries_user ON giveaway_entries(announcement_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_giveaway_entries_created ON giveaway_entries(announcement_id, created_at);
+
+CREATE TABLE IF NOT EXISTS giveaway_winners (
+  id TEXT PRIMARY KEY,
+  announcement_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  user_name TEXT,
+  draw_order INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_giveaway_winners_announcement ON giveaway_winners(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_giveaway_winners_order ON giveaway_winners(announcement_id, draw_order);
 
 CREATE TABLE IF NOT EXISTS voting_purchases (
   id TEXT PRIMARY KEY,
@@ -235,6 +283,66 @@ const hasFormPrice = announcementColumns.some(
 if (!hasFormPrice) {
   sqlite.exec('ALTER TABLE announcements ADD COLUMN form_price REAL;');
 }
+const hasFundraiserGoal = announcementColumns.some(
+  (column) => column.name === 'fundraiser_goal',
+);
+if (!hasFundraiserGoal) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN fundraiser_goal REAL;');
+}
+const hasFundraiserAnonymityMode = announcementColumns.some(
+  (column) => column.name === 'fundraiser_anonymity_mode',
+);
+if (!hasFundraiserAnonymityMode) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN fundraiser_anonymity_mode TEXT;',
+  );
+}
+const hasGiveawayAllowMultiple = announcementColumns.some(
+  (column) => column.name === 'giveaway_allow_multiple_entries',
+);
+if (!hasGiveawayAllowMultiple) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN giveaway_allow_multiple_entries INTEGER;',
+  );
+}
+const hasGiveawayEntryCap = announcementColumns.some(
+  (column) => column.name === 'giveaway_entry_cap',
+);
+if (!hasGiveawayEntryCap) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN giveaway_entry_cap INTEGER;');
+}
+const hasGiveawayWinnersCount = announcementColumns.some(
+  (column) => column.name === 'giveaway_winners_count',
+);
+if (!hasGiveawayWinnersCount) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN giveaway_winners_count INTEGER;',
+  );
+}
+const hasGiveawayEntryPrice = announcementColumns.some(
+  (column) => column.name === 'giveaway_entry_price',
+);
+if (!hasGiveawayEntryPrice) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN giveaway_entry_price REAL;');
+}
+const hasGiveawayIsClosed = announcementColumns.some(
+  (column) => column.name === 'giveaway_is_closed',
+);
+if (!hasGiveawayIsClosed) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN giveaway_is_closed INTEGER;');
+}
+const hasGiveawayClosedAt = announcementColumns.some(
+  (column) => column.name === 'giveaway_closed_at',
+);
+if (!hasGiveawayClosedAt) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN giveaway_closed_at INTEGER;');
+}
+const hasGiveawayAutoCloseAt = announcementColumns.some(
+  (column) => column.name === 'giveaway_auto_close_at',
+);
+if (!hasGiveawayAutoCloseAt) {
+  sqlite.exec('ALTER TABLE announcements ADD COLUMN giveaway_auto_close_at INTEGER;');
+}
 
 const overrideColumns = sqlite
   .prepare("PRAGMA table_info('schedule_event_overrides')")
@@ -312,6 +420,72 @@ if (!formSubmissionsTableExists) {
     );
     CREATE INDEX idx_form_submissions_announcement ON form_submissions(announcement_id);
     CREATE INDEX idx_form_submissions_user ON form_submissions(announcement_id, user_id);
+  `);
+}
+
+const fundraiserDonationsTableExists = sqlite
+  .prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='fundraiser_donations'",
+  )
+  .get();
+if (!fundraiserDonationsTableExists) {
+  sqlite.exec(`
+    CREATE TABLE fundraiser_donations (
+      id TEXT PRIMARY KEY,
+      announcement_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      is_anonymous INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      created_at INTEGER NOT NULL,
+      paypal_order_id TEXT
+    );
+    CREATE INDEX idx_fundraiser_donations_announcement ON fundraiser_donations(announcement_id);
+    CREATE INDEX idx_fundraiser_donations_user ON fundraiser_donations(announcement_id, user_id);
+    CREATE INDEX idx_fundraiser_donations_created ON fundraiser_donations(announcement_id, created_at);
+  `);
+}
+
+const giveawayEntriesTableExists = sqlite
+  .prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='giveaway_entries'",
+  )
+  .get();
+if (!giveawayEntriesTableExists) {
+  sqlite.exec(`
+    CREATE TABLE giveaway_entries (
+      id TEXT PRIMARY KEY,
+      announcement_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      tickets INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      paypal_order_id TEXT,
+      payment_amount REAL
+    );
+    CREATE INDEX idx_giveaway_entries_announcement ON giveaway_entries(announcement_id);
+    CREATE INDEX idx_giveaway_entries_user ON giveaway_entries(announcement_id, user_id);
+    CREATE INDEX idx_giveaway_entries_created ON giveaway_entries(announcement_id, created_at);
+  `);
+}
+
+const giveawayWinnersTableExists = sqlite
+  .prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='giveaway_winners'",
+  )
+  .get();
+if (!giveawayWinnersTableExists) {
+  sqlite.exec(`
+    CREATE TABLE giveaway_winners (
+      id TEXT PRIMARY KEY,
+      announcement_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      draw_order INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_giveaway_winners_announcement ON giveaway_winners(announcement_id);
+    CREATE INDEX idx_giveaway_winners_order ON giveaway_winners(announcement_id, draw_order);
   `);
 }
 

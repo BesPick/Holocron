@@ -3,6 +3,7 @@ import * as React from 'react';
 interface AutomationSectionProps {
   autoDeleteEnabled: boolean;
   autoArchiveEnabled: boolean;
+  hideAutoArchive?: boolean;
   deleteDate: string;
   deleteTime: string;
   archiveDate: string;
@@ -44,6 +45,7 @@ export function AutomationSection({
   onChangeDeleteTime,
   onChangeArchiveDate,
   onChangeArchiveTime,
+  hideAutoArchive = false,
 }: AutomationSectionProps) {
   return (
     <>
@@ -112,70 +114,72 @@ export function AutomationSection({
         )}
       </div>
 
-      <div className='space-y-3 rounded-2xl border border-border bg-card/70 p-4'>
-        <label className='flex items-center gap-3 text-sm font-medium text-foreground'>
-          <input
-            type='checkbox'
-            checked={autoArchiveEnabled}
-            onChange={(event) => onToggleAutoArchive(event.target.checked)}
-            className='h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-          />
-          Auto Archive
-        </label>
-        <p className='text-xs text-muted-foreground'>
-          Archive the activity automatically instead of deleting it.
-        </p>
-
-        {autoArchiveEnabled && (
-          <div className='grid gap-4 sm:grid-cols-2'>
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Archive Date
-              <input
-                type='date'
-                name='archiveDate'
-                value={archiveDate}
-                min={minAutoArchiveDate}
-                onChange={(event) => onChangeArchiveDate(event.target.value)}
-                required
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-              />
-            </label>
-
-            <label className='flex flex-col gap-2 text-sm text-foreground'>
-              Archive Time (15 min slots)
-              <select
-                name='archiveTime'
-                value={archiveTime}
-                onChange={(event) => onChangeArchiveTime(event.target.value)}
-                required
-                disabled={noArchiveSlotsLeftToday}
-                className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70'
-              >
-                <option value=''>--</option>
-                {noArchiveSlotsLeftToday ? (
-                  <option value='' disabled>
-                    No archive slots remain today — pick another date
-                  </option>
-                ) : (
-                  displayArchiveTimeSlots.map((slot) => (
-                    <option key={slot} value={slot}>
-                      {slot}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-          </div>
-        )}
-
-        {autoArchiveEnabled && (
+      {!hideAutoArchive && (
+        <div className='space-y-3 rounded-2xl border border-border bg-card/70 p-4'>
+          <label className='flex items-center gap-3 text-sm font-medium text-foreground'>
+            <input
+              type='checkbox'
+              checked={autoArchiveEnabled}
+              onChange={(event) => onToggleAutoArchive(event.target.checked)}
+              className='h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+            />
+            Auto Archive
+          </label>
           <p className='text-xs text-muted-foreground'>
-            {autoArchiveSummary
-              ? `Will archive on ${autoArchiveSummary}.`
-              : 'Pick an archive date and time to enable automatic archiving.'}
+            Archive the activity automatically instead of deleting it.
           </p>
-        )}
-      </div>
+
+          {autoArchiveEnabled && (
+            <div className='grid gap-4 sm:grid-cols-2'>
+              <label className='flex flex-col gap-2 text-sm text-foreground'>
+                Archive Date
+                <input
+                  type='date'
+                  name='archiveDate'
+                  value={archiveDate}
+                  min={minAutoArchiveDate}
+                  onChange={(event) => onChangeArchiveDate(event.target.value)}
+                  required
+                  className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                />
+              </label>
+
+              <label className='flex flex-col gap-2 text-sm text-foreground'>
+                Archive Time (15 min slots)
+                <select
+                  name='archiveTime'
+                  value={archiveTime}
+                  onChange={(event) => onChangeArchiveTime(event.target.value)}
+                  required
+                  disabled={noArchiveSlotsLeftToday}
+                  className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70'
+                >
+                  <option value=''>--</option>
+                  {noArchiveSlotsLeftToday ? (
+                    <option value='' disabled>
+                      No archive slots remain today — pick another date
+                    </option>
+                  ) : (
+                    displayArchiveTimeSlots.map((slot) => (
+                      <option key={slot} value={slot}>
+                        {slot}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+            </div>
+          )}
+
+          {autoArchiveEnabled && (
+            <p className='text-xs text-muted-foreground'>
+              {autoArchiveSummary
+                ? `Will archive on ${autoArchiveSummary}.`
+                : 'Pick an archive date and time to enable automatic archiving.'}
+            </p>
+          )}
+        </div>
+      )}
     </>
   );
 }

@@ -40,6 +40,11 @@ const QUESTION_TYPES: Array<{
     label: 'User Select',
     description: 'Pick a user from the roster.',
   },
+  {
+    value: 'number',
+    label: 'Numbers',
+    description: 'Accept a number within a defined range.',
+  },
 ];
 
 const createQuestion = (type: FormQuestionType): FormQuestion => {
@@ -71,6 +76,22 @@ const createQuestion = (type: FormQuestionType): FormQuestion => {
       prompt: '',
       required: true,
       maxLength: 250,
+    };
+  }
+  if (type === 'number') {
+    return {
+      id,
+      type,
+      prompt: '',
+      required: true,
+      minValue: 1,
+      maxValue: 10,
+      includeMin: true,
+      includeMax: true,
+      allowAnyNumber: false,
+      pricePerUnit: undefined,
+      priceSourceQuestionId: undefined,
+      priceSourceQuestionIds: undefined,
     };
   }
   return {
@@ -151,10 +172,95 @@ export function FormBuilderSection({
               options.length,
             )
           : question.maxSelections;
+      let optionPrices = question.optionPrices
+        ? { ...question.optionPrices }
+        : undefined;
+      if (optionPrices) {
+        for (const key of Object.keys(optionPrices)) {
+          if (!options.includes(key)) {
+            delete optionPrices[key];
+          }
+        }
+        if (Object.keys(optionPrices).length === 0) {
+          optionPrices = undefined;
+        }
+      }
       return {
         ...question,
         options,
         maxSelections,
+        optionPrices,
+      };
+    });
+  };
+
+  const updateOptionLabel = (
+    questionId: string,
+    optionIndex: number,
+    nextValue: string,
+  ) => {
+    updateQuestion(questionId, (question) => {
+      if (question.type !== 'multiple_choice' && question.type !== 'dropdown') {
+        return question;
+      }
+      const options = [...(question.options ?? [])];
+      const previous = options[optionIndex] ?? '';
+      options[optionIndex] = nextValue;
+      let optionPrices = question.optionPrices
+        ? { ...question.optionPrices }
+        : undefined;
+      if (optionPrices && previous && previous !== nextValue) {
+        if (
+          optionPrices[previous] !== undefined &&
+          optionPrices[nextValue] === undefined
+        ) {
+          optionPrices[nextValue] = optionPrices[previous];
+        }
+        delete optionPrices[previous];
+      }
+      if (optionPrices && Object.keys(optionPrices).length === 0) {
+        optionPrices = undefined;
+      }
+      return {
+        ...question,
+        options,
+        optionPrices,
+      };
+    });
+  };
+
+  const updateOptionPrice = (
+    questionId: string,
+    option: string,
+    value: string,
+  ) => {
+    updateQuestion(questionId, (question) => {
+      if (question.type !== 'multiple_choice' && question.type !== 'dropdown') {
+        return question;
+      }
+      if (!option.trim()) {
+        return question;
+      }
+      const nextValue = value.trim();
+      let optionPrices = question.optionPrices
+        ? { ...question.optionPrices }
+        : {};
+      if (!nextValue) {
+        delete optionPrices[option];
+      } else {
+        const parsed = Number(nextValue);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return question;
+        }
+        optionPrices[option] = Math.round(parsed * 100) / 100;
+      }
+      if (Object.keys(optionPrices).length === 0) {
+        optionPrices = {};
+      }
+      return {
+        ...question,
+        optionPrices:
+          Object.keys(optionPrices).length > 0 ? optionPrices : undefined,
       };
     });
   };
@@ -185,6 +291,12 @@ export function FormBuilderSection({
         {questions.map((question, index) => {
           const groupValue = question.userFilters?.group ?? '';
           const rankCategoryValue = question.userFilters?.rankCategory ?? '';
+          const pricingSources = questions
+            .slice(0, index)
+            .filter(
+              (entry) =>
+                entry.type === 'dropdown' || entry.type === 'multiple_choice',
+            );
           const portfolioOptions =
             groupValue && isValidGroup(groupValue, groupOptions)
               ? getPortfoliosForGroup(groupValue, groupOptions).map(
@@ -314,25 +426,48 @@ export function FormBuilderSection({
                     <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
                       Options
                     </p>
+                    <p className='text-xs text-muted-foreground'>
+                      Optional: assign prices per option to influence the payment total.
+                    </p>
                     {(question.options ?? []).map((option, optionIndex) => (
                       <div
                         key={`${question.id}-option-${optionIndex}`}
-                        className='flex items-center gap-2'
+                        className='flex flex-col gap-2 sm:flex-row sm:items-center'
                       >
                         <input
                           type='text'
                           value={option}
                           onChange={(event) => {
-                            const next = [...(question.options ?? [])];
-                            next[optionIndex] = event.target.value;
-                            updateQuestionOptions(
+                            updateOptionLabel(
                               question.id,
-                              next,
-                              question.maxSelections,
+                              optionIndex,
+                              event.target.value,
                             );
                           }}
                           className='flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
                         />
+                        <div className='flex items-center gap-2'>
+                          <span className='text-xs text-muted-foreground'>
+                            $
+                          </span>
+                          <input
+                            type='number'
+                            min='0'
+                            step='0.01'
+                            value={
+                              question.optionPrices?.[option] ?? ''
+                            }
+                            onChange={(event) =>
+                              updateOptionPrice(
+                                question.id,
+                                option,
+                                event.target.value,
+                              )
+                            }
+                            placeholder='0.00'
+                            className='w-28 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                          />
+                        </div>
                         <button
                           type='button'
                           onClick={() => {
@@ -380,21 +515,44 @@ export function FormBuilderSection({
                   <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
                     Dropdown options
                   </p>
+                  <p className='text-xs text-muted-foreground'>
+                    Optional: assign prices per option to influence the payment total.
+                  </p>
                   {(question.options ?? []).map((option, optionIndex) => (
                     <div
                       key={`${question.id}-dropdown-${optionIndex}`}
-                      className='flex items-center gap-2'
+                      className='flex flex-col gap-2 sm:flex-row sm:items-center'
                     >
                       <input
                         type='text'
                         value={option}
                         onChange={(event) => {
-                          const next = [...(question.options ?? [])];
-                          next[optionIndex] = event.target.value;
-                          updateQuestionOptions(question.id, next);
+                          updateOptionLabel(
+                            question.id,
+                            optionIndex,
+                            event.target.value,
+                          );
                         }}
                         className='flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
                       />
+                      <div className='flex items-center gap-2'>
+                        <span className='text-xs text-muted-foreground'>$</span>
+                        <input
+                          type='number'
+                          min='0'
+                          step='0.01'
+                          value={question.optionPrices?.[option] ?? ''}
+                          onChange={(event) =>
+                            updateOptionPrice(
+                              question.id,
+                              option,
+                              event.target.value,
+                            )
+                          }
+                          placeholder='0.00'
+                          className='w-28 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                        />
+                      </div>
                       <button
                         type='button'
                         onClick={() => {
@@ -611,6 +769,241 @@ export function FormBuilderSection({
                       </select>
                     </label>
                   </div>
+                </div>
+              )}
+
+              {question.type === 'number' && (
+                <div className='mt-4 space-y-3'>
+                  <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                    Allowed range
+                  </p>
+                  <label className='flex items-center gap-2 text-sm text-foreground'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(question.allowAnyNumber)}
+                      onChange={(event) =>
+                        updateQuestion(question.id, (current) => ({
+                          ...current,
+                          allowAnyNumber: event.target.checked,
+                        }))
+                      }
+                      className='h-4 w-4 rounded border-border'
+                    />
+                    Allow any number (no bounds)
+                  </label>
+                  <div className='grid gap-3 sm:grid-cols-2'>
+                    <label className='flex flex-col gap-2 text-sm text-foreground'>
+                      Minimum
+                      <input
+                        type='number'
+                        value={question.minValue ?? 0}
+                        onChange={(event) =>
+                          updateQuestion(question.id, (current) => ({
+                            ...current,
+                            minValue: Number(event.target.value),
+                          }))
+                        }
+                        disabled={Boolean(question.allowAnyNumber)}
+                        className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                      />
+                    </label>
+                    <label className='flex flex-col gap-2 text-sm text-foreground'>
+                      Maximum
+                      <input
+                        type='number'
+                        value={question.maxValue ?? 0}
+                        onChange={(event) =>
+                          updateQuestion(question.id, (current) => ({
+                            ...current,
+                            maxValue: Number(event.target.value),
+                          }))
+                        }
+                        disabled={Boolean(question.allowAnyNumber)}
+                        className='rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                      />
+                    </label>
+                  </div>
+                  <div className='flex flex-wrap items-center gap-4 text-sm text-foreground'>
+                    <label className='inline-flex items-center gap-2'>
+                      <input
+                        type='checkbox'
+                        checked={question.includeMin ?? true}
+                        onChange={(event) =>
+                          updateQuestion(question.id, (current) => ({
+                            ...current,
+                            includeMin: event.target.checked,
+                          }))
+                        }
+                        disabled={Boolean(question.allowAnyNumber)}
+                        className='h-4 w-4 rounded border-border'
+                      />
+                      Include minimum
+                    </label>
+                    <label className='inline-flex items-center gap-2'>
+                      <input
+                        type='checkbox'
+                        checked={question.includeMax ?? true}
+                        onChange={(event) =>
+                          updateQuestion(question.id, (current) => ({
+                            ...current,
+                            includeMax: event.target.checked,
+                          }))
+                        }
+                        disabled={Boolean(question.allowAnyNumber)}
+                        className='h-4 w-4 rounded border-border'
+                      />
+                      Include maximum
+                    </label>
+                  </div>
+                  <div className='space-y-2'>
+                    <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                      Pricing
+                    </p>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <button
+                        type='button'
+                        onClick={() =>
+                          updateQuestion(question.id, (current) => ({
+                            ...current,
+                            priceSourceQuestionId: undefined,
+                            priceSourceQuestionIds: undefined,
+                          }))
+                        }
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          !question.priceSourceQuestionIds?.length &&
+                          !question.priceSourceQuestionId
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Fixed per unit
+                      </button>
+                      <button
+                        type='button'
+                        disabled={pricingSources.length === 0}
+                        onClick={() =>
+                          updateQuestion(question.id, (current) => ({
+                            ...current,
+                            pricePerUnit: undefined,
+                            priceSourceQuestionId: undefined,
+                            priceSourceQuestionIds: pricingSources[0]
+                              ? [pricingSources[0].id]
+                              : undefined,
+                          }))
+                        }
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          question.priceSourceQuestionIds?.length
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:text-foreground'
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                      >
+                        From option price
+                      </button>
+                    </div>
+
+                    {!question.priceSourceQuestionIds?.length &&
+                      !question.priceSourceQuestionId && (
+                        <label className='flex flex-col gap-2 text-sm text-foreground'>
+                          Price per unit (optional)
+                          <input
+                            type='number'
+                            min='0'
+                            step='0.01'
+                            value={question.pricePerUnit ?? ''}
+                            onChange={(event) =>
+                              updateQuestion(question.id, (current) => {
+                                const raw = event.target.value;
+                                if (raw === '') {
+                                  return { ...current, pricePerUnit: undefined };
+                                }
+                                const parsed = Number(raw);
+                                if (!Number.isFinite(parsed) || parsed < 0) {
+                                  return current;
+                                }
+                                return { ...current, pricePerUnit: parsed };
+                              })
+                            }
+                            placeholder='0.00'
+                            className='w-40 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                          />
+                        </label>
+                      )}
+
+                    {(question.priceSourceQuestionIds?.length ||
+                      question.priceSourceQuestionId) && (
+                      <div className='space-y-2'>
+                        <p className='text-xs text-muted-foreground'>
+                          Use option prices from
+                        </p>
+                        <div className='space-y-2'>
+                          {pricingSources.map((source) => {
+                            const selected = (
+                              question.priceSourceQuestionIds ??
+                              (question.priceSourceQuestionId
+                                ? [question.priceSourceQuestionId]
+                                : [])
+                            ).includes(source.id);
+                            return (
+                              <label
+                                key={source.id}
+                                className='flex items-center gap-2 text-sm text-foreground'
+                              >
+                                <input
+                                  type='checkbox'
+                                  checked={selected}
+                                  onChange={(event) =>
+                                    updateQuestion(question.id, (current) => {
+                                      const currentIds =
+                                        current.priceSourceQuestionIds ??
+                                        (current.priceSourceQuestionId
+                                          ? [current.priceSourceQuestionId]
+                                          : []);
+                                      const nextIds = event.target.checked
+                                        ? Array.from(
+                                            new Set([...currentIds, source.id]),
+                                          )
+                                        : currentIds.filter(
+                                            (id) => id !== source.id,
+                                          );
+                                      return {
+                                        ...current,
+                                        priceSourceQuestionId: undefined,
+                                        priceSourceQuestionIds:
+                                          nextIds.length > 0
+                                            ? nextIds
+                                            : undefined,
+                                      };
+                                    })
+                                  }
+                                  className='h-4 w-4 rounded border-border'
+                                />
+                                <span>
+                                  {source.prompt || 'Untitled question'}
+                                </span>
+                              </label>
+                            );
+                          })}
+                          {pricingSources.length === 0 && (
+                            <span className='text-xs text-muted-foreground'>
+                              Add a dropdown or multiple choice question above
+                              to map pricing.
+                            </span>
+                          )}
+                        </div>
+                        {pricingSources.length > 0 && (
+                          <span className='text-xs text-muted-foreground'>
+                            Selected option prices are summed to set the per-unit
+                            cost.
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className='text-xs text-muted-foreground'>
+                    {question.allowAnyNumber
+                      ? 'Users can enter any number.'
+                      : 'Users must enter a number within the range. Excluding a bound means the number must be greater than or less than that value.'}
+                  </p>
                 </div>
               )}
             </article>

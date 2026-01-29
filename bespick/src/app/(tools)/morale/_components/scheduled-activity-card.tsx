@@ -12,6 +12,8 @@ type ScheduledActivityCardProps = {
   deletingId: AnnouncementId | null;
   onViewAnnouncement: (announcement: Announcement) => void;
   onOpenForm?: (id: AnnouncementId) => void;
+  onOpenFundraiser?: (id: AnnouncementId) => void;
+  onOpenGiveaway?: (id: AnnouncementId) => void;
 };
 
 export function ScheduledActivityCard({
@@ -21,9 +23,13 @@ export function ScheduledActivityCard({
   deletingId,
   onViewAnnouncement,
   onOpenForm,
+  onOpenFundraiser,
+  onOpenGiveaway,
 }: ScheduledActivityCardProps) {
   const isPollCard = activity.eventType === 'poll';
   const isFormCard = activity.eventType === 'form';
+  const isFundraiserCard = activity.eventType === 'fundraiser';
+  const isGiveawayCard = activity.eventType === 'giveaway';
   const scheduledFor = new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -94,7 +100,25 @@ export function ScheduledActivityCard({
               View form
             </button>
           )}
-          {!isPollCard && !isFormCard && (
+          {isFundraiserCard && onOpenFundraiser && (
+            <button
+              type='button'
+              onClick={() => onOpenFundraiser(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View fundraiser
+            </button>
+          )}
+          {isGiveawayCard && onOpenGiveaway && (
+            <button
+              type='button'
+              onClick={() => onOpenGiveaway(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View giveaway
+            </button>
+          )}
+          {!isPollCard && !isFormCard && !isFundraiserCard && !isGiveawayCard && (
             <button
               type='button'
               onClick={() => onViewAnnouncement(activity)}

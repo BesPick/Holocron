@@ -1,5 +1,6 @@
 'use client';
 
+import { Lock, Trophy, Unlock } from 'lucide-react';
 import { formatCreator, formatDate, formatEventType } from '@/lib/announcements';
 import { ActionMenu } from './action-menu';
 import { ActivityDescription } from './activity-description';
@@ -16,6 +17,8 @@ type DashboardActivityCardProps = {
   onOpenPoll?: (id: AnnouncementId) => void;
   onOpenVoting?: (announcement: Announcement) => void;
   onOpenForm?: (id: AnnouncementId) => void;
+  onOpenFundraiser?: (id: AnnouncementId) => void;
+  onOpenGiveaway?: (id: AnnouncementId) => void;
   onViewAnnouncement: (announcement: Announcement) => void;
 };
 
@@ -30,6 +33,8 @@ export function DashboardActivityCard({
   onOpenPoll,
   onOpenVoting,
   onOpenForm,
+  onOpenFundraiser,
+  onOpenGiveaway,
   onViewAnnouncement,
 }: DashboardActivityCardProps) {
   const publishedDate = formatDate(activity.publishAt);
@@ -45,15 +50,75 @@ export function DashboardActivityCard({
   const isPollCard = activity.eventType === 'poll';
   const isVotingCard = activity.eventType === 'voting';
   const isFormCard = activity.eventType === 'form';
+  const isFundraiserCard = activity.eventType === 'fundraiser';
+  const isGiveawayCard = activity.eventType === 'giveaway';
+  const isGiveawayOpen =
+    isGiveawayCard &&
+    activity.status === 'published' &&
+    !activity.giveawayIsClosed;
+  const goalReached =
+    isFundraiserCard &&
+    typeof activity.fundraiserGoal === 'number' &&
+    activity.fundraiserGoal > 0 &&
+    typeof activity.fundraiserTotalRaised === 'number' &&
+    activity.fundraiserTotalRaised >= activity.fundraiserGoal;
+  const fundraiserSummary =
+    isFundraiserCard &&
+    typeof activity.fundraiserGoal === 'number' &&
+    activity.fundraiserGoal > 0 &&
+    typeof activity.fundraiserTotalRaised === 'number'
+      ? new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(activity.fundraiserTotalRaised) +
+        ' / ' +
+        new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(activity.fundraiserGoal)
+      : null;
   const isDeleting = deletingId === activity._id;
   const isArchiving = archivingId === activity._id;
 
   return (
     <article className='rounded-xl border border-border bg-card p-6 shadow-sm transition hover:shadow-md'>
       <header className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-        <span className='inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-primary'>
-          {formatEventType(activity.eventType)}
-        </span>
+        <div className='flex flex-wrap items-center gap-2'>
+          <span className='inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-primary'>
+            {formatEventType(activity.eventType)}
+          </span>
+          {isGiveawayCard && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                isGiveawayOpen
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground'
+              }`}
+            >
+              {isGiveawayOpen ? (
+                <Unlock className='h-3 w-3' aria-hidden='true' />
+              ) : (
+                <Lock className='h-3 w-3' aria-hidden='true' />
+              )}
+              {isGiveawayOpen ? 'Open' : 'Closed'}
+            </span>
+          )}
+          {goalReached && (
+            <span className='inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700'>
+              <Trophy className='h-3 w-3' aria-hidden='true' />
+              Goal reached
+            </span>
+          )}
+          {!goalReached && fundraiserSummary && (
+            <span className='inline-flex items-center gap-2 rounded-full border border-border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
+              {fundraiserSummary}
+            </span>
+          )}
+        </div>
         <div className='flex items-center gap-2 self-end text-sm text-muted-foreground sm:self-auto'>
           <div className='flex flex-col text-right'>
             <time dateTime={new Date(activity.publishAt).toISOString()}>
@@ -153,7 +218,29 @@ export function DashboardActivityCard({
               Open form
             </button>
           )}
-          {!isPollCard && !isVotingCard && !isFormCard && (
+          {isFundraiserCard && onOpenFundraiser && (
+            <button
+              type='button'
+              onClick={() => onOpenFundraiser(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View fundraiser
+            </button>
+          )}
+          {isGiveawayCard && onOpenGiveaway && (
+            <button
+              type='button'
+              onClick={() => onOpenGiveaway(activity._id)}
+              className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10'
+            >
+              View giveaway
+            </button>
+          )}
+          {!isPollCard &&
+            !isVotingCard &&
+            !isFormCard &&
+            !isFundraiserCard &&
+            !isGiveawayCard && (
             <button
               type='button'
               onClick={() => onViewAnnouncement(activity)}

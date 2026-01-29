@@ -1,11 +1,14 @@
 import crypto from 'node:crypto';
 import { clerkClient } from '@clerk/nextjs/server';
-import { and, asc, desc, eq, gt, lte, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, lte, ne, or, sql } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import {
   AnnouncementInsert,
   AnnouncementRow,
   announcements,
+  fundraiserDonations,
+  giveawayEntries,
+  giveawayWinners,
   formSubmissions,
   pollVotes,
   votingPurchases,
@@ -28,6 +31,7 @@ import type {
   FormQuestionType,
   FormSubmissionLimit,
   Id,
+  FundraiserAnonymityMode,
   VotingLeaderboardMode,
   VotingParticipant,
 } from '@/types/db';
@@ -59,7 +63,20 @@ export type CreateAnnouncementArgs = {
   formQuestions?: FormQuestion[];
   formSubmissionLimit?: FormSubmissionLimit;
   formPrice?: number | null;
-  eventType?: 'announcements' | 'poll' | 'voting' | 'form';
+  fundraiserGoal?: number | null;
+  fundraiserAnonymityMode?: FundraiserAnonymityMode;
+  giveawayAllowMultipleEntries?: boolean;
+  giveawayEntryCap?: number | null;
+  giveawayWinnersCount?: number | null;
+  giveawayEntryPrice?: number | null;
+  giveawayAutoCloseAt?: number | null;
+  eventType?:
+    | 'announcements'
+    | 'poll'
+    | 'voting'
+    | 'form'
+    | 'fundraiser'
+    | 'giveaway';
   imageIds?: Id<'_storage'>[];
 };
 
@@ -142,6 +159,76 @@ export type FormSubmissionSummary = {
   submissions: FormSubmissionEntry[];
 };
 
+export type FundraiserDonationEntry = {
+  id: Id<'fundraiserDonations'>;
+  userName: string | null;
+  isAnonymous: boolean;
+  amount: number;
+  createdAt: number;
+};
+
+export type FundraiserDetails = {
+  _id: Id<'announcements'>;
+  title: string;
+  description: string;
+  publishAt: number;
+  status: AnnouncementDoc['status'];
+  createdBy?: string;
+  updatedAt?: number;
+  updatedBy?: string;
+  fundraiserGoal: number;
+  fundraiserAnonymityMode: FundraiserAnonymityMode;
+  totalRaised: number;
+  donations: FundraiserDonationEntry[];
+  imageIds: Id<'_storage'>[];
+};
+
+export type SubmitFundraiserDonationArgs = {
+  id: Id<'announcements'>;
+  amount: number;
+  paypalOrderId?: string | null;
+  isAnonymous?: boolean;
+};
+
+export type GiveawayDetails = {
+  _id: Id<'announcements'>;
+  title: string;
+  description: string;
+  publishAt: number;
+  status: AnnouncementDoc['status'];
+  createdBy?: string;
+  updatedAt?: number;
+  updatedBy?: string;
+  giveawayAllowMultipleEntries: boolean;
+  giveawayEntryCap: number | null;
+  giveawayWinnersCount: number;
+  giveawayEntryPrice: number | null;
+  giveawayIsClosed: boolean;
+  giveawayClosedAt: number | null;
+  giveawayAutoCloseAt: number | null;
+  totalEntries: number;
+  currentUserTickets: number;
+  winners: {
+    userId: string;
+    userName: string | null;
+    drawOrder: number;
+    createdAt: number;
+  }[];
+  entrants: { userId: string; userName: string | null; tickets: number }[];
+  imageIds: Id<'_storage'>[];
+};
+
+export type EnterGiveawayArgs = {
+  id: Id<'announcements'>;
+  tickets: number;
+  paypalOrderId?: string | null;
+  paymentAmount?: number | null;
+};
+
+export type CloseGiveawayArgs = {
+  id: Id<'announcements'>;
+};
+
 function parseJson<T>(value?: string | null): T | undefined {
   if (!value) return undefined;
   try {
@@ -195,6 +282,18 @@ function mapAnnouncementRow(row: AnnouncementRow): AnnouncementDoc {
     formSubmissionLimit: (row.formSubmissionLimit ??
       undefined) as FormSubmissionLimit | undefined,
     formPrice: row.formPrice ?? null,
+    fundraiserGoal: row.fundraiserGoal ?? null,
+    fundraiserAnonymityMode: (row.fundraiserAnonymityMode ??
+      undefined) as FundraiserAnonymityMode | undefined,
+    fundraiserTotalRaised: null,
+    giveawayAllowMultipleEntries: row.giveawayAllowMultipleEntries ?? undefined,
+    giveawayEntryCap: row.giveawayEntryCap ?? null,
+    giveawayWinnersCount: row.giveawayWinnersCount ?? null,
+    giveawayEntryPrice: row.giveawayEntryPrice ?? null,
+    giveawayIsClosed: row.giveawayIsClosed ?? undefined,
+    giveawayClosedAt: row.giveawayClosedAt ?? null,
+    giveawayAutoCloseAt: row.giveawayAutoCloseAt ?? null,
+    giveawayTotalEntries: null,
     imageIds: parseJson<Id<'_storage'>[]>(row.imageIdsJson),
   };
 }
@@ -262,6 +361,58 @@ function normalizeFormSubmissionLimit(
   return limit === 'once' ? 'once' : 'unlimited';
 }
 
+function normalizeFundraiserAnonymityMode(
+  mode: unknown,
+): FundraiserAnonymityMode {
+  if (mode === 'anonymous' || mode === 'user_choice') {
+    return mode;
+  }
+  return 'user_choice';
+}
+
+function normalizeFundraiserGoal(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error('Fundraiser goal must be a number.');
+  }
+  if (value <= 0) {
+    throw new Error('Fundraiser goal must be greater than zero.');
+  }
+  return Math.round(value * 100) / 100;
+}
+
+function normalizeGiveawayWinnersCount(value: unknown): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    !Number.isInteger(value)
+  ) {
+    throw new Error('Winner count must be a whole number greater than zero.');
+  }
+  return Math.floor(value);
+}
+
+function normalizeGiveawayEntryCap(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    !Number.isInteger(value)
+  ) {
+    throw new Error('Entry cap must be a whole number greater than zero.');
+  }
+  return Math.floor(value);
+}
+
+function normalizeGiveawayEntryPrice(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error('Giveaway entry price must be a non-negative number.');
+  }
+  return Math.round(value * 100) / 100;
+}
+
 function normalizeFormQuestions(
   questions: FormQuestion[] | undefined,
 ): FormQuestion[] {
@@ -270,7 +421,7 @@ function normalizeFormQuestions(
   if (questions.length > MAX_FORM_QUESTIONS) {
     throw new Error(`Forms can include up to ${MAX_FORM_QUESTIONS} questions.`);
   }
-  return questions.map((question) => {
+  const normalizedQuestions = questions.map((question) => {
     const prompt =
       typeof question.prompt === 'string' ? question.prompt.trim() : '';
     if (!prompt) {
@@ -286,6 +437,18 @@ function normalizeFormQuestions(
 
     if (type === 'multiple_choice') {
       const options = normalizeFormOptions(question.options, 'Multiple choice');
+      const optionPrices: Record<string, number> = {};
+      if (question.optionPrices && typeof question.optionPrices === 'object') {
+        for (const [option, value] of Object.entries(question.optionPrices)) {
+          if (!options.includes(option)) continue;
+          if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+            throw new Error('Option prices must be non-negative numbers.');
+          }
+          if (value > 0) {
+            optionPrices[option] = Math.round(value * 100) / 100;
+          }
+        }
+      }
       const maxSelectionsRaw =
         typeof question.maxSelections === 'number'
           ? Math.floor(question.maxSelections)
@@ -302,17 +465,31 @@ function normalizeFormQuestions(
         options,
         allowAdditionalOptions: Boolean(question.allowAdditionalOptions),
         maxSelections,
+        optionPrices: Object.keys(optionPrices).length > 0 ? optionPrices : undefined,
       } satisfies FormQuestion;
     }
 
     if (type === 'dropdown') {
       const options = normalizeFormOptions(question.options, 'Dropdown');
+      const optionPrices: Record<string, number> = {};
+      if (question.optionPrices && typeof question.optionPrices === 'object') {
+        for (const [option, value] of Object.entries(question.optionPrices)) {
+          if (!options.includes(option)) continue;
+          if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+            throw new Error('Option prices must be non-negative numbers.');
+          }
+          if (value > 0) {
+            optionPrices[option] = Math.round(value * 100) / 100;
+          }
+        }
+      }
       return {
         id,
         type,
         prompt,
         required,
         options,
+        optionPrices: Object.keys(optionPrices).length > 0 ? optionPrices : undefined,
       } satisfies FormQuestion;
     }
 
@@ -348,8 +525,212 @@ function normalizeFormQuestions(
       } satisfies FormQuestion;
     }
 
+    if (type === 'number') {
+      const allowAnyNumber = Boolean(question.allowAnyNumber);
+      const minValueRaw =
+        typeof question.minValue === 'number' && Number.isFinite(question.minValue)
+          ? question.minValue
+          : 0;
+      const maxValueRaw =
+        typeof question.maxValue === 'number' && Number.isFinite(question.maxValue)
+          ? question.maxValue
+          : minValueRaw;
+      const includeMin =
+        typeof question.includeMin === 'boolean' ? question.includeMin : true;
+      const includeMax =
+        typeof question.includeMax === 'boolean' ? question.includeMax : true;
+      const pricePerUnitRaw =
+        typeof question.pricePerUnit === 'number' &&
+        Number.isFinite(question.pricePerUnit)
+          ? question.pricePerUnit
+          : null;
+      const priceSourceQuestionIds = Array.from(
+        new Set(
+          [
+            ...(Array.isArray(question.priceSourceQuestionIds)
+              ? question.priceSourceQuestionIds
+              : []),
+            ...(typeof question.priceSourceQuestionId === 'string'
+              ? [question.priceSourceQuestionId]
+              : []),
+          ]
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0),
+        ),
+      );
+      if (pricePerUnitRaw !== null && pricePerUnitRaw < 0) {
+        throw new Error('Number pricing must be a non-negative number.');
+      }
+      if (!allowAnyNumber && minValueRaw > maxValueRaw) {
+        throw new Error('Number question range is invalid.');
+      }
+      if (
+        !allowAnyNumber &&
+        minValueRaw === maxValueRaw &&
+        (!includeMin || !includeMax)
+      ) {
+        throw new Error('Number question range excludes its only value.');
+      }
+      return {
+        id,
+        type,
+        prompt,
+        required,
+        minValue: allowAnyNumber ? undefined : minValueRaw,
+        maxValue: allowAnyNumber ? undefined : maxValueRaw,
+        includeMin: allowAnyNumber ? undefined : includeMin,
+        includeMax: allowAnyNumber ? undefined : includeMax,
+        allowAnyNumber,
+        pricePerUnit:
+          priceSourceQuestionIds.length === 0 &&
+          pricePerUnitRaw !== null &&
+          pricePerUnitRaw > 0
+            ? Math.round(pricePerUnitRaw * 100) / 100
+            : undefined,
+        priceSourceQuestionId: undefined,
+        priceSourceQuestionIds:
+          priceSourceQuestionIds.length > 0 ? priceSourceQuestionIds : undefined,
+      } satisfies FormQuestion;
+    }
+
     throw new Error('Unsupported form question type.');
   });
+
+  normalizedQuestions.forEach((question, index) => {
+    if (question.type !== 'number') return;
+    const sourceIds = question.priceSourceQuestionIds ?? [];
+    if (sourceIds.length === 0) return;
+    sourceIds.forEach((sourceId) => {
+      const sourceIndex = normalizedQuestions.findIndex(
+        (entry) => entry.id === sourceId,
+      );
+      const sourceQuestion =
+        sourceIndex >= 0 ? normalizedQuestions[sourceIndex] : null;
+      if (
+        sourceQuestion === null ||
+        sourceIndex >= index ||
+        (sourceQuestion.type !== 'dropdown' &&
+          sourceQuestion.type !== 'multiple_choice')
+      ) {
+        throw new Error(
+          'Number pricing must reference previous dropdown or multiple choice questions.',
+        );
+      }
+      const hasPrices = Object.values(
+        sourceQuestion.optionPrices ?? {},
+      ).some((value) => value > 0);
+      if (!hasPrices) {
+        throw new Error(
+          `Add option prices to "${sourceQuestion.prompt || 'the selected question'}" to use it for pricing.`,
+        );
+      }
+    });
+  });
+
+  return normalizedQuestions;
+}
+
+function calculateFormPrice(
+  questions: FormQuestion[],
+  answers: FormAnswer[],
+  basePrice: number | null | undefined,
+) {
+  if (basePrice === null || basePrice === undefined) {
+    return 0;
+  }
+  let total =
+    typeof basePrice === 'number' && Number.isFinite(basePrice)
+      ? basePrice
+      : 0;
+  const answerMap = new Map<string, FormAnswer>();
+  answers.forEach((answer) => {
+    answerMap.set(answer.questionId, answer);
+  });
+  const priceSourceIds = new Set<string>();
+  questions.forEach((question) => {
+    if (question.priceSourceQuestionIds) {
+      question.priceSourceQuestionIds.forEach((id) => priceSourceIds.add(id));
+    }
+  });
+
+  for (const question of questions) {
+    const answer = answerMap.get(question.id);
+    if (!answer) continue;
+    if (question.type === 'dropdown') {
+      if (priceSourceIds.has(question.id)) {
+        continue;
+      }
+      const selection =
+        typeof answer.value === 'string' ? answer.value : '';
+      if (selection && question.optionPrices) {
+        total += question.optionPrices[selection] ?? 0;
+      }
+    }
+    if (question.type === 'multiple_choice') {
+      if (priceSourceIds.has(question.id)) {
+        continue;
+      }
+      const selections = Array.isArray(answer.value) ? answer.value : [];
+      if (question.optionPrices) {
+        for (const selection of selections) {
+          total += question.optionPrices[selection] ?? 0;
+        }
+      }
+    }
+    if (question.type === 'number') {
+      let perUnit = question.pricePerUnit ?? 0;
+      if (question.priceSourceQuestionIds) {
+        perUnit = question.priceSourceQuestionIds.reduce(
+          (sum, sourceId) => {
+            const sourceQuestion = questions.find(
+              (entry) => entry.id === sourceId,
+            );
+            const sourceAnswer = answerMap.get(sourceId);
+            if (
+              !sourceQuestion ||
+              !sourceQuestion.optionPrices ||
+              !sourceAnswer
+            ) {
+              return sum;
+            }
+            if (sourceQuestion.type === 'dropdown') {
+              const selection =
+                typeof sourceAnswer.value === 'string'
+                  ? sourceAnswer.value
+                  : '';
+              return sum + (sourceQuestion.optionPrices[selection] ?? 0);
+            }
+            if (sourceQuestion.type === 'multiple_choice') {
+              const selections = Array.isArray(sourceAnswer.value)
+                ? sourceAnswer.value
+                : [];
+              const subtotal = selections.reduce(
+                (innerSum, selection) =>
+                  innerSum +
+                  (sourceQuestion.optionPrices?.[selection] ?? 0),
+                0,
+              );
+              return sum + subtotal;
+            }
+            return sum;
+          },
+          0,
+        );
+      }
+      if (perUnit > 0) {
+        const raw =
+          typeof answer.value === 'string'
+            ? answer.value.trim()
+            : `${answer.value}`;
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed)) {
+          total += parsed * perUnit;
+        }
+      }
+    }
+  }
+
+  return Math.round(total * 100) / 100;
 }
 
 type FormRosterEntry = {
@@ -732,11 +1113,18 @@ export async function createAnnouncement(
   const eventType =
     args.eventType === 'poll' ||
     args.eventType === 'voting' ||
-    args.eventType === 'form'
+    args.eventType === 'form' ||
+    args.eventType === 'fundraiser' ||
+    args.eventType === 'giveaway'
       ? args.eventType
       : 'announcements';
 
-  if (!cleanedDescription && eventType === 'announcements') {
+  if (
+    !cleanedDescription &&
+    (eventType === 'announcements' ||
+      eventType === 'fundraiser' ||
+      eventType === 'giveaway')
+  ) {
     throw new Error('Description is required');
   }
 
@@ -745,6 +1133,10 @@ export async function createAnnouncement(
     typeof args.autoDeleteAt === 'number' ? args.autoDeleteAt : null;
   const normalizedAutoArchiveAt =
     typeof args.autoArchiveAt === 'number' ? args.autoArchiveAt : null;
+  const normalizedGiveawayAutoCloseAt =
+    typeof args.giveawayAutoCloseAt === 'number'
+      ? args.giveawayAutoCloseAt
+      : null;
 
   if (
     normalizedAutoDeleteAt !== null &&
@@ -762,6 +1154,15 @@ export async function createAnnouncement(
 
   if (normalizedAutoDeleteAt !== null && normalizedAutoArchiveAt !== null) {
     throw new Error('Choose either auto delete or auto archive, not both.');
+  }
+  if (eventType === 'giveaway' && normalizedAutoArchiveAt !== null) {
+    throw new Error('Giveaways do not support auto archive.');
+  }
+  if (
+    normalizedGiveawayAutoCloseAt !== null &&
+    normalizedGiveawayAutoCloseAt <= args.publishAt
+  ) {
+    throw new Error('Auto close time must be after publish time.');
   }
 
   let pollQuestion: string | null = null;
@@ -875,6 +1276,32 @@ export async function createAnnouncement(
     }
   }
 
+  let fundraiserGoal: number | null = null;
+  let fundraiserAnonymityMode: FundraiserAnonymityMode | null = null;
+  if (eventType === 'fundraiser') {
+    fundraiserGoal = normalizeFundraiserGoal(args.fundraiserGoal);
+    fundraiserAnonymityMode = normalizeFundraiserAnonymityMode(
+      args.fundraiserAnonymityMode,
+    );
+  }
+
+  let giveawayAllowMultipleEntries = false;
+  let giveawayEntryCap: number | null = null;
+  let giveawayWinnersCount: number | null = null;
+  let giveawayEntryPrice: number | null = null;
+  if (eventType === 'giveaway') {
+    giveawayAllowMultipleEntries = Boolean(args.giveawayAllowMultipleEntries);
+    giveawayEntryCap = giveawayAllowMultipleEntries
+      ? normalizeGiveawayEntryCap(args.giveawayEntryCap)
+      : 1;
+    giveawayWinnersCount = normalizeGiveawayWinnersCount(
+      args.giveawayWinnersCount,
+    );
+    giveawayEntryPrice = normalizeGiveawayEntryPrice(
+      args.giveawayEntryPrice,
+    );
+  }
+
   const providedImageIds =
     Array.isArray(args.imageIds) && args.imageIds.length > 0
       ? args.imageIds
@@ -896,6 +1323,8 @@ export async function createAnnouncement(
     createdBy: identity?.name ?? identity?.email ?? identity?.userId,
     autoDeleteAt: normalizedAutoDeleteAt,
     autoArchiveAt: normalizedAutoArchiveAt,
+    giveawayAutoCloseAt:
+      eventType === 'giveaway' ? normalizedGiveawayAutoCloseAt : null,
     pollQuestion: pollQuestion ?? undefined,
     pollOptionsJson: pollOptions ? JSON.stringify(pollOptions) : null,
     pollAnonymous: eventType === 'poll' ? pollAnonymous : null,
@@ -935,6 +1364,18 @@ export async function createAnnouncement(
     formSubmissionLimit:
       eventType === 'form' ? formSubmissionLimit ?? 'unlimited' : null,
     formPrice: eventType === 'form' ? formPrice : null,
+    fundraiserGoal: eventType === 'fundraiser' ? fundraiserGoal : null,
+    fundraiserAnonymityMode:
+      eventType === 'fundraiser' ? fundraiserAnonymityMode : null,
+    giveawayAllowMultipleEntries:
+      eventType === 'giveaway' ? giveawayAllowMultipleEntries : null,
+    giveawayEntryCap: eventType === 'giveaway' ? giveawayEntryCap : null,
+    giveawayWinnersCount:
+      eventType === 'giveaway' ? giveawayWinnersCount : null,
+    giveawayEntryPrice:
+      eventType === 'giveaway' ? giveawayEntryPrice : null,
+    giveawayIsClosed: eventType === 'giveaway' ? false : null,
+    giveawayClosedAt: eventType === 'giveaway' ? null : null,
     imageIdsJson: normalizedImageIds.length
       ? JSON.stringify(normalizedImageIds)
       : null,
@@ -979,6 +1420,46 @@ export async function listAnnouncements(now: number) {
       ? { ...announcement, status: 'published' as const }
       : announcement;
   });
+  const fundraiserIds = normalized
+    .filter((entry) => entry.eventType === 'fundraiser')
+    .map((entry) => entry._id);
+  if (fundraiserIds.length > 0) {
+    const totals = await db
+      .select({
+        announcementId: fundraiserDonations.announcementId,
+        total: sql<number>`sum(${fundraiserDonations.amount})`.as('total'),
+      })
+      .from(fundraiserDonations)
+      .where(inArray(fundraiserDonations.announcementId, fundraiserIds))
+      .groupBy(fundraiserDonations.announcementId);
+    const totalMap = new Map(
+      totals.map((row) => [row.announcementId, row.total ?? 0]),
+    );
+    normalized.forEach((entry) => {
+      if (entry.eventType !== 'fundraiser') return;
+      entry.fundraiserTotalRaised = totalMap.get(entry._id) ?? 0;
+    });
+  }
+  const giveawayIds = normalized
+    .filter((entry) => entry.eventType === 'giveaway')
+    .map((entry) => entry._id);
+  if (giveawayIds.length > 0) {
+    const totals = await db
+      .select({
+        announcementId: giveawayEntries.announcementId,
+        total: sql<number>`sum(${giveawayEntries.tickets})`.as('total'),
+      })
+      .from(giveawayEntries)
+      .where(inArray(giveawayEntries.announcementId, giveawayIds))
+      .groupBy(giveawayEntries.announcementId);
+    const totalMap = new Map(
+      totals.map((row) => [row.announcementId, row.total ?? 0]),
+    );
+    normalized.forEach((entry) => {
+      if (entry.eventType !== 'giveaway') return;
+      entry.giveawayTotalEntries = totalMap.get(entry._id) ?? 0;
+    });
+  }
   return normalized.sort((a, b) => b.createdAt - a.createdAt);
 }
 
@@ -1018,10 +1499,17 @@ export async function updateAnnouncement(
   const eventType =
     args.eventType === 'poll' ||
     args.eventType === 'voting' ||
-    args.eventType === 'form'
+    args.eventType === 'form' ||
+    args.eventType === 'fundraiser' ||
+    args.eventType === 'giveaway'
       ? args.eventType
       : existing.eventType;
-  if (!cleanedDescription && eventType === 'announcements') {
+  if (
+    !cleanedDescription &&
+    (eventType === 'announcements' ||
+      eventType === 'fundraiser' ||
+      eventType === 'giveaway')
+  ) {
     throw new Error('Description is required');
   }
 
@@ -1039,6 +1527,12 @@ export async function updateAnnouncement(
       : args.autoArchiveAt === null
         ? null
         : existing.autoArchiveAt ?? null;
+  const requestedGiveawayAutoCloseAt =
+    typeof args.giveawayAutoCloseAt === 'number'
+      ? args.giveawayAutoCloseAt
+      : args.giveawayAutoCloseAt === null
+        ? null
+        : existing.giveawayAutoCloseAt ?? null;
 
   if (requestedAutoDeleteAt !== null && requestedAutoDeleteAt <= args.publishAt) {
     throw new Error('Auto delete time must be after publish time.');
@@ -1050,6 +1544,15 @@ export async function updateAnnouncement(
 
   if (requestedAutoDeleteAt !== null && requestedAutoArchiveAt !== null) {
     throw new Error('Choose either auto delete or auto archive, not both.');
+  }
+  if (eventType === 'giveaway' && requestedAutoArchiveAt !== null) {
+    throw new Error('Giveaways do not support auto archive.');
+  }
+  if (
+    requestedGiveawayAutoCloseAt !== null &&
+    requestedGiveawayAutoCloseAt <= args.publishAt
+  ) {
+    throw new Error('Auto close time must be after publish time.');
   }
 
   let pollQuestion: string | null = null;
@@ -1228,6 +1731,41 @@ export async function updateAnnouncement(
     }
   }
 
+  let fundraiserGoal: number | null = null;
+  let fundraiserAnonymityMode: FundraiserAnonymityMode | null = null;
+  if (eventType === 'fundraiser') {
+    const goalInput =
+      typeof args.fundraiserGoal === 'number'
+        ? args.fundraiserGoal
+        : existing.fundraiserGoal;
+    fundraiserGoal = normalizeFundraiserGoal(goalInput);
+    fundraiserAnonymityMode = normalizeFundraiserAnonymityMode(
+      args.fundraiserAnonymityMode ?? existing.fundraiserAnonymityMode,
+    );
+  }
+
+  let giveawayAllowMultipleEntries = existing.giveawayAllowMultipleEntries ?? false;
+  let giveawayEntryCap: number | null = existing.giveawayEntryCap ?? null;
+  let giveawayWinnersCount: number | null = existing.giveawayWinnersCount ?? null;
+  let giveawayEntryPrice: number | null = existing.giveawayEntryPrice ?? null;
+  if (eventType === 'giveaway') {
+    giveawayAllowMultipleEntries =
+      typeof args.giveawayAllowMultipleEntries === 'boolean'
+        ? args.giveawayAllowMultipleEntries
+        : giveawayAllowMultipleEntries;
+    giveawayEntryCap = giveawayAllowMultipleEntries
+      ? normalizeGiveawayEntryCap(
+          args.giveawayEntryCap ?? giveawayEntryCap,
+        )
+      : 1;
+    giveawayWinnersCount = normalizeGiveawayWinnersCount(
+      args.giveawayWinnersCount ?? giveawayWinnersCount,
+    );
+    giveawayEntryPrice = normalizeGiveawayEntryPrice(
+      args.giveawayEntryPrice ?? giveawayEntryPrice,
+    );
+  }
+
   const providedImageIds = Array.isArray(args.imageIds)
     ? args.imageIds
     : existing.imageIds ?? [];
@@ -1258,6 +1796,8 @@ export async function updateAnnouncement(
       updatedBy,
       autoDeleteAt: requestedAutoDeleteAt,
       autoArchiveAt: requestedAutoArchiveAt,
+      giveawayAutoCloseAt:
+        eventType === 'giveaway' ? requestedGiveawayAutoCloseAt : null,
       pollQuestion:
         eventType === 'poll'
           ? pollQuestion ?? existing.pollQuestion ?? undefined
@@ -1326,8 +1866,26 @@ export async function updateAnnouncement(
           : null,
       formPrice:
         eventType === 'form'
-          ? formPrice ?? existing.formPrice ?? null
+          ? formPrice === undefined
+            ? existing.formPrice ?? null
+            : formPrice
           : null,
+      fundraiserGoal:
+        eventType === 'fundraiser'
+          ? fundraiserGoal ?? existing.fundraiserGoal ?? null
+          : null,
+      fundraiserAnonymityMode:
+        eventType === 'fundraiser'
+          ? fundraiserAnonymityMode ?? existing.fundraiserAnonymityMode ?? null
+          : null,
+      giveawayAllowMultipleEntries:
+        eventType === 'giveaway' ? giveawayAllowMultipleEntries : null,
+      giveawayEntryCap:
+        eventType === 'giveaway' ? giveawayEntryCap : null,
+      giveawayWinnersCount:
+        eventType === 'giveaway' ? giveawayWinnersCount : null,
+      giveawayEntryPrice:
+        eventType === 'giveaway' ? giveawayEntryPrice : null,
       imageIdsJson:
         normalizedImageIds.length > 0
           ? JSON.stringify(normalizedImageIds)
@@ -1391,6 +1949,14 @@ export async function publishDue(now: number) {
       announcement.autoDeleteAt <= now,
   );
 
+  const closeDue = candidates.filter(
+    (announcement) =>
+      announcement.eventType === 'giveaway' &&
+      typeof announcement.giveawayAutoCloseAt === 'number' &&
+      announcement.giveawayAutoCloseAt <= now &&
+      !announcement.giveawayIsClosed,
+  );
+
   for (const announcement of deleteDue) {
     const imageIds = parseJson<Id<'_storage'>[]>(announcement.imageIdsJson) ?? [];
     if (announcement.eventType === 'voting') {
@@ -1413,10 +1979,60 @@ export async function publishDue(now: number) {
         .delete(formSubmissions)
         .where(eq(formSubmissions.announcementId, announcement.id));
     }
+    if (announcement.eventType === 'fundraiser') {
+      await db
+        .delete(fundraiserDonations)
+        .where(eq(fundraiserDonations.announcementId, announcement.id));
+    }
+    if (announcement.eventType === 'giveaway') {
+      await db
+        .delete(giveawayEntries)
+        .where(eq(giveawayEntries.announcementId, announcement.id));
+      await db
+        .delete(giveawayWinners)
+        .where(eq(giveawayWinners.announcementId, announcement.id));
+    }
     if (imageIds.length) {
       await deleteUploads(imageIds);
     }
     await db.delete(announcements).where(eq(announcements.id, announcement.id));
+  }
+
+  for (const announcement of closeDue) {
+    const winnersCount = normalizeGiveawayWinnersCount(
+      announcement.giveawayWinnersCount ?? 1,
+    );
+    const entries = await db
+      .select()
+      .from(giveawayEntries)
+      .where(eq(giveawayEntries.announcementId, announcement.id));
+    const winners = drawGiveawayWinners(
+      entries.map((entry) => ({
+        userId: entry.userId,
+        userName: entry.userName ?? null,
+        tickets: entry.tickets,
+      })),
+      winnersCount,
+    );
+    await db
+      .update(announcements)
+      .set({
+        giveawayIsClosed: true,
+        giveawayClosedAt: now,
+      })
+      .where(eq(announcements.id, announcement.id));
+    if (winners.length > 0) {
+      await db.insert(giveawayWinners).values(
+        winners.map((winner, index) => ({
+          id: crypto.randomUUID(),
+          announcementId: announcement.id,
+          userId: winner.userId,
+          userName: winner.userName,
+          drawOrder: index + 1,
+          createdAt: now,
+        })),
+      );
+    }
   }
 
   const archiveDue = candidates.filter(
@@ -1436,6 +2052,7 @@ export async function publishDue(now: number) {
   if (
     dueAnnouncements.length > 0 ||
     deleteDue.length > 0 ||
+    closeDue.length > 0 ||
     archiveDue.length > 0
   ) {
     const affectedChannels = new Set<string>(['announcements']);
@@ -1448,6 +2065,17 @@ export async function publishDue(now: number) {
     const hasFormChange = deleteDue.some((a) => a.eventType === 'form');
     if (hasFormChange) {
       affectedChannels.add('formSubmissions');
+    }
+    const hasFundraiserChange = deleteDue.some(
+      (a) => a.eventType === 'fundraiser',
+    );
+    if (hasFundraiserChange) {
+      affectedChannels.add('fundraiserDonations');
+    }
+    const hasGiveawayChange =
+      deleteDue.some((a) => a.eventType === 'giveaway') || closeDue.length > 0;
+    if (hasGiveawayChange) {
+      affectedChannels.add('giveawayEntries');
     }
     broadcast(Array.from(affectedChannels));
   }
@@ -1595,6 +2223,137 @@ export async function getForm(
   };
 }
 
+export async function getFundraiser(
+  id: Id<'announcements'>,
+): Promise<FundraiserDetails> {
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, id))
+    .get();
+  if (!row || row.eventType !== 'fundraiser') {
+    throw new Error('Fundraiser not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  const goal = normalizeFundraiserGoal(announcement.fundraiserGoal);
+  const anonymityMode = normalizeFundraiserAnonymityMode(
+    announcement.fundraiserAnonymityMode,
+  );
+
+  const rows = await db
+    .select()
+    .from(fundraiserDonations)
+    .where(eq(fundraiserDonations.announcementId, id))
+    .orderBy(desc(fundraiserDonations.createdAt));
+
+  const donations = rows.map((entry) => ({
+    id: entry.id as Id<'fundraiserDonations'>,
+    userName: entry.userName ?? null,
+    isAnonymous: Boolean(entry.isAnonymous),
+    amount: entry.amount,
+    createdAt: entry.createdAt,
+  }));
+
+  const totalRaised = donations.reduce(
+    (sum, donation) => sum + donation.amount,
+    0,
+  );
+
+  return {
+    _id: announcement._id,
+    title: announcement.title,
+    description: announcement.description,
+    publishAt: announcement.publishAt,
+    status: announcement.status,
+    createdBy: announcement.createdBy,
+    updatedAt: announcement.updatedAt,
+    updatedBy: announcement.updatedBy,
+    fundraiserGoal: goal,
+    fundraiserAnonymityMode: anonymityMode,
+    totalRaised,
+    donations,
+    imageIds: announcement.imageIds ?? [],
+  };
+}
+
+export async function getGiveaway(
+  id: Id<'announcements'>,
+  identity: Identity | null,
+): Promise<GiveawayDetails> {
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, id))
+    .get();
+  if (!row || row.eventType !== 'giveaway') {
+    throw new Error('Giveaway not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  const allowMultiple = Boolean(announcement.giveawayAllowMultipleEntries);
+  const entryCap = allowMultiple
+    ? announcement.giveawayEntryCap ?? null
+    : 1;
+  const winnersCount = normalizeGiveawayWinnersCount(
+    announcement.giveawayWinnersCount ?? 1,
+  );
+  const entryPrice = normalizeGiveawayEntryPrice(
+    announcement.giveawayEntryPrice ?? null,
+  );
+  const isClosed = Boolean(announcement.giveawayIsClosed);
+
+  const entries = await db
+    .select()
+    .from(giveawayEntries)
+    .where(eq(giveawayEntries.announcementId, id));
+  const totalEntries = entries.reduce((sum, entry) => sum + entry.tickets, 0);
+  const entrants = entries.map((entry) => ({
+    userId: entry.userId,
+    userName: entry.userName ?? null,
+    tickets: entry.tickets,
+  }));
+  const currentUserTickets = identity
+    ? entries.find((entry) => entry.userId === identity.userId)?.tickets ?? 0
+    : 0;
+
+  const winners = await db
+    .select()
+    .from(giveawayWinners)
+    .where(eq(giveawayWinners.announcementId, id))
+    .orderBy(desc(giveawayWinners.createdAt), asc(giveawayWinners.drawOrder));
+
+  const isAdmin = identity
+    ? await checkRole(['admin', 'moderator', 'morale-member'])
+    : false;
+
+  return {
+    _id: announcement._id,
+    title: announcement.title,
+    description: announcement.description,
+    publishAt: announcement.publishAt,
+    status: announcement.status,
+    createdBy: announcement.createdBy,
+    updatedAt: announcement.updatedAt,
+    updatedBy: announcement.updatedBy,
+    giveawayAllowMultipleEntries: allowMultiple,
+    giveawayEntryCap: entryCap,
+    giveawayWinnersCount: winnersCount,
+    giveawayEntryPrice: entryPrice,
+    giveawayIsClosed: isClosed,
+    giveawayClosedAt: announcement.giveawayClosedAt ?? null,
+    giveawayAutoCloseAt: announcement.giveawayAutoCloseAt ?? null,
+    totalEntries,
+    currentUserTickets,
+  winners: winners.map((entry) => ({
+    userId: entry.userId,
+    userName: entry.userName ?? null,
+    drawOrder: entry.drawOrder,
+    createdAt: entry.createdAt,
+  })),
+  entrants: isAdmin ? entrants : [],
+  imageIds: announcement.imageIds ?? [],
+};
+}
+
 export async function getPollVoteBreakdown(
   id: Id<'announcements'>,
   identity: Identity | null,
@@ -1694,24 +2453,6 @@ export async function submitForm(
       .get();
     if (existing) {
       throw new Error('You have already submitted this form.');
-    }
-  }
-
-  const price =
-    typeof announcement.formPrice === 'number' && announcement.formPrice > 0
-      ? announcement.formPrice
-      : null;
-  if (price) {
-    if (!args.paypalOrderId) {
-      throw new Error('Payment is required to submit this form.');
-    }
-    const paymentAmount =
-      typeof args.paymentAmount === 'number' ? args.paymentAmount : null;
-    if (paymentAmount === null) {
-      throw new Error('Payment amount is required.');
-    }
-    if (Math.abs(paymentAmount - price) > 0.01) {
-      throw new Error('Payment amount does not match the form price.');
     }
   }
 
@@ -1869,8 +2610,63 @@ export async function submitForm(
       };
     }
 
+    if (question.type === 'number') {
+      const raw =
+        typeof answer.value === 'string'
+          ? answer.value.trim()
+          : typeof answer.value === 'number'
+            ? `${answer.value}`
+            : '';
+      if (!raw) {
+        if (!isRequired) {
+          return { questionId: question.id, value: '' };
+        }
+        throw new Error(`Add a number for "${question.prompt}".`);
+      }
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`"${question.prompt}" must be a valid number.`);
+      }
+      if (!question.allowAnyNumber) {
+        const minValue = question.minValue ?? 0;
+        const maxValue = question.maxValue ?? minValue;
+        const includeMin = question.includeMin ?? true;
+        const includeMax = question.includeMax ?? true;
+        const meetsMin = includeMin ? parsed >= minValue : parsed > minValue;
+        const meetsMax = includeMax ? parsed <= maxValue : parsed < maxValue;
+        if (!meetsMin || !meetsMax) {
+          throw new Error(
+            `"${question.prompt}" must be between ${minValue} and ${maxValue}.`,
+          );
+        }
+      }
+      return {
+        questionId: question.id,
+        value: `${parsed}`,
+      };
+    }
+
     throw new Error('Unsupported form response.');
   });
+
+  const expectedPayment = calculateFormPrice(
+    questions,
+    normalizedAnswers,
+    announcement.formPrice ?? null,
+  );
+  if (expectedPayment > 0) {
+    if (!args.paypalOrderId) {
+      throw new Error('Payment is required to submit this form.');
+    }
+    const paymentAmount =
+      typeof args.paymentAmount === 'number' ? args.paymentAmount : null;
+    if (paymentAmount === null) {
+      throw new Error('Payment amount is required.');
+    }
+    if (Math.abs(paymentAmount - expectedPayment) > 0.01) {
+      throw new Error('Payment amount does not match the form total.');
+    }
+  }
 
   const id = crypto.randomUUID();
   const now = Date.now();
@@ -1882,11 +2678,371 @@ export async function submitForm(
     answersJson: JSON.stringify(normalizedAnswers),
     createdAt: now,
     paypalOrderId: args.paypalOrderId ?? null,
-    paymentAmount: price ?? null,
+    paymentAmount: expectedPayment > 0 ? expectedPayment : null,
   });
 
   broadcast('formSubmissions');
   return { id: id as Id<'formSubmissions'> };
+}
+
+export async function submitFundraiserDonation(
+  args: SubmitFundraiserDonationArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'fundraiser') {
+    throw new Error('Fundraiser not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  if (announcement.status !== 'published') {
+    throw new Error('This fundraiser is not accepting donations.');
+  }
+
+  const amount = normalizePrice(args.amount, 'Donation amount');
+  if (amount <= 0) {
+    throw new Error('Donation amount must be greater than zero.');
+  }
+  if (!args.paypalOrderId) {
+    throw new Error('Payment is required to submit a donation.');
+  }
+
+  const anonymityMode = normalizeFundraiserAnonymityMode(
+    announcement.fundraiserAnonymityMode,
+  );
+  const isAnonymous =
+    anonymityMode === 'anonymous' ? true : Boolean(args.isAnonymous);
+
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  await db.insert(fundraiserDonations).values({
+    id,
+    announcementId: args.id,
+    userId: identity.userId,
+    userName: identity.name ?? identity.email ?? null,
+    isAnonymous,
+    amount,
+    createdAt: now,
+    paypalOrderId: args.paypalOrderId ?? null,
+  });
+
+  broadcast('fundraiserDonations');
+  return { id: id as Id<'fundraiserDonations'> };
+}
+
+export async function enterGiveaway(
+  args: EnterGiveawayArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'giveaway') {
+    throw new Error('Giveaway not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  if (announcement.status !== 'published') {
+    throw new Error('This giveaway is not accepting entries yet.');
+  }
+  if (announcement.giveawayIsClosed) {
+    throw new Error('This giveaway is closed.');
+  }
+  const allowMultiple = Boolean(announcement.giveawayAllowMultipleEntries);
+  const cap = allowMultiple
+    ? announcement.giveawayEntryCap ?? null
+    : 1;
+  const tickets =
+    typeof args.tickets === 'number' && Number.isFinite(args.tickets)
+      ? Math.max(1, Math.floor(args.tickets))
+      : 1;
+  if (!allowMultiple && tickets !== 1) {
+    throw new Error('This giveaway allows a single entry.');
+  }
+
+  const existing = await db
+    .select()
+    .from(giveawayEntries)
+    .where(
+      and(
+        eq(giveawayEntries.announcementId, args.id),
+        eq(giveawayEntries.userId, identity.userId),
+      ),
+    )
+    .get();
+  const existingTickets = existing?.tickets ?? 0;
+  const nextTotal = existingTickets + tickets;
+  if (cap !== null && nextTotal > cap) {
+    throw new Error(`Entry cap is ${cap} ticket${cap === 1 ? '' : 's'}.`);
+  }
+
+  const entryPrice = normalizeGiveawayEntryPrice(
+    announcement.giveawayEntryPrice ?? null,
+  );
+  if (entryPrice && entryPrice > 0) {
+    if (!args.paypalOrderId) {
+      throw new Error('Payment is required to enter this giveaway.');
+    }
+    const paymentAmount =
+      typeof args.paymentAmount === 'number' ? args.paymentAmount : null;
+    if (paymentAmount === null) {
+      throw new Error('Payment amount is required.');
+    }
+    const expectedAmount = Math.round(entryPrice * tickets * 100) / 100;
+    if (Math.abs(paymentAmount - expectedAmount) > 0.01) {
+      throw new Error('Payment amount does not match the entry total.');
+    }
+  }
+
+  const now = Date.now();
+  if (existing) {
+    await db
+      .update(giveawayEntries)
+      .set({
+        tickets: nextTotal,
+        userName: identity.name ?? identity.email ?? null,
+        paypalOrderId: args.paypalOrderId ?? existing.paypalOrderId ?? null,
+        paymentAmount:
+          typeof args.paymentAmount === 'number'
+            ? (existing.paymentAmount ?? 0) + args.paymentAmount
+            : existing.paymentAmount ?? null,
+        createdAt: now,
+      })
+      .where(eq(giveawayEntries.id, existing.id));
+  } else {
+    await db.insert(giveawayEntries).values({
+      id: crypto.randomUUID(),
+      announcementId: args.id,
+      userId: identity.userId,
+      userName: identity.name ?? identity.email ?? null,
+      tickets,
+      createdAt: now,
+      paypalOrderId: args.paypalOrderId ?? null,
+      paymentAmount: args.paymentAmount ?? null,
+    });
+  }
+
+  broadcast('giveawayEntries');
+  return { success: true };
+}
+
+function drawGiveawayWinners(
+  entries: {
+    userId: string;
+    userName: string | null;
+    tickets: number;
+  }[],
+  winnersCount: number,
+) {
+  const pool: { userId: string; userName: string | null }[] = [];
+  entries.forEach((entry) => {
+    for (let i = 0; i < entry.tickets; i += 1) {
+      pool.push({ userId: entry.userId, userName: entry.userName });
+    }
+  });
+  const winners: { userId: string; userName: string | null }[] = [];
+  const used = new Set<string>();
+  while (pool.length > 0 && winners.length < winnersCount) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const picked = pool[idx];
+    if (used.has(picked.userId)) {
+      pool.splice(idx, 1);
+      continue;
+    }
+    winners.push(picked);
+    used.add(picked.userId);
+    pool.splice(idx, 1);
+  }
+  return winners;
+}
+
+export async function closeGiveaway(
+  args: CloseGiveawayArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const canClose = await checkRole(['admin', 'moderator', 'morale-member']);
+  if (!canClose) throw new Error('Unauthorized');
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'giveaway') {
+    throw new Error('Giveaway not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  if (announcement.giveawayIsClosed) {
+    return { closed: true };
+  }
+
+  const entries = await db
+    .select()
+    .from(giveawayEntries)
+    .where(eq(giveawayEntries.announcementId, args.id));
+  const winnersCount = normalizeGiveawayWinnersCount(
+    announcement.giveawayWinnersCount ?? 1,
+  );
+  const winners = drawGiveawayWinners(
+    entries.map((entry) => ({
+      userId: entry.userId,
+      userName: entry.userName ?? null,
+      tickets: entry.tickets,
+    })),
+    winnersCount,
+  );
+
+  const now = Date.now();
+  await db
+    .update(announcements)
+    .set({
+      giveawayIsClosed: true,
+      giveawayClosedAt: now,
+    })
+    .where(eq(announcements.id, args.id));
+
+  if (winners.length > 0) {
+    await db.insert(giveawayWinners).values(
+      winners.map((winner, index) => ({
+        id: crypto.randomUUID(),
+        announcementId: args.id,
+        userId: winner.userId,
+        userName: winner.userName,
+        drawOrder: index + 1,
+        createdAt: now,
+      })),
+    );
+  }
+
+  broadcast(['giveawayEntries', 'announcements']);
+  return { closed: true };
+}
+
+export type RedrawGiveawayArgs = {
+  id: Id<'announcements'>;
+};
+
+export async function redrawGiveaway(
+  args: RedrawGiveawayArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const canRedraw = await checkRole(['admin', 'moderator', 'morale-member']);
+  if (!canRedraw) throw new Error('Unauthorized');
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'giveaway') {
+    throw new Error('Giveaway not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  if (!announcement.giveawayIsClosed) {
+    throw new Error('Giveaway must be closed to redraw winners.');
+  }
+
+  const entries = await db
+    .select()
+    .from(giveawayEntries)
+    .where(eq(giveawayEntries.announcementId, args.id));
+  if (entries.length === 0) {
+    throw new Error('No entrants available to redraw.');
+  }
+
+  const previousWinners = await db
+    .select()
+    .from(giveawayWinners)
+    .where(eq(giveawayWinners.announcementId, args.id));
+  const previousWinnerIds = new Set(
+    previousWinners.map((winner) => winner.userId),
+  );
+
+  const winnersCount = normalizeGiveawayWinnersCount(
+    announcement.giveawayWinnersCount ?? 1,
+  );
+  const candidateEntries = entries
+    .filter((entry) => !previousWinnerIds.has(entry.userId))
+    .map((entry) => ({
+      userId: entry.userId,
+      userName: entry.userName ?? null,
+      tickets: entry.tickets,
+    }));
+  const drawPool =
+    candidateEntries.length > 0
+      ? candidateEntries
+      : entries.map((entry) => ({
+          userId: entry.userId,
+          userName: entry.userName ?? null,
+          tickets: entry.tickets,
+        }));
+  const winners = drawGiveawayWinners(drawPool, winnersCount);
+  if (winners.length === 0) {
+    throw new Error('No eligible winners available.');
+  }
+
+  const now = Date.now();
+  await db.insert(giveawayWinners).values(
+    winners.map((winner, index) => ({
+      id: crypto.randomUUID(),
+      announcementId: args.id,
+      userId: winner.userId,
+      userName: winner.userName,
+      drawOrder: index + 1,
+      createdAt: now,
+    })),
+  );
+
+  broadcast(['giveawayEntries', 'announcements']);
+  return { redrawn: true };
+}
+
+export type ReopenGiveawayArgs = {
+  id: Id<'announcements'>;
+};
+
+export async function reopenGiveaway(
+  args: ReopenGiveawayArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const canReopen = await checkRole(['admin', 'moderator', 'morale-member']);
+  if (!canReopen) throw new Error('Unauthorized');
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'giveaway') {
+    throw new Error('Giveaway not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  if (!announcement.giveawayIsClosed) {
+    return { reopened: true };
+  }
+
+  await db
+    .update(announcements)
+    .set({
+      giveawayIsClosed: false,
+      giveawayClosedAt: null,
+    })
+    .where(eq(announcements.id, args.id));
+  await db
+    .delete(giveawayWinners)
+    .where(eq(giveawayWinners.announcementId, args.id));
+
+  broadcast(['giveawayEntries', 'announcements']);
+  return { reopened: true };
 }
 
 export async function listFormSubmissions(
@@ -2227,6 +3383,17 @@ export async function removeAnnouncement(
     await db
       .delete(formSubmissions)
       .where(eq(formSubmissions.announcementId, id));
+  } else if (existing.eventType === 'fundraiser') {
+    await db
+      .delete(fundraiserDonations)
+      .where(eq(fundraiserDonations.announcementId, id));
+  } else if (existing.eventType === 'giveaway') {
+    await db
+      .delete(giveawayEntries)
+      .where(eq(giveawayEntries.announcementId, id));
+    await db
+      .delete(giveawayWinners)
+      .where(eq(giveawayWinners.announcementId, id));
   }
   if (imageIds.length) {
     await deleteUploads(imageIds);
@@ -2237,6 +3404,8 @@ export async function removeAnnouncement(
     ...(existing.eventType === 'voting' ? ['voting'] : []),
     ...(existing.eventType === 'poll' ? ['pollVotes'] : []),
     ...(existing.eventType === 'form' ? ['formSubmissions'] : []),
+    ...(existing.eventType === 'fundraiser' ? ['fundraiserDonations'] : []),
+    ...(existing.eventType === 'giveaway' ? ['giveawayEntries'] : []),
   ]);
 }
 
