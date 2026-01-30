@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { db } from '@/server/db/client';
 import { broadcast } from '@/server/events';
 import {
+  building892Assignments,
   demoDayAssignments,
   scheduleEventOverrideHistory,
   scheduleEventOverrides,
@@ -23,7 +24,10 @@ import {
   isValidTimeValue,
   type HostHubEventType,
 } from '@/lib/hosthub-events';
-import { notifyHostHubScheduleChanges } from '@/server/services/mattermost-notifications';
+import {
+  notifyHostHubBuilding892OverrideChange,
+  notifyHostHubScheduleChanges,
+} from '@/server/services/mattermost-notifications';
 
 export type UpdateScheduleEventOverrideResult = {
   success: boolean;
@@ -164,6 +168,15 @@ const getBaseAssignmentUserId = async (
   return row?.userId ?? null;
 };
 
+const getBaseAssignmentTeam = async (dateKey: string) => {
+  const row = await db
+    .select({ team: building892Assignments.team })
+    .from(building892Assignments)
+    .where(eq(building892Assignments.weekStart, dateKey))
+    .get();
+  return row?.team ?? null;
+};
+
 export async function updateScheduleEventOverride({
   date,
   eventType,
@@ -283,7 +296,32 @@ export async function updateScheduleEventOverride({
       },
     });
 
-    if (eventType !== 'building-892') {
+    if (eventType === 'building-892') {
+      const baseAssignmentTeam = await getBaseAssignmentTeam(date);
+      const previousEffectiveTeam =
+        existingOverride?.overrideUserId ?? baseAssignmentTeam;
+      const nextEffectiveTeam =
+        normalizedOverrideUserId ?? baseAssignmentTeam;
+      if (
+        !payload.isCanceled &&
+        previousEffectiveTeam !== nextEffectiveTeam
+      ) {
+        try {
+          await notifyHostHubBuilding892OverrideChange({
+            dateKey: date,
+            oldTeam: previousEffectiveTeam,
+            newTeam: nextEffectiveTeam,
+            oldTeamLabel: existingOverride?.overrideUserName ?? null,
+            newTeamLabel: payload.overrideUserName ?? null,
+          });
+        } catch (error) {
+          console.error(
+            'Failed to notify HostHub 892 override changes',
+            error,
+          );
+        }
+      }
+    } else {
       const previousOverrideUserId =
         existingOverride?.overrideUserId ?? null;
       const baseAssignmentUserId = await getBaseAssignmentUserId(
@@ -452,29 +490,52 @@ export async function clearScheduleEventOverride({
       });
     }
 
-    if (existingOverride && eventType !== 'building-892') {
-      const baseAssignmentUserId = await getBaseAssignmentUserId(
-        eventType,
-        date,
-      );
-      const previousEffectiveUserId =
-        existingOverride.overrideUserId ?? baseAssignmentUserId;
-      const nextEffectiveUserId = baseAssignmentUserId;
-      if (previousEffectiveUserId !== nextEffectiveUserId) {
-        try {
-          await notifyHostHubScheduleChanges(
-            [
-              {
-                eventType,
-                dateKey: date,
-                oldUserId: previousEffectiveUserId,
-                newUserId: nextEffectiveUserId,
-              },
-            ],
-            { allowOverrideAssignee: true },
-          );
-        } catch (error) {
-          console.error('Failed to notify HostHub override changes', error);
+    if (existingOverride) {
+      if (eventType === 'building-892') {
+        const baseAssignmentTeam = await getBaseAssignmentTeam(date);
+        const previousEffectiveTeam =
+          existingOverride.overrideUserId ?? baseAssignmentTeam;
+        const nextEffectiveTeam = baseAssignmentTeam;
+        if (previousEffectiveTeam !== nextEffectiveTeam) {
+          try {
+            await notifyHostHubBuilding892OverrideChange({
+              dateKey: date,
+              oldTeam: previousEffectiveTeam,
+              newTeam: nextEffectiveTeam,
+              oldTeamLabel: existingOverride.overrideUserName ?? null,
+              newTeamLabel: null,
+            });
+          } catch (error) {
+            console.error(
+              'Failed to notify HostHub 892 override changes',
+              error,
+            );
+          }
+        }
+      } else {
+        const baseAssignmentUserId = await getBaseAssignmentUserId(
+          eventType,
+          date,
+        );
+        const previousEffectiveUserId =
+          existingOverride.overrideUserId ?? baseAssignmentUserId;
+        const nextEffectiveUserId = baseAssignmentUserId;
+        if (previousEffectiveUserId !== nextEffectiveUserId) {
+          try {
+            await notifyHostHubScheduleChanges(
+              [
+                {
+                  eventType,
+                  dateKey: date,
+                  oldUserId: previousEffectiveUserId,
+                  newUserId: nextEffectiveUserId,
+                },
+              ],
+              { allowOverrideAssignee: true },
+            );
+          } catch (error) {
+            console.error('Failed to notify HostHub override changes', error);
+          }
         }
       }
     }

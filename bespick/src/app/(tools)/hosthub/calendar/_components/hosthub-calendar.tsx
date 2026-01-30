@@ -314,7 +314,10 @@ export function HostHubCalendar({
       return true;
     });
 
-  const currentEvents = filteredEvents(selectedEvents);
+  const currentEvents = filteredEvents(selectedEvents).map((event) => ({
+    ...event,
+    hasHistory: historyKeySet.has(`${event.variant}-${event.dateKey}`),
+  }));
 
   const getOverrideForEvent = (event: CalendarEvent) =>
     localOverrides[getEventOverrideId(event.dateKey, event.variant)];

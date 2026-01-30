@@ -58,6 +58,14 @@ export type HostHubScheduleChange = {
   newUserId: string | null;
 };
 
+export type HostHubBuilding892Change = {
+  dateKey: string;
+  oldTeam: string | null;
+  newTeam: string | null;
+  oldTeamLabel?: string | null;
+  newTeamLabel?: string | null;
+};
+
 const STANDUP_DAYS = new Set([1, 4]);
 const BUILDING_892_WEEK_START_DAY = 1;
 
@@ -123,6 +131,20 @@ const shouldNotifyEventType = (
   if (eventType === 'security-pm') return config.hosthubSecurityPmEnabled;
   return false;
 };
+
+const normalizeTeamValue = (value?: string | null) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.toLowerCase() === 'tbd') return null;
+  return trimmed;
+};
+
+const resolveTeamLabel = (
+  teamValue: string,
+  overrideLabel: string | null | undefined,
+  roster: Awaited<ReturnType<typeof getBuilding892TeamRoster>>,
+) => overrideLabel?.trim() || roster.teamLabels.get(teamValue) || teamValue;
 
 const resolveMattermostUserId = async (
   clerkUserId: string,
@@ -685,6 +707,114 @@ export async function notifyHostHubScheduleChanges(
     if (change.oldUserId && change.oldUserId !== change.newUserId) {
       await notifyUser(change.oldUserId, 'removed');
     }
+  }
+
+  return { sent, skipped, errors };
+}
+
+export async function notifyHostHubBuilding892OverrideChange({
+  dateKey,
+  oldTeam,
+  newTeam,
+  oldTeamLabel,
+  newTeamLabel,
+}: HostHubBuilding892Change) {
+  if (!isMattermostConfigured()) {
+    return { sent: 0, skipped: 0, errors: 0 };
+  }
+
+  const notificationConfig = await getMattermostNotificationConfig();
+  if (!notificationConfig.hosthubBuilding892Enabled) {
+    return { sent: 0, skipped: 0, errors: 0 };
+  }
+
+  const normalizedOld = normalizeTeamValue(oldTeam);
+  const normalizedNew = normalizeTeamValue(newTeam);
+  if (normalizedOld === normalizedNew) {
+    return { sent: 0, skipped: 0, errors: 0 };
+  }
+
+  const now = new Date();
+  const todayKey = toDateKey(now);
+  const endOfMonthKey = toDateKey(
+    new Date(now.getFullYear(), now.getMonth() + 1, 0),
+  );
+  if (dateKey < todayKey || dateKey > endOfMonthKey) {
+    return { sent: 0, skipped: 0, errors: 0 };
+  }
+
+  const baseUrl = getAppBaseUrl();
+  const scheduleUrl = baseUrl
+    ? new URL('/hosthub', baseUrl).toString()
+    : null;
+  const weekStart = parseDateKey(dateKey);
+  const dateLabel = weekStart ? formatShortDateLabel(weekStart) : dateKey;
+  const roster = await getBuilding892TeamRoster();
+  const userCache = new Map<string, string | null>();
+
+  const buildMessage = (status: 'assigned' | 'removed', teamLabel: string) => {
+    const action =
+      status === 'assigned'
+        ? `Your team (${teamLabel}) is now scheduled to work`
+        : `Your team (${teamLabel}) is no longer scheduled to work`;
+    const details = `Schedule update: ${action} at 892 Manning the week of ${dateLabel} (Mon-Fri).`;
+    return scheduleUrl ? `${details} View schedule: ${scheduleUrl}` : details;
+  };
+
+  let sent = 0;
+  let skipped = 0;
+  let errors = 0;
+  const notified = new Set<string>();
+
+  const notifyMembers = async (
+    members: string[],
+    status: 'assigned' | 'removed',
+    teamLabel: string,
+  ) => {
+    for (const memberId of members) {
+      if (notified.has(memberId)) {
+        skipped += 1;
+        continue;
+      }
+      const mattermostUserId = await resolveMattermostUserId(
+        memberId,
+        userCache,
+      );
+      if (!mattermostUserId) {
+        skipped += 1;
+        continue;
+      }
+      const result = await postMattermostDirectMessage(
+        mattermostUserId,
+        buildMessage(status, teamLabel),
+      );
+      if (!result) {
+        errors += 1;
+        continue;
+      }
+      notified.add(memberId);
+      sent += 1;
+    }
+  };
+
+  if (normalizedNew) {
+    const teamLabel = resolveTeamLabel(
+      normalizedNew,
+      newTeamLabel,
+      roster,
+    );
+    const members = roster.teamMembers.get(normalizedNew) ?? [];
+    await notifyMembers(members, 'assigned', teamLabel);
+  }
+
+  if (normalizedOld) {
+    const teamLabel = resolveTeamLabel(
+      normalizedOld,
+      oldTeamLabel,
+      roster,
+    );
+    const members = roster.teamMembers.get(normalizedOld) ?? [];
+    await notifyMembers(members, 'removed', teamLabel);
   }
 
   return { sent, skipped, errors };

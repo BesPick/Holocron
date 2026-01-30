@@ -163,6 +163,15 @@ export function ScheduleDetailsModal({
                           Canceled
                         </span>
                       ) : null}
+                      {event.hasHistory ? (
+                        <button
+                          type='button'
+                          onClick={() => onOpenHistory(event)}
+                          className='rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-primary transition hover:bg-primary/20'
+                        >
+                          History
+                        </button>
+                      ) : null}
                       <span
                         className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${tone.badge}`}
                       >
@@ -196,15 +205,6 @@ export function ScheduleDetailsModal({
                           className='rounded-full border border-border px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-secondary/70'
                         >
                           Edit event
-                        </button>
-                      ) : null}
-                      {event.hasHistory ? (
-                        <button
-                          type='button'
-                          onClick={() => onOpenHistory(event)}
-                          className='rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1 text-xs font-semibold text-teal-700 transition hover:bg-teal-500/20'
-                        >
-                          History
                         </button>
                       ) : null}
                       </div>

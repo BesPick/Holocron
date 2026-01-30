@@ -49,8 +49,7 @@ export function CalendarHeader({
           {monthLabel}
         </h2>
         <p className='mt-2 text-sm text-muted-foreground'>
-          Assignments cover the current and next month. Past assignments remain visible,
-          and later months are TBD.
+          Assignments cover the current and next month.
         </p>
         {showRefreshNotice && nextRefreshLabel ? (
           <div className='mt-3 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700'>
