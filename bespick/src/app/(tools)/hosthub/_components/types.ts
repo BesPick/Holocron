@@ -1,3 +1,5 @@
+import type { HostHubEventType } from '@/lib/hosthub-events';
+
 export type ShiftResource = {
   label: string;
   href: string;
@@ -9,13 +11,13 @@ export type ShiftEntry = {
   time: string;
   details: string;
   resources: ShiftResource[];
-  eventType: string;
+  eventType: HostHubEventType;
   eventDate: string;
 };
 
 export type ShiftSwapRequest = {
   id: string;
-  eventType: string;
+  eventType: HostHubEventType;
   eventDate: string;
   requesterId: string;
   requesterName: string | null;

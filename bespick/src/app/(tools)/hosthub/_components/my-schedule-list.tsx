@@ -11,7 +11,7 @@ import {
   respondShiftSwapRequest,
 } from '@/server/actions/hosthub-shift-swaps';
 import { ShiftDetailsModal } from './shift-details-modal';
-import { getSecurityShiftWindow } from '@/lib/hosthub-events';
+import { getSecurityShiftWindow, type HostHubEventType } from '@/lib/hosthub-events';
 import { formatShortDateLabel } from '@/lib/hosthub-schedule-utils';
 
 export type { ShiftEntry, ShiftResource } from './types';
@@ -44,7 +44,7 @@ type SwapRequestsPanelProps = {
   requests: ShiftSwapRequest[];
 };
 
-const formatEventLabel = (eventType: string) => {
+const formatEventLabel = (eventType: HostHubEventType) => {
   if (eventType === 'demo') return 'Demo Day';
   if (eventType === 'standup') return 'Standup';
   if (eventType === 'building-892') return '892 Manning';
@@ -301,7 +301,7 @@ export function MyScheduleList({
         time: week.range,
         details: '892 Manning',
         resources: [],
-        eventType: 'building-892',
+        eventType: 'building-892' as HostHubEventType,
         eventDate: week.weekStart,
       })),
     [building892Weeks],

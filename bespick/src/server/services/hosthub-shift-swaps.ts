@@ -249,14 +249,7 @@ export const createShiftSwapRequest = async ({
     return { success: false, message: 'This shift is not assigned yet.' };
   }
 
-  if (eventType === 'building-892') {
-    const requesterTeam = typeof user.publicMetadata?.team === 'string'
-      ? user.publicMetadata.team.trim()
-      : '';
-    if (!requesterTeam || requesterTeam !== assigneeId) {
-      return { success: false, message: 'You are not assigned to this shift.' };
-    }
-  } else if (assigneeId !== user.id) {
+  if (assigneeId !== user.id) {
     return { success: false, message: 'You are not assigned to this shift.' };
   }
 
@@ -347,9 +340,14 @@ export const respondToShiftSwapRequest = async ({
     return { success: false, message: 'Swaps are only allowed this month.' };
   }
 
+  if (!isHostHubEventType(existing.eventType)) {
+    return { success: false, message: 'Invalid shift selection.' };
+  }
+  const eventType = existing.eventType;
+
   if (action === 'accept') {
     const currentAssignee = await getCurrentAssigneeId({
-      eventType: existing.eventType as HostHubEventType,
+      eventType,
       eventDate: existing.eventDate,
     });
     if (!currentAssignee) {
@@ -358,7 +356,7 @@ export const respondToShiftSwapRequest = async ({
         message: 'This shift is no longer assigned.',
       };
     }
-    if (existing.eventType === 'building-892') {
+    if (eventType === 'building-892') {
       const requesterTeam = await resolveUserTeam(existing.requesterId);
       if (!requesterTeam || requesterTeam !== currentAssignee) {
         return {
@@ -374,15 +372,15 @@ export const respondToShiftSwapRequest = async ({
     }
 
     const previousName =
-      existing.eventType === 'building-892'
+      eventType === 'building-892'
         ? await resolveUserTeam(existing.requesterId)
         : await resolveUserLabel(existing.requesterId);
     const nextName =
-      existing.eventType === 'building-892'
+      eventType === 'building-892'
         ? await resolveUserTeam(user.id)
         : await resolveUserLabel(user.id);
 
-    if (existing.eventType === 'building-892') {
+    if (eventType === 'building-892') {
       const recipientTeam = await resolveUserTeam(user.id);
       if (!recipientTeam) {
         return {
@@ -394,7 +392,7 @@ export const respondToShiftSwapRequest = async ({
         .update(building892Assignments)
         .set({ team: recipientTeam, assignedAt: Date.now() })
         .where(eq(building892Assignments.weekStart, existing.eventDate));
-    } else if (existing.eventType === 'demo') {
+    } else if (eventType === 'demo') {
       await db
         .update(demoDayAssignments)
         .set({
@@ -403,7 +401,7 @@ export const respondToShiftSwapRequest = async ({
           assignedAt: Date.now(),
         })
         .where(eq(demoDayAssignments.date, existing.eventDate));
-    } else if (existing.eventType === 'standup') {
+    } else if (eventType === 'standup') {
       await db
         .update(standupAssignments)
         .set({
@@ -423,7 +421,7 @@ export const respondToShiftSwapRequest = async ({
         .where(
           eq(
             securityShiftAssignments.id,
-            getEventOverrideId(existing.eventDate, existing.eventType),
+            getEventOverrideId(existing.eventDate, eventType),
           ),
         );
     }
@@ -432,7 +430,7 @@ export const respondToShiftSwapRequest = async ({
       .delete(scheduleEventOverrides)
       .where(
         and(
-          eq(scheduleEventOverrides.eventType, existing.eventType),
+          eq(scheduleEventOverrides.eventType, eventType),
           eq(scheduleEventOverrides.date, existing.eventDate),
         ),
       );
@@ -440,7 +438,7 @@ export const respondToShiftSwapRequest = async ({
     await db.insert(scheduleEventOverrideHistory).values({
       id: randomUUID(),
       date: existing.eventDate,
-      eventType: existing.eventType,
+      eventType,
       changedAt: Date.now(),
       changedBy: user.id,
       previousOverrideUserId: existing.requesterId,
