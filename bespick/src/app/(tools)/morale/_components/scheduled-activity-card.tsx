@@ -30,6 +30,10 @@ export function ScheduledActivityCard({
   const isFormCard = activity.eventType === 'form';
   const isFundraiserCard = activity.eventType === 'fundraiser';
   const isGiveawayCard = activity.eventType === 'giveaway';
+  const giveawayAutoCloseAt =
+    typeof activity.giveawayAutoCloseAt === 'number'
+      ? activity.giveawayAutoCloseAt
+      : null;
   const scheduledFor = new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -43,9 +47,16 @@ export function ScheduledActivityCard({
           {formatEventType(activity.eventType)}
         </span>
         <div className='flex items-center gap-2 self-end text-sm text-muted-foreground sm:self-auto'>
-          <time dateTime={new Date(activity.publishAt).toISOString()}>
-            Scheduled for {scheduledFor}
-          </time>
+          <div className='flex flex-col text-right'>
+            <time dateTime={new Date(activity.publishAt).toISOString()}>
+              Scheduled for {scheduledFor}
+            </time>
+            {isGiveawayCard && giveawayAutoCloseAt && (
+              <span className='text-xs text-muted-foreground'>
+                Auto close: {formatDate(giveawayAutoCloseAt)}
+              </span>
+            )}
+          </div>
           <ActionMenu
             label='Open scheduled activity actions'
             items={[

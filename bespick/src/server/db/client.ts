@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS announcements (
   poll_allow_additional_options INTEGER,
   poll_max_selections INTEGER,
   poll_closes_at INTEGER,
+  poll_original_closes_at INTEGER,
   voting_participants_json TEXT,
   voting_add_vote_price REAL,
   voting_remove_vote_price REAL,
@@ -44,9 +45,13 @@ CREATE TABLE IF NOT EXISTS announcements (
   voting_allow_ungrouped INTEGER,
   voting_allow_removals INTEGER,
   voting_leaderboard_mode TEXT,
+  voting_auto_close_at INTEGER,
+  voting_original_auto_close_at INTEGER,
   form_questions_json TEXT,
   form_submission_limit TEXT,
   form_price REAL,
+  form_allow_anonymous_choice INTEGER,
+  form_force_anonymous INTEGER,
   fundraiser_goal REAL,
   fundraiser_anonymity_mode TEXT,
   giveaway_allow_multiple_entries INTEGER,
@@ -81,7 +86,8 @@ CREATE TABLE IF NOT EXISTS form_submissions (
   answers_json TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   paypal_order_id TEXT,
-  payment_amount REAL
+  payment_amount REAL,
+  is_anonymous INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_form_submissions_announcement ON form_submissions(announcement_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_user ON form_submissions(announcement_id, user_id);
@@ -241,6 +247,24 @@ CREATE TABLE IF NOT EXISTS shift_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_shift_notifications_event ON shift_notifications(event_date, event_type);
 CREATE INDEX IF NOT EXISTS idx_shift_notifications_user ON shift_notifications(user_id);
+
+CREATE TABLE IF NOT EXISTS shift_swap_requests (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  requester_id TEXT NOT NULL,
+  requester_name TEXT,
+  recipient_id TEXT NOT NULL,
+  recipient_name TEXT,
+  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  responded_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_event ON shift_swap_requests(event_date, event_type);
+CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_requester ON shift_swap_requests(requester_id);
+CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_recipient ON shift_swap_requests(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_shift_swap_requests_status ON shift_swap_requests(status);
 `);
 
 const announcementColumns = sqlite
@@ -260,6 +284,22 @@ if (!hasVotingRemoveLimit) {
     'ALTER TABLE announcements ADD COLUMN voting_remove_vote_limit INTEGER;',
   );
 }
+const hasVotingAutoCloseAt = announcementColumns.some(
+  (column) => column.name === 'voting_auto_close_at',
+);
+if (!hasVotingAutoCloseAt) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN voting_auto_close_at INTEGER;',
+  );
+}
+const hasVotingOriginalAutoCloseAt = announcementColumns.some(
+  (column) => column.name === 'voting_original_auto_close_at',
+);
+if (!hasVotingOriginalAutoCloseAt) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN voting_original_auto_close_at INTEGER;',
+  );
+}
 
 const hasFormQuestions = announcementColumns.some(
   (column) => column.name === 'form_questions_json',
@@ -277,11 +317,35 @@ if (!hasFormSubmissionLimit) {
     'ALTER TABLE announcements ADD COLUMN form_submission_limit TEXT;',
   );
 }
+const hasPollOriginalClosesAt = announcementColumns.some(
+  (column) => column.name === 'poll_original_closes_at',
+);
+if (!hasPollOriginalClosesAt) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN poll_original_closes_at INTEGER;',
+  );
+}
 const hasFormPrice = announcementColumns.some(
   (column) => column.name === 'form_price',
 );
 if (!hasFormPrice) {
   sqlite.exec('ALTER TABLE announcements ADD COLUMN form_price REAL;');
+}
+const hasFormAllowAnonymousChoice = announcementColumns.some(
+  (column) => column.name === 'form_allow_anonymous_choice',
+);
+if (!hasFormAllowAnonymousChoice) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN form_allow_anonymous_choice INTEGER;',
+  );
+}
+const hasFormForceAnonymous = announcementColumns.some(
+  (column) => column.name === 'form_force_anonymous',
+);
+if (!hasFormForceAnonymous) {
+  sqlite.exec(
+    'ALTER TABLE announcements ADD COLUMN form_force_anonymous INTEGER;',
+  );
 }
 const hasFundraiserGoal = announcementColumns.some(
   (column) => column.name === 'fundraiser_goal',
@@ -416,11 +480,21 @@ if (!formSubmissionsTableExists) {
       answers_json TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       paypal_order_id TEXT,
-      payment_amount REAL
+      payment_amount REAL,
+      is_anonymous INTEGER
     );
     CREATE INDEX idx_form_submissions_announcement ON form_submissions(announcement_id);
     CREATE INDEX idx_form_submissions_user ON form_submissions(announcement_id, user_id);
   `);
+}
+const formSubmissionColumns = sqlite
+  .prepare("PRAGMA table_info('form_submissions')")
+  .all() as Array<{ name: string }>;
+const hasFormSubmissionAnonymous = formSubmissionColumns.some(
+  (column) => column.name === 'is_anonymous',
+);
+if (!hasFormSubmissionAnonymous) {
+  sqlite.exec('ALTER TABLE form_submissions ADD COLUMN is_anonymous INTEGER;');
 }
 
 const fundraiserDonationsTableExists = sqlite

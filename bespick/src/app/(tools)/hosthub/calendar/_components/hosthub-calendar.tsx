@@ -13,6 +13,7 @@ import {
   getSecurityShiftWindow,
   isSecurityShiftEventType,
   type HostHubEventType,
+  getHostHubEventLabel,
 } from '@/lib/hosthub-events';
 import { formatShortDateLabel } from '@/lib/hosthub-schedule-utils';
 import { useMetadataOptions } from '@/components/metadata/metadata-options-provider';
@@ -80,6 +81,7 @@ type HostHubCalendarProps = {
   eventOverrides: Record<string, EventOverride>;
   refreshNotice?: { pendingSince: number; nextRefreshAt: number } | null;
   roster: Array<{ userId: string; name: string }>;
+  eventHistoryKeys: string[];
 };
 
 export function HostHubCalendar({
@@ -95,6 +97,7 @@ export function HostHubCalendar({
   eventOverrides,
   refreshNotice = null,
   roster,
+  eventHistoryKeys,
 }: HostHubCalendarProps) {
   const { teamOptions } = useMetadataOptions();
   const [baseDate] = useState(() => new Date());
@@ -140,6 +143,10 @@ export function HostHubCalendar({
       teamOptions.map((option) => [option.value, option.label]),
     );
   }, [teamOptions]);
+  const historyKeySet = useMemo(
+    () => new Set(eventHistoryKeys),
+    [eventHistoryKeys],
+  );
   const eligibleTeamOptions = useMemo(
     () =>
       teamOptions.filter(
@@ -181,6 +188,7 @@ export function HostHubCalendar({
       const assignment = building892Assignments[weekKey];
       const overrideKey = getEventOverrideId(weekKey, 'building-892');
       const override = localOverrides[overrideKey];
+      const hasHistory = historyKeySet.has(overrideKey);
       const teamValue = override?.overrideUserId ?? assignment?.team ?? null;
       const teamLabel =
         override?.overrideUserName ??
@@ -196,9 +204,16 @@ export function HostHubCalendar({
         teamValue,
         teamLabel: displayTeam,
         override,
+        hasHistory,
       };
     });
-  }, [building892Weeks, building892Assignments, localOverrides, teamLabelMap]);
+  }, [
+    building892Weeks,
+    building892Assignments,
+    localOverrides,
+    teamLabelMap,
+    historyKeySet,
+  ]);
   const { movedTargets: demoMoveTargets, movedSources: demoMoveSources } =
     useMemo(() => {
       const movedTargets = new Map<string, DemoMoveEntry[]>();
@@ -577,6 +592,26 @@ export function HostHubCalendar({
     });
   };
 
+  const openEventHistory = (event: CalendarEvent) => {
+    setHistoryTitle(
+      `${getHostHubEventLabel(event.variant)} • ${formatShortDateLabel(
+        new Date(event.dateKey),
+      )}`,
+    );
+    setIsHistoryOpen(true);
+    startTransition(async () => {
+      const result = await getScheduleEventOverrideHistory({
+        date: event.dateKey,
+        eventType: event.variant,
+      });
+      if (result.success) {
+        setHistoryEntries(formatHistoryEntries(result.entries));
+      } else {
+        setHistoryEntries([]);
+      }
+    });
+  };
+
   const closeHistory = () => {
     setIsHistoryOpen(false);
     setHistoryEntries([]);
@@ -595,7 +630,10 @@ export function HostHubCalendar({
         demoDefaultTime,
         standupDefaultTime,
       ),
-    );
+    ).map((event) => ({
+      ...event,
+      hasHistory: historyKeySet.has(`${event.variant}-${event.dateKey}`),
+    }));
 
   const closeEdit = () => {
     setEditingEventId(null);
@@ -685,6 +723,7 @@ export function HostHubCalendar({
           onEditHostIdChange={setEditHostId}
           onEditCanceledChange={setEditCanceled}
           onCloseEdit={closeEdit}
+          onOpenHistory={openEventHistory}
         />
       ) : null}
       {isHistoryOpen && historyTitle ? (

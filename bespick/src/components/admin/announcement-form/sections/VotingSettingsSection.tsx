@@ -39,6 +39,16 @@ type VotingSettingsSectionProps = {
   allSelected: boolean;
   loading: boolean;
   error: string | null;
+  autoCloseEnabled: boolean;
+  closeDate: string;
+  closeTime: string;
+  minCloseDate: string;
+  displayCloseTimeSlots: string[];
+  noCloseSlotsLeftToday: boolean;
+  closeSummary: string | null;
+  onToggleAutoClose: (value: boolean) => void;
+  onChangeCloseDate: (value: string) => void;
+  onChangeCloseTime: (value: string) => void;
 };
 
 export function VotingSettingsSection({
@@ -70,6 +80,16 @@ export function VotingSettingsSection({
   allSelected,
   loading,
   error,
+  autoCloseEnabled,
+  closeDate,
+  closeTime,
+  minCloseDate,
+  displayCloseTimeSlots,
+  noCloseSlotsLeftToday,
+  closeSummary,
+  onToggleAutoClose,
+  onChangeCloseDate,
+  onChangeCloseTime,
 }: VotingSettingsSectionProps) {
   if (!isVoting) return null;
 
@@ -160,6 +180,71 @@ export function VotingSettingsSection({
               Leave blank for unlimited.
             </span>
           </label>
+        )}
+      </div>
+
+      <div className='space-y-3 rounded-xl border border-border bg-background/60 p-4'>
+        <label className='flex items-center gap-3 text-sm font-medium text-foreground'>
+          <input
+            type='checkbox'
+            checked={autoCloseEnabled}
+            onChange={(event) => onToggleAutoClose(event.target.checked)}
+            className='h-4 w-4 rounded border-border accent-primary'
+          />
+          Auto close voting
+        </label>
+        <p className='text-xs text-muted-foreground'>
+          Stops voting at the selected time while keeping the leaderboard live.
+        </p>
+
+        {autoCloseEnabled && (
+          <div className='grid gap-4 sm:grid-cols-2'>
+            <label className='flex flex-col gap-2 text-sm text-foreground'>
+              Close Date
+              <input
+                type='date'
+                name='votingCloseDate'
+                value={closeDate}
+                min={minCloseDate}
+                onChange={(event) => onChangeCloseDate(event.target.value)}
+                required
+                className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+              />
+            </label>
+
+            <label className='flex flex-col gap-2 text-sm text-foreground'>
+              Close Time (15 min slots)
+              <select
+                name='votingCloseTime'
+                value={closeTime}
+                onChange={(event) => onChangeCloseTime(event.target.value)}
+                required
+                disabled={noCloseSlotsLeftToday}
+                className='rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70'
+              >
+                <option value=''>--</option>
+                {noCloseSlotsLeftToday ? (
+                  <option value='' disabled>
+                    No close slots remain today — pick another date
+                  </option>
+                ) : (
+                  displayCloseTimeSlots.map((slot) => (
+                    <option key={slot} value={slot}>
+                      {slot}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {autoCloseEnabled && (
+          <p className='text-xs text-muted-foreground'>
+            {closeSummary
+              ? `Voting closes on ${closeSummary}.`
+              : 'Pick a close date and time to enable auto close.'}
+          </p>
         )}
       </div>
 

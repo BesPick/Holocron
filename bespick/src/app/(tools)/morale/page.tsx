@@ -224,6 +224,7 @@ export default function DashboardPage() {
         <VotingModal
           event={viewingVoting}
           onClose={() => setViewingVoting(null)}
+          isAdmin={isMoraleAdmin}
         />
       )}
 

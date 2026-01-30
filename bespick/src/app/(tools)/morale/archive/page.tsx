@@ -162,6 +162,7 @@ export default function ArchivePage() {
         <VotingModal
           event={viewingVoting}
           onClose={() => setViewingVoting(null)}
+          isAdmin={isMoraleAdmin}
         />
       )}
 

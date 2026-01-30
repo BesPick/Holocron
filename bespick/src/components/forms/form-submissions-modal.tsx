@@ -137,16 +137,27 @@ export function FormSubmissionsModal({
     if (!data) return [];
     const map = new Map<
       string,
-      { userId: string; userName: string | null; submissions: FormSubmissionSummary['submissions'] }
+      {
+        id: string;
+        userId: string;
+        userName: string | null;
+        submissions: FormSubmissionSummary['submissions'];
+      }
     >();
     data.submissions.forEach((submission) => {
-      const entry = map.get(submission.userId);
+      const key = submission.isAnonymous
+        ? `anonymous-${submission.id}`
+        : submission.userId;
+      const entry = map.get(key);
       if (entry) {
         entry.submissions.push(submission);
       } else {
-        map.set(submission.userId, {
+        map.set(key, {
+          id: key,
           userId: submission.userId,
-          userName: submission.userName ?? null,
+          userName: submission.isAnonymous
+            ? 'Anonymous'
+            : submission.userName ?? null,
           submissions: [submission],
         });
       }
@@ -412,7 +423,7 @@ export function FormSubmissionsModal({
               )}
               {groupedSubmissions.map((entry) => (
                 <details
-                  key={entry.userId}
+                  key={entry.id}
                   className='group rounded-xl border border-border bg-card/60 px-4 py-3'
                 >
                   <summary className='flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-foreground'>

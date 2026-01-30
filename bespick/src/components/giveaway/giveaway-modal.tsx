@@ -198,6 +198,7 @@ export function GiveawayModal({
   const [previewImage, setPreviewImage] = React.useState<string | null>(null);
   const [localGiveaway, setLocalGiveaway] =
     React.useState<GiveawayDetails | null>(null);
+  const [now, setNow] = React.useState(() => Date.now());
   const [tickets, setTickets] = React.useState('1');
   const [submitting, setSubmitting] = React.useState(false);
   const [localError, setLocalError] = React.useState<string | null>(null);
@@ -210,6 +211,12 @@ export function GiveawayModal({
   const successTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const displayGiveaway = localGiveaway ?? giveaway ?? null;
+  const isClosed = Boolean(displayGiveaway?.giveawayIsClosed);
+  const autoCloseAt =
+    typeof displayGiveaway?.giveawayAutoCloseAt === 'number'
+      ? displayGiveaway.giveawayAutoCloseAt
+      : null;
 
   React.useEffect(() => {
     setTickets('1');
@@ -245,6 +252,31 @@ export function GiveawayModal({
   ]);
 
   React.useEffect(() => {
+    if (!autoCloseAt || isClosed) return;
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [autoCloseAt, isClosed]);
+
+  const autoCloseCountdown = React.useMemo(() => {
+    if (!autoCloseAt || isClosed) return null;
+    const remaining = Math.max(0, autoCloseAt - now);
+    const seconds = Math.floor(remaining / 1000);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    const parts = [
+      days ? `${days}d` : null,
+      hours ? `${hours}h` : null,
+      minutes ? `${minutes}m` : null,
+      `${secs}s`,
+    ].filter(Boolean);
+    return parts.join(' ');
+  }, [autoCloseAt, isClosed, now]);
+
+  React.useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         if (previewImage) {
@@ -257,8 +289,6 @@ export function GiveawayModal({
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose, previewImage]);
-
-  const displayGiveaway = localGiveaway ?? giveaway ?? null;
 
   const parsedTickets = React.useMemo(() => {
     const value = parseInt(tickets, 10);
@@ -277,7 +307,6 @@ export function GiveawayModal({
     paymentRequired && entryPrice ? entryPrice * parsedTickets : 0;
 
   const isPublished = displayGiveaway?.status === 'published';
-  const isClosed = Boolean(displayGiveaway?.giveawayIsClosed);
   const canEnterNow = Boolean(canEnter && isPublished && !isClosed);
   const shouldDisableTickets = !allowMultiple || !canEnterNow;
   const hasReachedEntryCap =
@@ -371,10 +400,6 @@ export function GiveawayModal({
 
   const handleCloseGiveaway = React.useCallback(async () => {
     if (!displayGiveaway) return;
-    const confirmed = window.confirm(
-      'Close this giveaway and draw winners now?',
-    );
-    if (!confirmed) return;
     try {
       setSubmitting(true);
       await closeGiveaway({ id: displayGiveaway._id });
@@ -390,10 +415,6 @@ export function GiveawayModal({
 
   const handleReopenGiveaway = React.useCallback(async () => {
     if (!displayGiveaway) return;
-    const confirmed = window.confirm(
-      'Reopen this giveaway and clear existing winners?',
-    );
-    if (!confirmed) return;
     try {
       setSubmitting(true);
       await reopenGiveaway({ id: displayGiveaway._id });
@@ -467,6 +488,12 @@ export function GiveawayModal({
                   : 'Published'}{' '}
                 {formatDate(displayGiveaway.publishAt)}
               </p>
+              {autoCloseAt && (
+                <p className='mt-1 text-xs text-muted-foreground'>
+                  Auto close: {formatDate(autoCloseAt)}
+                  {autoCloseCountdown ? ` • ${autoCloseCountdown}` : ''}
+                </p>
+              )}
               {displayGiveaway.updatedAt && displayGiveaway.updatedBy && (
                 <p className='mt-1 text-xs text-muted-foreground'>
                   Updated by {formatCreator(displayGiveaway.updatedBy)} on{' '}
@@ -540,6 +567,12 @@ export function GiveawayModal({
               <p className='mt-2 text-xs font-semibold text-foreground'>
                 Your Tickets: {displayGiveaway.currentUserTickets ?? 0}
               </p>
+              {autoCloseAt && (
+                <p className='mt-2 text-xs text-muted-foreground'>
+                  Auto close at {formatDate(autoCloseAt)}
+                  {autoCloseCountdown ? ` • ${autoCloseCountdown}` : ''}
+                </p>
+              )}
               {displayGiveaway.giveawayIsClosed && (
                 <p className='mt-2 text-xs text-muted-foreground'>
                   Giveaway closed on{' '}

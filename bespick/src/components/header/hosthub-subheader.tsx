@@ -148,12 +148,15 @@ export function HostHubSubHeader() {
               </span>
             </Link>
           );
+
+// change hidden to flex in the class for the alert to display
         })}
       </nav>
-      <div className='mt-4 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700'>
+      <div className='mt-4 hidden items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700'>
         <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' aria-hidden={true} />
         <span>
-          HostHub is still in development. None of the information shown is accurate. Expect frequent changes.
+          HostHub is being upgraded! Some features may be temporarily
+          unavailable. We appreciate your patience during this transition.
         </span>
       </div>
     </div>

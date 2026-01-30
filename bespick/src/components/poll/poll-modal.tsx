@@ -33,14 +33,19 @@ export function PollModal({
     poll?.imageIds && poll.imageIds.length ? { ids: poll.imageIds } : 'skip',
   );
   const votePoll = useApiMutation(api.announcements.votePoll);
+  const closePoll = useApiMutation(api.announcements.closePoll);
+  const reopenPoll = useApiMutation(api.announcements.reopenPoll);
 
   const [previewImage, setPreviewImage] = React.useState<string | null>(null);
   const [selections, setSelections] = React.useState<string[]>([]);
   const [newOption, setNewOption] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [closingPoll, setClosingPoll] = React.useState(false);
+  const [reopeningPoll, setReopeningPoll] = React.useState(false);
   const [localError, setLocalError] = React.useState<string | null>(null);
   const [showBreakdown, setShowBreakdown] = React.useState(false);
   const [localPoll, setLocalPoll] = React.useState<typeof poll | null>(null);
+  const [now, setNow] = React.useState(() => Date.now());
 
   React.useEffect(() => {
     if (!poll) return;
@@ -79,6 +84,33 @@ export function PollModal({
   const pollClosed = Boolean(displayPoll?.isClosed);
   const pollArchived = Boolean(displayPoll?.isArchived);
   const votingDisabled = pollClosed || pollArchived;
+  const pollClosesAt =
+    typeof displayPoll?.closesAt === 'number' ? displayPoll.closesAt : null;
+
+  React.useEffect(() => {
+    if (!pollClosesAt || pollClosed) return;
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [pollClosesAt, pollClosed]);
+
+  const pollCountdown = React.useMemo(() => {
+    if (!pollClosesAt || pollClosed) return null;
+    const remaining = Math.max(0, pollClosesAt - now);
+    const seconds = Math.floor(remaining / 1000);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    const parts = [
+      days ? `${days}d` : null,
+      hours ? `${hours}h` : null,
+      minutes ? `${minutes}m` : null,
+      `${secs}s`,
+    ].filter(Boolean);
+    return parts.join(' ');
+  }, [pollClosesAt, pollClosed, now]);
 
   const toggleSelection = React.useCallback(
     (option: string) => {
@@ -209,6 +241,44 @@ export function PollModal({
     votingDisabled,
   ]);
 
+  const handleClosePoll = React.useCallback(async () => {
+    if (!displayPoll) return;
+    if (pollClosed || pollArchived) {
+      setLocalError('This poll is already closed.');
+      return;
+    }
+    try {
+      setClosingPoll(true);
+      setLocalError(null);
+      await closePoll({ id: pollId });
+    } catch (error) {
+      setLocalError(
+        error instanceof Error ? error.message : 'Failed to close poll.',
+      );
+    } finally {
+      setClosingPoll(false);
+    }
+  }, [closePoll, displayPoll, pollArchived, pollClosed, pollId]);
+
+  const handleReopenPoll = React.useCallback(async () => {
+    if (!displayPoll) return;
+    if (!pollClosed) {
+      setLocalError('This poll is already open.');
+      return;
+    }
+    try {
+      setReopeningPoll(true);
+      setLocalError(null);
+      await reopenPoll({ id: pollId });
+    } catch (error) {
+      setLocalError(
+        error instanceof Error ? error.message : 'Failed to reopen poll.',
+      );
+    } finally {
+      setReopeningPoll(false);
+    }
+  }, [displayPoll, pollClosed, pollId, reopenPoll]);
+
   if (!displayPoll) {
     return (
       <div
@@ -296,14 +366,32 @@ export function PollModal({
                 </p>
               )}
             </div>
-            <button
-              type='button'
-              onClick={onClose}
-              className='rounded-full border border-border p-2 text-muted-foreground transition hover:text-foreground'
-              aria-label='Close poll'
-            >
-              <X className='h-4 w-4' aria-hidden={true} />
-            </button>
+            <div className='flex items-center gap-2'>
+              {isAdmin && !pollArchived && (
+                <button
+                  type='button'
+                  onClick={pollClosed ? handleReopenPoll : handleClosePoll}
+                  disabled={closingPoll || reopeningPoll}
+                  className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60'
+                >
+                  {pollClosed
+                    ? reopeningPoll
+                      ? 'Reopening...'
+                      : 'Reopen poll'
+                    : closingPoll
+                      ? 'Closing...'
+                      : 'Close poll'}
+                </button>
+              )}
+              <button
+                type='button'
+                onClick={onClose}
+                className='rounded-full border border-border p-2 text-muted-foreground transition hover:text-foreground'
+                aria-label='Close poll'
+              >
+                <X className='h-4 w-4' aria-hidden={true} />
+              </button>
+            </div>
           </div>
 
           <div className='mt-6 space-y-3'>
@@ -387,6 +475,7 @@ export function PollModal({
                     dateStyle: 'medium',
                     timeStyle: 'short',
                   }).format(new Date(displayPoll.closesAt))}
+                  {pollCountdown ? ` • ${pollCountdown}` : ''}
                 </p>
               )}
               {pollClosed && (

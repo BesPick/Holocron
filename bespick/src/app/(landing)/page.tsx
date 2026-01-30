@@ -60,7 +60,7 @@ export default async function HomePage() {
               </span>
               <div>
                 <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
-                  In Development
+                  Live Tool
                 </p>
                 <h2 className='text-xl font-semibold text-foreground'>
                   HostHub
@@ -71,12 +71,10 @@ export default async function HomePage() {
               Centralized host operations, scheduling, and utilities are on
               deck.
               <br />
-              <span className='block' aria-hidden={true}>
-                &nbsp;
-              </span>
             </p>
             <span className='mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary'>
-              In development
+              Enter HostHub
+              <span aria-hidden={true}>→</span>
             </span>
           </Link>
 
@@ -102,7 +100,7 @@ export default async function HomePage() {
               command center.
             </p>
             <span className='mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary'>
-              Enter Morale
+              Increase Morale
               <span aria-hidden={true}>→</span>
             </span>
           </Link>
@@ -127,7 +125,8 @@ export default async function HomePage() {
               are on deck.
             </p>
             <span className='mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary'>
-              In development
+              Play Games
+              <span aria-hidden={true}>→</span>
             </span>
           </Link>
         </div>

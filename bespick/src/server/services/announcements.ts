@@ -60,9 +60,12 @@ export type CreateAnnouncementArgs = {
   votingAllowUngrouped?: boolean;
   votingAllowRemovals?: boolean;
   votingLeaderboardMode?: string;
+  votingAutoCloseAt?: number | null;
   formQuestions?: FormQuestion[];
   formSubmissionLimit?: FormSubmissionLimit;
   formPrice?: number | null;
+  formAllowAnonymousChoice?: boolean;
+  formForceAnonymous?: boolean;
   fundraiserGoal?: number | null;
   fundraiserAnonymityMode?: FundraiserAnonymityMode;
   giveawayAllowMultipleEntries?: boolean;
@@ -133,6 +136,8 @@ export type FormDetails = {
   formQuestions: FormQuestion[];
   formSubmissionLimit: FormSubmissionLimit;
   formPrice: number | null;
+  formAllowAnonymousChoice: boolean;
+  formForceAnonymous: boolean;
   imageIds: Id<'_storage'>[];
   userOptionsByQuestionId: Record<string, { userId: string; name: string }[]>;
   userHasSubmitted: boolean;
@@ -141,6 +146,7 @@ export type FormDetails = {
 export type SubmitFormArgs = {
   id: Id<'announcements'>;
   answers: FormAnswer[];
+  anonymousChoice?: boolean;
   paypalOrderId?: string | null;
   paymentAmount?: number | null;
 };
@@ -149,6 +155,7 @@ export type FormSubmissionEntry = {
   id: Id<'formSubmissions'>;
   userId: string;
   userName: string | null;
+  isAnonymous: boolean;
   createdAt: number;
   answers: FormAnswer[];
 };
@@ -263,6 +270,7 @@ function mapAnnouncementRow(row: AnnouncementRow): AnnouncementDoc {
     pollAllowAdditionalOptions: row.pollAllowAdditionalOptions ?? undefined,
     pollMaxSelections: row.pollMaxSelections ?? undefined,
     pollClosesAt: row.pollClosesAt ?? null,
+    pollOriginalClosesAt: row.pollOriginalClosesAt ?? null,
     votingParticipants: parseJson<VotingParticipant[]>(
       row.votingParticipantsJson,
     ),
@@ -278,10 +286,14 @@ function mapAnnouncementRow(row: AnnouncementRow): AnnouncementDoc {
     votingAllowRemovals: row.votingAllowRemovals ?? undefined,
     votingLeaderboardMode: (row.votingLeaderboardMode ??
       undefined) as VotingLeaderboardMode | undefined,
+    votingAutoCloseAt: row.votingAutoCloseAt ?? null,
+    votingOriginalAutoCloseAt: row.votingOriginalAutoCloseAt ?? null,
     formQuestions: parseJson<FormQuestion[]>(row.formQuestionsJson),
     formSubmissionLimit: (row.formSubmissionLimit ??
       undefined) as FormSubmissionLimit | undefined,
     formPrice: row.formPrice ?? null,
+    formAllowAnonymousChoice: row.formAllowAnonymousChoice ?? undefined,
+    formForceAnonymous: row.formForceAnonymous ?? undefined,
     fundraiserGoal: row.fundraiserGoal ?? null,
     fundraiserAnonymityMode: (row.fundraiserAnonymityMode ??
       undefined) as FundraiserAnonymityMode | undefined,
@@ -1137,6 +1149,8 @@ export async function createAnnouncement(
     typeof args.giveawayAutoCloseAt === 'number'
       ? args.giveawayAutoCloseAt
       : null;
+  const normalizedVotingAutoCloseAt =
+    typeof args.votingAutoCloseAt === 'number' ? args.votingAutoCloseAt : null;
 
   if (
     normalizedAutoDeleteAt !== null &&
@@ -1163,6 +1177,12 @@ export async function createAnnouncement(
     normalizedGiveawayAutoCloseAt <= args.publishAt
   ) {
     throw new Error('Auto close time must be after publish time.');
+  }
+  if (
+    normalizedVotingAutoCloseAt !== null &&
+    normalizedVotingAutoCloseAt <= args.publishAt
+  ) {
+    throw new Error('Voting close time must be after publish time.');
   }
 
   let pollQuestion: string | null = null;
@@ -1253,6 +1273,8 @@ export async function createAnnouncement(
   let formQuestions: FormQuestion[] | null = null;
   let formSubmissionLimit: FormSubmissionLimit | null = null;
   let formPrice: number | null = null;
+  let formAllowAnonymousChoice = false;
+  let formForceAnonymous = false;
   if (eventType === 'form') {
     const normalizedQuestions = normalizeFormQuestions(args.formQuestions);
     if (normalizedQuestions.length === 0) {
@@ -1273,6 +1295,11 @@ export async function createAnnouncement(
         throw new Error('Form price must be a non-negative number.');
       }
       formPrice = Math.round(rawPrice * 100) / 100;
+    }
+    formAllowAnonymousChoice = Boolean(args.formAllowAnonymousChoice);
+    formForceAnonymous = Boolean(args.formForceAnonymous);
+    if (formAllowAnonymousChoice && formForceAnonymous) {
+      throw new Error('Choose either optional anonymity or enforced anonymity.');
     }
   }
 
@@ -1325,6 +1352,8 @@ export async function createAnnouncement(
     autoArchiveAt: normalizedAutoArchiveAt,
     giveawayAutoCloseAt:
       eventType === 'giveaway' ? normalizedGiveawayAutoCloseAt : null,
+    votingAutoCloseAt:
+      eventType === 'voting' ? normalizedVotingAutoCloseAt : null,
     pollQuestion: pollQuestion ?? undefined,
     pollOptionsJson: pollOptions ? JSON.stringify(pollOptions) : null,
     pollAnonymous: eventType === 'poll' ? pollAnonymous : null,
@@ -1364,6 +1393,9 @@ export async function createAnnouncement(
     formSubmissionLimit:
       eventType === 'form' ? formSubmissionLimit ?? 'unlimited' : null,
     formPrice: eventType === 'form' ? formPrice : null,
+    formAllowAnonymousChoice:
+      eventType === 'form' ? formAllowAnonymousChoice : null,
+    formForceAnonymous: eventType === 'form' ? formForceAnonymous : null,
     fundraiserGoal: eventType === 'fundraiser' ? fundraiserGoal : null,
     fundraiserAnonymityMode:
       eventType === 'fundraiser' ? fundraiserAnonymityMode : null,
@@ -1533,6 +1565,12 @@ export async function updateAnnouncement(
       : args.giveawayAutoCloseAt === null
         ? null
         : existing.giveawayAutoCloseAt ?? null;
+  const requestedVotingAutoCloseAt =
+    typeof args.votingAutoCloseAt === 'number'
+      ? args.votingAutoCloseAt
+      : args.votingAutoCloseAt === null
+        ? null
+        : existing.votingAutoCloseAt ?? null;
 
   if (requestedAutoDeleteAt !== null && requestedAutoDeleteAt <= args.publishAt) {
     throw new Error('Auto delete time must be after publish time.');
@@ -1553,6 +1591,12 @@ export async function updateAnnouncement(
     requestedGiveawayAutoCloseAt <= args.publishAt
   ) {
     throw new Error('Auto close time must be after publish time.');
+  }
+  if (
+    requestedVotingAutoCloseAt !== null &&
+    requestedVotingAutoCloseAt <= args.publishAt
+  ) {
+    throw new Error('Voting close time must be after publish time.');
   }
 
   let pollQuestion: string | null = null;
@@ -1703,6 +1747,8 @@ export async function updateAnnouncement(
   let formQuestions: FormQuestion[] | null = null;
   let formSubmissionLimit: FormSubmissionLimit | null = null;
   let formPrice: number | null = null;
+  let formAllowAnonymousChoice = existing.formAllowAnonymousChoice ?? false;
+  let formForceAnonymous = existing.formForceAnonymous ?? false;
   if (eventType === 'form') {
     const sourceQuestions =
       args.formQuestions ??
@@ -1728,6 +1774,17 @@ export async function updateAnnouncement(
         throw new Error('Form price must be a non-negative number.');
       }
       formPrice = Math.round(rawPrice * 100) / 100;
+    }
+    formAllowAnonymousChoice =
+      typeof args.formAllowAnonymousChoice === 'boolean'
+        ? args.formAllowAnonymousChoice
+        : formAllowAnonymousChoice;
+    formForceAnonymous =
+      typeof args.formForceAnonymous === 'boolean'
+        ? args.formForceAnonymous
+        : formForceAnonymous;
+    if (formAllowAnonymousChoice && formForceAnonymous) {
+      throw new Error('Choose either optional anonymity or enforced anonymity.');
     }
   }
 
@@ -1798,6 +1855,8 @@ export async function updateAnnouncement(
       autoArchiveAt: requestedAutoArchiveAt,
       giveawayAutoCloseAt:
         eventType === 'giveaway' ? requestedGiveawayAutoCloseAt : null,
+      votingAutoCloseAt:
+        eventType === 'voting' ? requestedVotingAutoCloseAt : null,
       pollQuestion:
         eventType === 'poll'
           ? pollQuestion ?? existing.pollQuestion ?? undefined
@@ -1870,6 +1929,9 @@ export async function updateAnnouncement(
             ? existing.formPrice ?? null
             : formPrice
           : null,
+      formAllowAnonymousChoice:
+        eventType === 'form' ? formAllowAnonymousChoice : null,
+      formForceAnonymous: eventType === 'form' ? formForceAnonymous : null,
       fundraiserGoal:
         eventType === 'fundraiser'
           ? fundraiserGoal ?? existing.fundraiserGoal ?? null
@@ -2217,6 +2279,9 @@ export async function getForm(
       typeof announcement.formPrice === 'number'
         ? announcement.formPrice
         : null,
+    formAllowAnonymousChoice:
+      announcement.formAllowAnonymousChoice ?? false,
+    formForceAnonymous: announcement.formForceAnonymous ?? false,
     imageIds: announcement.imageIds ?? [],
     userOptionsByQuestionId,
     userHasSubmitted,
@@ -2668,17 +2733,28 @@ export async function submitForm(
     }
   }
 
+  const allowAnonymousChoice =
+    announcement.formAllowAnonymousChoice ?? false;
+  const forceAnonymous = announcement.formForceAnonymous ?? false;
+  if (allowAnonymousChoice && forceAnonymous) {
+    throw new Error('Form settings are invalid.');
+  }
+  const wantsAnonymous =
+    allowAnonymousChoice && Boolean(args.anonymousChoice);
+  const isAnonymous = forceAnonymous || wantsAnonymous;
+
   const id = crypto.randomUUID();
   const now = Date.now();
   await db.insert(formSubmissions).values({
     id,
     announcementId: args.id,
     userId: identity.userId,
-    userName: identity.name ?? identity.email ?? null,
+    userName: isAnonymous ? null : identity.name ?? identity.email ?? null,
     answersJson: JSON.stringify(normalizedAnswers),
     createdAt: now,
     paypalOrderId: args.paypalOrderId ?? null,
     paymentAmount: expectedPayment > 0 ? expectedPayment : null,
+    isAnonymous,
   });
 
   broadcast('formSubmissions');
@@ -2929,6 +3005,22 @@ export type RedrawGiveawayArgs = {
   id: Id<'announcements'>;
 };
 
+export type ClosePollArgs = {
+  id: Id<'announcements'>;
+};
+
+export type CloseVotingArgs = {
+  id: Id<'announcements'>;
+};
+
+export type ReopenPollArgs = {
+  id: Id<'announcements'>;
+};
+
+export type ReopenVotingArgs = {
+  id: Id<'announcements'>;
+};
+
 export async function redrawGiveaway(
   args: RedrawGiveawayArgs,
   identity: Identity | null,
@@ -3003,6 +3095,154 @@ export async function redrawGiveaway(
 
   broadcast(['giveawayEntries', 'announcements']);
   return { redrawn: true };
+}
+
+export async function closePoll(
+  args: ClosePollArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const canClose = await checkRole(['admin', 'moderator', 'morale-member']);
+  if (!canClose) throw new Error('Unauthorized');
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'poll') {
+    throw new Error('Poll not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  const now = Date.now();
+  const closesAt = announcement.pollClosesAt ?? null;
+  if (typeof closesAt === 'number' && closesAt <= now) {
+    return { closed: true };
+  }
+
+  const originalClosesAt =
+    typeof closesAt === 'number' && closesAt > now ? closesAt : null;
+  await db
+    .update(announcements)
+    .set({
+      pollClosesAt: now,
+      pollOriginalClosesAt: originalClosesAt,
+    })
+    .where(eq(announcements.id, args.id));
+
+  broadcast(['announcements', 'pollVotes']);
+  return { closed: true };
+}
+
+export async function closeVoting(
+  args: CloseVotingArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const canClose = await checkRole(['admin', 'moderator', 'morale-member']);
+  if (!canClose) throw new Error('Unauthorized');
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'voting') {
+    throw new Error('Voting event not found.');
+  }
+  const announcement = mapAnnouncementRow(row);
+  const now = Date.now();
+  const closesAt = announcement.votingAutoCloseAt ?? null;
+  if (typeof closesAt === 'number' && closesAt <= now) {
+    return { closed: true };
+  }
+
+  const originalClosesAt =
+    typeof closesAt === 'number' && closesAt > now ? closesAt : null;
+  await db
+    .update(announcements)
+    .set({
+      votingAutoCloseAt: now,
+      votingOriginalAutoCloseAt: originalClosesAt,
+    })
+    .where(eq(announcements.id, args.id));
+
+  broadcast(['announcements', 'voting']);
+  return { closed: true };
+}
+
+export async function reopenPoll(
+  args: ReopenPollArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const canClose = await checkRole(['admin', 'moderator', 'morale-member']);
+  if (!canClose) throw new Error('Unauthorized');
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'poll') {
+    throw new Error('Poll not found.');
+  }
+
+  const announcement = mapAnnouncementRow(row);
+  const now = Date.now();
+  const originalClosesAt = announcement.pollOriginalClosesAt ?? null;
+  const restoreClosesAt =
+    typeof originalClosesAt === 'number' && originalClosesAt > now
+      ? originalClosesAt
+      : null;
+
+  await db
+    .update(announcements)
+    .set({
+      pollClosesAt: restoreClosesAt,
+      pollOriginalClosesAt: null,
+    })
+    .where(eq(announcements.id, args.id));
+
+  broadcast(['announcements', 'pollVotes']);
+  return { reopened: true };
+}
+
+export async function reopenVoting(
+  args: ReopenVotingArgs,
+  identity: Identity | null,
+) {
+  if (!identity) throw new Error('Unauthorized');
+  const canClose = await checkRole(['admin', 'moderator', 'morale-member']);
+  if (!canClose) throw new Error('Unauthorized');
+
+  const row = await db
+    .select()
+    .from(announcements)
+    .where(eq(announcements.id, args.id))
+    .get();
+  if (!row || row.eventType !== 'voting') {
+    throw new Error('Voting event not found.');
+  }
+
+  const announcement = mapAnnouncementRow(row);
+  const now = Date.now();
+  const originalClosesAt = announcement.votingOriginalAutoCloseAt ?? null;
+  const restoreClosesAt =
+    typeof originalClosesAt === 'number' && originalClosesAt > now
+      ? originalClosesAt
+      : null;
+
+  await db
+    .update(announcements)
+    .set({
+      votingAutoCloseAt: restoreClosesAt,
+      votingOriginalAutoCloseAt: null,
+    })
+    .where(eq(announcements.id, args.id));
+
+  broadcast(['announcements', 'voting']);
+  return { reopened: true };
 }
 
 export type ReopenGiveawayArgs = {
@@ -3080,6 +3320,7 @@ export async function listFormSubmissions(
     id: entry.id as Id<'formSubmissions'>,
     userId: entry.userId,
     userName: entry.userName ?? null,
+    isAnonymous: Boolean(entry.isAnonymous),
     createdAt: entry.createdAt,
     answers: parseJson<FormAnswer[]>(entry.answersJson) ?? [],
   }));
@@ -3211,6 +3452,12 @@ export async function purchaseVotes(
   const announcement = await getAnnouncement(args.id);
   if (!announcement || announcement.eventType !== 'voting') {
     throw new Error('Voting event not found.');
+  }
+  if (
+    typeof announcement.votingAutoCloseAt === 'number' &&
+    announcement.votingAutoCloseAt <= Date.now()
+  ) {
+    throw new Error('Voting is closed.');
   }
 
   const allowRemovals = announcement.votingAllowRemovals ?? true;

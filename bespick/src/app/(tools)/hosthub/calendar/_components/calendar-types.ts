@@ -15,6 +15,7 @@ export type CalendarEvent = {
   detail?: string;
   variant: HostHubEventType;
   isCanceled?: boolean;
+  hasHistory?: boolean;
 };
 
 export type EventOverride = {

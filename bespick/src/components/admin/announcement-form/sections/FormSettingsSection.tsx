@@ -10,6 +10,10 @@ type FormSettingsSectionProps = {
   onTogglePayment: (value: boolean) => void;
   price: string;
   onChangePrice: (value: string) => void;
+  allowAnonymousChoice: boolean;
+  forceAnonymous: boolean;
+  onToggleAllowAnonymousChoice: (value: boolean) => void;
+  onToggleForceAnonymous: (value: boolean) => void;
 };
 
 export function FormSettingsSection({
@@ -20,6 +24,10 @@ export function FormSettingsSection({
   onTogglePayment,
   price,
   onChangePrice,
+  allowAnonymousChoice,
+  forceAnonymous,
+  onToggleAllowAnonymousChoice,
+  onToggleForceAnonymous,
 }: FormSettingsSectionProps) {
   if (!isForm) return null;
 
@@ -64,6 +72,39 @@ export function FormSettingsSection({
               Users can submit only once.
             </p>
           </button>
+        </div>
+
+        <div className='rounded-xl border border-border bg-background/60 p-4'>
+          <div className='space-y-3'>
+            <label className='flex items-center gap-2 text-sm text-foreground'>
+              <input
+                type='checkbox'
+                checked={allowAnonymousChoice}
+                onChange={(event) =>
+                  onToggleAllowAnonymousChoice(event.target.checked)
+                }
+                disabled={forceAnonymous}
+                className='h-4 w-4 rounded border-border'
+              />
+              Allow users to choose anonymous submissions
+            </label>
+            <label className='flex items-center gap-2 text-sm text-foreground'>
+              <input
+                type='checkbox'
+                checked={forceAnonymous}
+                onChange={(event) =>
+                  onToggleForceAnonymous(event.target.checked)
+                }
+                disabled={allowAnonymousChoice}
+                className='h-4 w-4 rounded border-border'
+              />
+              Enforce anonymous submissions
+            </label>
+            <p className='text-xs text-muted-foreground'>
+              Only one option can be enabled. Enforcing anonymity removes the
+              choice from the form.
+            </p>
+          </div>
         </div>
 
         <div className='rounded-xl border border-border bg-background/60 p-4'>

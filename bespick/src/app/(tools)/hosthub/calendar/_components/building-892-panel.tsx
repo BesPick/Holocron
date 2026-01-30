@@ -13,6 +13,7 @@ export type Building892Entry = {
   teamValue: string | null;
   teamLabel: string;
   override?: EventOverride;
+  hasHistory?: boolean;
 };
 
 type Building892PanelProps = {
@@ -97,7 +98,7 @@ export function Building892Panel({
                     {rangeLabel} • Mon-Fri
                   </p>
                 </div>
-                {hasOverride ? (
+                {entry.hasHistory ? (
                   <button
                     type='button'
                     onClick={() => onOpenHistory(entry.weekKey)}

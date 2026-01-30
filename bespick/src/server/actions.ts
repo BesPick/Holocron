@@ -15,6 +15,10 @@ import {
   publishDue,
   purchaseVotes,
   closeGiveaway,
+  closePoll,
+  closeVoting,
+  reopenPoll,
+  reopenVoting,
   enterGiveaway,
   reopenGiveaway,
   redrawGiveaway,
@@ -26,6 +30,10 @@ import {
   type CreateAnnouncementArgs,
   type PurchaseVotesArgs,
   type CloseGiveawayArgs,
+  type ClosePollArgs,
+  type CloseVotingArgs,
+  type ReopenPollArgs,
+  type ReopenVotingArgs,
   type EnterGiveawayArgs,
   type ReopenGiveawayArgs,
   type RedrawGiveawayArgs,
@@ -56,6 +64,10 @@ export type RpcAction =
   | 'announcements.getGiveaway'
   | 'announcements.enterGiveaway'
   | 'announcements.closeGiveaway'
+  | 'announcements.closePoll'
+  | 'announcements.closeVoting'
+  | 'announcements.reopenPoll'
+  | 'announcements.reopenVoting'
   | 'announcements.reopenGiveaway'
   | 'announcements.redrawGiveaway'
   | 'announcements.purchaseVotes'
@@ -125,6 +137,14 @@ export async function handleAction(
       return enterGiveaway(args as EnterGiveawayArgs, identity);
     case 'announcements.closeGiveaway':
       return closeGiveaway(args as CloseGiveawayArgs, identity);
+    case 'announcements.closePoll':
+      return closePoll(args as ClosePollArgs, identity);
+    case 'announcements.closeVoting':
+      return closeVoting(args as CloseVotingArgs, identity);
+    case 'announcements.reopenPoll':
+      return reopenPoll(args as ReopenPollArgs, identity);
+    case 'announcements.reopenVoting':
+      return reopenVoting(args as ReopenVotingArgs, identity);
     case 'announcements.reopenGiveaway':
       return reopenGiveaway(args as ReopenGiveawayArgs, identity);
     case 'announcements.redrawGiveaway':

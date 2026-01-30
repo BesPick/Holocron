@@ -39,6 +39,7 @@ type ScheduleDetailsModalProps = {
   onEditHostIdChange: (value: string) => void;
   onEditCanceledChange: (value: boolean) => void;
   onCloseEdit: () => void;
+  onOpenHistory: (event: CalendarEvent) => void;
 };
 
 export function ScheduleDetailsModal({
@@ -66,6 +67,7 @@ export function ScheduleDetailsModal({
   onEditHostIdChange,
   onEditCanceledChange,
   onCloseEdit,
+  onOpenHistory,
 }: ScheduleDetailsModalProps) {
   return (
     <div
@@ -187,15 +189,24 @@ export function ScheduleDetailsModal({
                         <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
                           Admin override
                         </p>
-                        {!isEditing ? (
-                          <button
-                            type='button'
-                            onClick={() => onOpenEdit(event)}
-                            className='rounded-full border border-border px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-secondary/70'
-                          >
-                            Edit event
-                          </button>
-                        ) : null}
+                      {!isEditing ? (
+                        <button
+                          type='button'
+                          onClick={() => onOpenEdit(event)}
+                          className='rounded-full border border-border px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-secondary/70'
+                        >
+                          Edit event
+                        </button>
+                      ) : null}
+                      {event.hasHistory ? (
+                        <button
+                          type='button'
+                          onClick={() => onOpenHistory(event)}
+                          className='rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1 text-xs font-semibold text-teal-700 transition hover:bg-teal-500/20'
+                        >
+                          History
+                        </button>
+                      ) : null}
                       </div>
                       {isEditing ? (
                         <div className='mt-3 space-y-3'>

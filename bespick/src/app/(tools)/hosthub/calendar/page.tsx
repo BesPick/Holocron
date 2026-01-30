@@ -16,6 +16,7 @@ import {
   getEligibleStandupRoster,
   getScheduleRuleConfig,
   getScheduleRefreshNotice,
+  listScheduleEventHistoryKeysInRange,
   listScheduleEventOverridesInRange,
 } from '@/server/services/hosthub-schedule';
 
@@ -76,6 +77,10 @@ export default async function HostHubCalendarPage() {
   const demoRule = await getScheduleRuleConfig('demo-day');
   const standupRule = await getScheduleRuleConfig('standup');
   const refreshNotice = await getScheduleRefreshNotice(now);
+  const eventHistoryKeys = await listScheduleEventHistoryKeysInRange({
+    startDate,
+    endDate,
+  });
   const eventOverrides = Object.fromEntries(
     overrides.map((override) => [
       `${override.eventType}-${override.date}`,
@@ -106,6 +111,7 @@ export default async function HostHubCalendarPage() {
         roster={roster}
         building892Assignments={building892Assignments}
         currentUserTeam={currentTeam}
+        eventHistoryKeys={eventHistoryKeys}
       />
     </section>
   );

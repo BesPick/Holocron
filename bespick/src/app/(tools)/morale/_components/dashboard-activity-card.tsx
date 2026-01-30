@@ -5,6 +5,7 @@ import { formatCreator, formatDate, formatEventType } from '@/lib/announcements'
 import { ActionMenu } from './action-menu';
 import { ActivityDescription } from './activity-description';
 import type { Announcement, AnnouncementId } from './types';
+import React from 'react';
 
 type DashboardActivityCardProps = {
   activity: Announcement;
@@ -37,6 +38,7 @@ export function DashboardActivityCard({
   onOpenGiveaway,
   onViewAnnouncement,
 }: DashboardActivityCardProps) {
+  const [now, setNow] = React.useState(() => Date.now());
   const publishedDate = formatDate(activity.publishAt);
   const editedDate = activity.updatedAt ? formatDate(activity.updatedAt) : null;
   const autoDeleteDate =
@@ -56,6 +58,24 @@ export function DashboardActivityCard({
     isGiveawayCard &&
     activity.status === 'published' &&
     !activity.giveawayIsClosed;
+  const pollClosesAt =
+    isPollCard && typeof activity.pollClosesAt === 'number'
+      ? activity.pollClosesAt
+      : null;
+  const votingClosesAt =
+    isVotingCard && typeof activity.votingAutoCloseAt === 'number'
+      ? activity.votingAutoCloseAt
+      : null;
+  const pollClosed = pollClosesAt !== null && pollClosesAt <= now;
+  const votingClosed = votingClosesAt !== null && votingClosesAt <= now;
+  const isPollOpen =
+    isPollCard && activity.status === 'published' && !pollClosed;
+  const isVotingOpen =
+    isVotingCard && activity.status === 'published' && !votingClosed;
+  const giveawayAutoCloseAt =
+    typeof activity.giveawayAutoCloseAt === 'number'
+      ? activity.giveawayAutoCloseAt
+      : null;
   const goalReached =
     isFundraiserCard &&
     typeof activity.fundraiserGoal === 'number' &&
@@ -84,6 +104,76 @@ export function DashboardActivityCard({
   const isDeleting = deletingId === activity._id;
   const isArchiving = archivingId === activity._id;
 
+  React.useEffect(() => {
+    const shouldTick =
+      (giveawayAutoCloseAt && !activity.giveawayIsClosed) ||
+      (pollClosesAt && !pollClosed) ||
+      (votingClosesAt && !votingClosed);
+    if (!shouldTick) return;
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [
+    giveawayAutoCloseAt,
+    activity.giveawayIsClosed,
+    pollClosesAt,
+    pollClosed,
+    votingClosesAt,
+    votingClosed,
+  ]);
+
+  const giveawayCountdownLabel = React.useMemo(() => {
+    if (!giveawayAutoCloseAt || activity.giveawayIsClosed) return null;
+    const remaining = Math.max(0, giveawayAutoCloseAt - now);
+    const seconds = Math.floor(remaining / 1000);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    const parts = [
+      days ? `${days}d` : null,
+      hours ? `${hours}h` : null,
+      minutes ? `${minutes}m` : null,
+      `${secs}s`,
+    ].filter(Boolean);
+    return parts.join(' ');
+  }, [giveawayAutoCloseAt, activity.giveawayIsClosed, now]);
+
+  const pollCountdownLabel = React.useMemo(() => {
+    if (!pollClosesAt || pollClosed) return null;
+    const remaining = Math.max(0, pollClosesAt - now);
+    const seconds = Math.floor(remaining / 1000);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    const parts = [
+      days ? `${days}d` : null,
+      hours ? `${hours}h` : null,
+      minutes ? `${minutes}m` : null,
+      `${secs}s`,
+    ].filter(Boolean);
+    return parts.join(' ');
+  }, [now, pollClosed, pollClosesAt]);
+
+  const votingCountdownLabel = React.useMemo(() => {
+    if (!votingClosesAt || votingClosed) return null;
+    const remaining = Math.max(0, votingClosesAt - now);
+    const seconds = Math.floor(remaining / 1000);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    const parts = [
+      days ? `${days}d` : null,
+      hours ? `${hours}h` : null,
+      minutes ? `${minutes}m` : null,
+      `${secs}s`,
+    ].filter(Boolean);
+    return parts.join(' ');
+  }, [now, votingClosed, votingClosesAt]);
+
   return (
     <article className='rounded-xl border border-border bg-card p-6 shadow-sm transition hover:shadow-md'>
       <header className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
@@ -107,6 +197,38 @@ export function DashboardActivityCard({
               {isGiveawayOpen ? 'Open' : 'Closed'}
             </span>
           )}
+          {isPollCard && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                isPollOpen
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground'
+              }`}
+            >
+              {isPollOpen ? (
+                <Unlock className='h-3 w-3' aria-hidden='true' />
+              ) : (
+                <Lock className='h-3 w-3' aria-hidden='true' />
+              )}
+              {isPollOpen ? 'Open' : 'Closed'}
+            </span>
+          )}
+          {isVotingCard && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                isVotingOpen
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground'
+              }`}
+            >
+              {isVotingOpen ? (
+                <Unlock className='h-3 w-3' aria-hidden='true' />
+              ) : (
+                <Lock className='h-3 w-3' aria-hidden='true' />
+              )}
+              {isVotingOpen ? 'Open' : 'Closed'}
+            </span>
+          )}
           {goalReached && (
             <span className='inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700'>
               <Trophy className='h-3 w-3' aria-hidden='true' />
@@ -124,6 +246,24 @@ export function DashboardActivityCard({
             <time dateTime={new Date(activity.publishAt).toISOString()}>
               Published {publishedDate}
             </time>
+            {isGiveawayCard && giveawayAutoCloseAt && (
+              <span className='text-xs text-muted-foreground'>
+                Auto close: {formatDate(giveawayAutoCloseAt)}
+                {giveawayCountdownLabel ? ` • ${giveawayCountdownLabel}` : ''}
+              </span>
+            )}
+            {isPollCard && pollClosesAt && (
+              <span className='text-xs text-muted-foreground'>
+                Poll {pollClosed ? 'closed' : 'closes'}: {formatDate(pollClosesAt)}
+                {pollCountdownLabel ? ` • ${pollCountdownLabel}` : ''}
+              </span>
+            )}
+            {isVotingCard && votingClosesAt && (
+              <span className='text-xs text-muted-foreground'>
+                Voting {votingClosed ? 'closed' : 'closes'}: {formatDate(votingClosesAt)}
+                {votingCountdownLabel ? ` • ${votingCountdownLabel}` : ''}
+              </span>
+            )}
             {canManage && autoDeleteDate && (
               <span className='text-xs text-muted-foreground'>
                 Auto Delete: {autoDeleteDate}

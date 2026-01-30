@@ -211,6 +211,7 @@ export function FormModal({
   const [submitting, setSubmitting] = React.useState(false);
   const [localError, setLocalError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const [anonymousChoice, setAnonymousChoice] = React.useState(false);
   const [payment, setPayment] = React.useState<PaymentState>({
     orderId: null,
     captured: false,
@@ -240,6 +241,7 @@ export function FormModal({
     setPayment({ orderId: null, captured: false, error: null, amount: null });
     setLocalError(null);
     setSuccessMessage(null);
+    setAnonymousChoice(false);
     if (successTimeoutRef.current) {
       clearTimeout(successTimeoutRef.current);
       successTimeoutRef.current = null;
@@ -274,6 +276,9 @@ export function FormModal({
   }, [onClose, previewImage, showSubmissions]);
 
   const formQuestions = form?.formQuestions ?? [];
+  const allowAnonymousChoice = Boolean(form?.formAllowAnonymousChoice);
+  const forceAnonymous = Boolean(form?.formForceAnonymous);
+  const showAnonymousChoice = allowAnonymousChoice && !forceAnonymous;
   const questionsById = React.useMemo(
     () => new Map(formQuestions.map((question) => [question.id, question])),
     [formQuestions],
@@ -581,6 +586,7 @@ export function FormModal({
           questionId: question.id,
           value: answers[question.id] ?? '',
         })),
+        anonymousChoice: showAnonymousChoice ? anonymousChoice : undefined,
         paypalOrderId: payment.orderId ?? undefined,
         paymentAmount: paymentRequired ? computedPrice : undefined,
       });
@@ -954,6 +960,32 @@ export function FormModal({
                   </div>
                 );
               })}
+
+              {forceAnonymous && (
+                <div className='rounded-xl border border-border bg-background/60 p-4 text-sm text-muted-foreground'>
+                  Anonymous submissions are enforced for this form.
+                </div>
+              )}
+
+              {showAnonymousChoice && (
+                <div className='rounded-xl border border-border bg-background/60 p-4'>
+                  <label className='flex items-center gap-3 text-sm text-foreground'>
+                    <input
+                      type='checkbox'
+                      checked={anonymousChoice}
+                      onChange={(event) =>
+                        setAnonymousChoice(event.target.checked)
+                      }
+                      disabled={isReadOnly || !canSubmit}
+                      className='h-4 w-4 rounded border-border'
+                    />
+                    Submit this form anonymously
+                  </label>
+                  <p className='mt-2 text-xs text-muted-foreground'>
+                    If selected, your name will not appear on the submission.
+                  </p>
+                </div>
+              )}
             </div>
 
             {paymentRequired && !payment.captured && (

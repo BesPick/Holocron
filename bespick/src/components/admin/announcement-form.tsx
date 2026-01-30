@@ -118,6 +118,10 @@ export function AnnouncementForm({
   const [votingAddVoteLimit, setVotingAddVoteLimit] = React.useState('');
   const [votingRemoveVoteLimit, setVotingRemoveVoteLimit] =
     React.useState('');
+  const [votingAutoCloseEnabled, setVotingAutoCloseEnabled] =
+    React.useState(false);
+  const [votingCloseDate, setVotingCloseDate] = React.useState('');
+  const [votingCloseTime, setVotingCloseTime] = React.useState('');
   const [votingLeaderboardMode, setVotingLeaderboardMode] =
     React.useState<VotingLeaderboardMode>('all');
   const [votingUsersLoading, setVotingUsersLoading] = React.useState(false);
@@ -130,6 +134,9 @@ export function AnnouncementForm({
     React.useState<FormSubmissionLimit>('unlimited');
   const [formPaymentEnabled, setFormPaymentEnabled] = React.useState(false);
   const [formPrice, setFormPrice] = React.useState('');
+  const [formAllowAnonymousChoice, setFormAllowAnonymousChoice] =
+    React.useState(false);
+  const [formForceAnonymous, setFormForceAnonymous] = React.useState(false);
   const [fundraiserGoal, setFundraiserGoal] = React.useState('');
   const [fundraiserAnonymityMode, setFundraiserAnonymityMode] =
     React.useState<FundraiserAnonymityMode>('user_choice');
@@ -399,6 +406,7 @@ export function AnnouncementForm({
   const minAutoDeleteDate = earliestAutomationDate;
   const minAutoArchiveDate = earliestAutomationDate;
   const minGiveawayCloseDate = earliestAutomationDate;
+  const minVotingCloseDate = earliestAutomationDate;
 
   const handleTogglePollClose = React.useCallback(
     (enabled: boolean) => {
@@ -461,6 +469,41 @@ export function AnnouncementForm({
       } else {
         setGiveawayCloseDate('');
         setGiveawayCloseTime('');
+      }
+    },
+    [earliestAutomationDate, time],
+  );
+
+  const handleToggleFormAllowAnonymousChoice = React.useCallback(
+    (enabled: boolean) => {
+      setFormAllowAnonymousChoice(enabled);
+      if (enabled) {
+        setFormForceAnonymous(false);
+      }
+    },
+    [],
+  );
+
+  const handleToggleFormForceAnonymous = React.useCallback(
+    (enabled: boolean) => {
+      setFormForceAnonymous(enabled);
+      if (enabled) {
+        setFormAllowAnonymousChoice(false);
+      }
+    },
+    [],
+  );
+
+  const handleToggleVotingAutoClose = React.useCallback(
+    (enabled: boolean) => {
+      setVotingAutoCloseEnabled(enabled);
+      if (enabled) {
+        const defaultCloseDate = earliestAutomationDate;
+        setVotingCloseDate((prev) => prev || defaultCloseDate);
+        setVotingCloseTime((prev) => prev || time || '');
+      } else {
+        setVotingCloseDate('');
+        setVotingCloseTime('');
       }
     },
     [earliestAutomationDate, time],
@@ -624,6 +667,18 @@ export function AnnouncementForm({
           ? activity.votingRemoveVoteLimit.toString()
           : '',
       );
+      if (typeof activity.votingAutoCloseAt === 'number') {
+        const closeAt = new Date(activity.votingAutoCloseAt);
+        setVotingAutoCloseEnabled(true);
+        setVotingCloseDate(closeAt.toISOString().slice(0, 10));
+        setVotingCloseTime(
+          `${String(closeAt.getHours()).padStart(2, '0')}:${String(closeAt.getMinutes()).padStart(2, '0')}`,
+        );
+      } else {
+        setVotingAutoCloseEnabled(false);
+        setVotingCloseDate('');
+        setVotingCloseTime('');
+      }
       setVotingUsersError(null);
     } else {
       setVotingGroupSelections(initGroupSelections(true));
@@ -637,6 +692,9 @@ export function AnnouncementForm({
       setVotingRemoveVotePrice('');
       setVotingAddVoteLimit('');
       setVotingRemoveVoteLimit('');
+      setVotingAutoCloseEnabled(false);
+      setVotingCloseDate('');
+      setVotingCloseTime('');
       setVotingUsersError(null);
       setVotingLeaderboardMode('all');
     }
@@ -649,6 +707,10 @@ export function AnnouncementForm({
       setFormSubmissionLimit(
         activity.formSubmissionLimit ?? 'unlimited',
       );
+      setFormAllowAnonymousChoice(
+        Boolean(activity.formAllowAnonymousChoice),
+      );
+      setFormForceAnonymous(Boolean(activity.formForceAnonymous));
       const price =
         typeof activity.formPrice === 'number' ? activity.formPrice : null;
       setFormPaymentEnabled(typeof price === 'number');
@@ -658,6 +720,8 @@ export function AnnouncementForm({
     } else {
       setFormQuestions([]);
       setFormSubmissionLimit('unlimited');
+      setFormAllowAnonymousChoice(false);
+      setFormForceAnonymous(false);
       setFormPaymentEnabled(false);
       setFormPrice('');
     }
@@ -832,6 +896,9 @@ export function AnnouncementForm({
       setVotingRemoveVotePrice('');
       setVotingAddVoteLimit('');
       setVotingRemoveVoteLimit('');
+      setVotingAutoCloseEnabled(false);
+      setVotingCloseDate('');
+      setVotingCloseTime('');
       setVotingUsersError(null);
       setVotingUsersLoading(false);
       setVotingRosterRequested(false);
@@ -859,6 +926,8 @@ export function AnnouncementForm({
     if (isForm) return;
     setFormQuestions([]);
     setFormSubmissionLimit('unlimited');
+    setFormAllowAnonymousChoice(false);
+    setFormForceAnonymous(false);
     setFormPaymentEnabled(false);
     setFormPrice('');
   }, [isForm]);
@@ -965,11 +1034,16 @@ export function AnnouncementForm({
     setVotingRemoveVotePrice('');
     setVotingAddVoteLimit('');
     setVotingRemoveVoteLimit('');
+    setVotingAutoCloseEnabled(false);
+    setVotingCloseDate('');
+    setVotingCloseTime('');
     setVotingUsersError(null);
     setVotingRosterRequested(false);
     setVotingLeaderboardMode('all');
     setFormQuestions([]);
     setFormSubmissionLimit('unlimited');
+    setFormAllowAnonymousChoice(false);
+    setFormForceAnonymous(false);
     setFormPaymentEnabled(false);
     setFormPrice('');
     setFundraiserGoal('');
@@ -1080,9 +1154,12 @@ export function AnnouncementForm({
     let votingAllowUngroupedPayload: boolean | undefined;
     let votingAllowRemovalsPayload: boolean | undefined;
     let votingLeaderboardModePayload: VotingLeaderboardMode | undefined;
+    let votingAutoCloseAtPayload: number | null | undefined;
     let formQuestionsPayload: FormQuestion[] | undefined;
     let formSubmissionLimitPayload: FormSubmissionLimit | undefined;
     let formPricePayload: number | null | undefined;
+    let formAllowAnonymousChoicePayload: boolean | undefined;
+    let formForceAnonymousPayload: boolean | undefined;
     let fundraiserGoalPayload: number | undefined;
     let fundraiserAnonymityModePayload: FundraiserAnonymityMode | undefined;
     let giveawayAllowMultipleEntriesPayload: boolean | undefined;
@@ -1213,6 +1290,28 @@ export function AnnouncementForm({
       );
       votingAllowUngroupedPayload = votingAllowUngrouped;
       votingLeaderboardModePayload = votingLeaderboardMode;
+
+      if (votingAutoCloseEnabled) {
+        if (!votingCloseDate || !votingCloseTime) {
+          setError('Please select a voting close date and time.');
+          return;
+        }
+        const autoCloseCandidate = combineDateTimeToEpochMs(
+          votingCloseDate,
+          votingCloseTime,
+        );
+        if (autoCloseCandidate <= nextPublishAt) {
+          setError('Voting close time must be after the publish time.');
+          return;
+        }
+        if (autoCloseCandidate <= Date.now()) {
+          setError('Voting close time must be in the future.');
+          return;
+        }
+        votingAutoCloseAtPayload = autoCloseCandidate;
+      } else {
+        votingAutoCloseAtPayload = null;
+      }
     }
 
     if (isForm) {
@@ -1404,6 +1503,14 @@ export function AnnouncementForm({
 
         formQuestionsPayload = sanitizedQuestions;
         formSubmissionLimitPayload = formSubmissionLimit;
+        if (formAllowAnonymousChoice && formForceAnonymous) {
+          setError(
+            'Choose either optional anonymous submissions or enforce anonymous submissions.',
+          );
+          return;
+        }
+        formAllowAnonymousChoicePayload = formAllowAnonymousChoice;
+        formForceAnonymousPayload = formForceAnonymous;
         if (formPaymentEnabled) {
           const hasQuestionPricing = sanitizedQuestions.some((question) => {
             if (
@@ -1560,9 +1667,12 @@ export function AnnouncementForm({
           votingAllowUngrouped: votingAllowUngroupedPayload,
           votingAllowRemovals: votingAllowRemovalsPayload,
           votingLeaderboardMode: votingLeaderboardModePayload,
+          votingAutoCloseAt: votingAutoCloseAtPayload,
           formQuestions: formQuestionsPayload,
           formSubmissionLimit: formSubmissionLimitPayload,
           formPrice: formPricePayload,
+          formAllowAnonymousChoice: formAllowAnonymousChoicePayload,
+          formForceAnonymous: formForceAnonymousPayload,
           fundraiserGoal: fundraiserGoalPayload,
           fundraiserAnonymityMode: fundraiserAnonymityModePayload,
           giveawayAllowMultipleEntries: giveawayAllowMultipleEntriesPayload,
@@ -1601,9 +1711,12 @@ export function AnnouncementForm({
           votingAllowUngrouped: votingAllowUngroupedPayload,
           votingAllowRemovals: votingAllowRemovalsPayload,
           votingLeaderboardMode: votingLeaderboardModePayload,
+          votingAutoCloseAt: votingAutoCloseAtPayload,
           formQuestions: formQuestionsPayload,
           formSubmissionLimit: formSubmissionLimitPayload,
           formPrice: formPricePayload,
+          formAllowAnonymousChoice: formAllowAnonymousChoicePayload,
+          formForceAnonymous: formForceAnonymousPayload,
           fundraiserGoal: fundraiserGoalPayload,
           fundraiserAnonymityMode: fundraiserAnonymityModePayload,
           giveawayAllowMultipleEntries: giveawayAllowMultipleEntriesPayload,
@@ -1717,6 +1830,19 @@ export function AnnouncementForm({
       timeStyle: 'short',
     });
   }, [giveawayAutoCloseEnabled, giveawayCloseDate, giveawayCloseTime]);
+
+  const votingCloseSummary = React.useMemo(() => {
+    if (!votingAutoCloseEnabled || !votingCloseDate || !votingCloseTime) {
+      return null;
+    }
+    const [y, m, d] = votingCloseDate.split('-').map(Number);
+    const [hh, mm] = votingCloseTime.split(':').map(Number);
+    const dt = new Date(y, (m as number) - 1, d, hh, mm, 0, 0);
+    return dt.toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  }, [votingAutoCloseEnabled, votingCloseDate, votingCloseTime]);
 
   const minPollCloseDate = React.useMemo(() => {
     return date || todayLocalISO;
@@ -1957,6 +2083,49 @@ export function AnnouncementForm({
     time,
   ]);
 
+  const availableVotingCloseTimeSlots = React.useMemo(() => {
+    if (!votingAutoCloseEnabled || !votingCloseDate) return timeSlots;
+
+    const publishDateForGuard =
+      showSchedulingControls && date ? date : todayLocalISO;
+    const publishMinutes =
+      showSchedulingControls && time ? slotToMinutes(time) : null;
+
+    return timeSlots.filter((slot) => {
+      const minutes = slotToMinutes(slot);
+
+      if (votingCloseDate === todayLocalISO) {
+        const current = new Date(now);
+        const currentMinutes = current.getHours() * 60 + current.getMinutes();
+        if (minutes <= currentMinutes) {
+          return false;
+        }
+      }
+
+      if (
+        showSchedulingControls &&
+        publishMinutes !== null &&
+        votingCloseDate === publishDateForGuard
+      ) {
+        if (minutes <= publishMinutes) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [
+    votingAutoCloseEnabled,
+    votingCloseDate,
+    timeSlots,
+    todayLocalISO,
+    now,
+    slotToMinutes,
+    showSchedulingControls,
+    date,
+    time,
+  ]);
+
   const displayGiveawayCloseTimeSlots = React.useMemo(() => {
     if (
       giveawayCloseTime &&
@@ -1967,10 +2136,25 @@ export function AnnouncementForm({
     return availableGiveawayCloseTimeSlots;
   }, [giveawayCloseTime, availableGiveawayCloseTimeSlots]);
 
+  const displayVotingCloseTimeSlots = React.useMemo(() => {
+    if (
+      votingCloseTime &&
+      !availableVotingCloseTimeSlots.includes(votingCloseTime)
+    ) {
+      return [votingCloseTime, ...availableVotingCloseTimeSlots];
+    }
+    return availableVotingCloseTimeSlots;
+  }, [votingCloseTime, availableVotingCloseTimeSlots]);
+
   const noGiveawayCloseSlotsLeftToday =
     giveawayAutoCloseEnabled &&
     giveawayCloseDate === todayLocalISO &&
     availableGiveawayCloseTimeSlots.length === 0;
+
+  const noVotingCloseSlotsLeftToday =
+    votingAutoCloseEnabled &&
+    votingCloseDate === todayLocalISO &&
+    availableVotingCloseTimeSlots.length === 0;
 
   React.useEffect(() => {
     if (
@@ -1989,6 +2173,28 @@ export function AnnouncementForm({
     giveawayAutoCloseEnabled,
     giveawayCloseTime,
     giveawayCloseDate,
+    todayLocalISO,
+    now,
+    slotToMinutes,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      !votingAutoCloseEnabled ||
+      !votingCloseTime ||
+      votingCloseDate !== todayLocalISO
+    ) {
+      return;
+    }
+    const current = new Date(now);
+    const currentMinutes = current.getHours() * 60 + current.getMinutes();
+    if (slotToMinutes(votingCloseTime) <= currentMinutes) {
+      setVotingCloseTime('');
+    }
+  }, [
+    votingAutoCloseEnabled,
+    votingCloseTime,
+    votingCloseDate,
     todayLocalISO,
     now,
     slotToMinutes,
@@ -2157,6 +2363,10 @@ export function AnnouncementForm({
         onTogglePayment={setFormPaymentEnabled}
         price={formPrice}
         onChangePrice={setFormPrice}
+        allowAnonymousChoice={formAllowAnonymousChoice}
+        forceAnonymous={formForceAnonymous}
+        onToggleAllowAnonymousChoice={handleToggleFormAllowAnonymousChoice}
+        onToggleForceAnonymous={handleToggleFormForceAnonymous}
       />
 
       <FundraiserSettingsSection
@@ -2201,6 +2411,16 @@ export function AnnouncementForm({
         onChangeRemovePrice={setVotingRemoveVotePrice}
         onChangeAddLimit={setVotingAddVoteLimit}
         onChangeRemoveLimit={setVotingRemoveVoteLimit}
+        autoCloseEnabled={votingAutoCloseEnabled}
+        closeDate={votingCloseDate}
+        closeTime={votingCloseTime}
+        minCloseDate={minVotingCloseDate}
+        displayCloseTimeSlots={displayVotingCloseTimeSlots}
+        noCloseSlotsLeftToday={noVotingCloseSlotsLeftToday}
+        closeSummary={votingCloseSummary}
+        onToggleAutoClose={handleToggleVotingAutoClose}
+        onChangeCloseDate={setVotingCloseDate}
+        onChangeCloseTime={setVotingCloseTime}
         groupSelections={votingGroupSelections}
         portfolioSelections={votingPortfolioSelections}
         allowUngrouped={votingAllowUngrouped}

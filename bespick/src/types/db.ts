@@ -86,6 +86,7 @@ export type AnnouncementDoc = {
   pollAllowAdditionalOptions?: boolean;
   pollMaxSelections?: number;
   pollClosesAt?: number | null;
+  pollOriginalClosesAt?: number | null;
   votingParticipants?: VotingParticipant[];
   votingAddVotePrice?: number;
   votingRemoveVotePrice?: number;
@@ -96,9 +97,13 @@ export type AnnouncementDoc = {
   votingAllowUngrouped?: boolean;
   votingAllowRemovals?: boolean;
   votingLeaderboardMode?: VotingLeaderboardMode;
+  votingAutoCloseAt?: number | null;
+  votingOriginalAutoCloseAt?: number | null;
   formQuestions?: FormQuestion[];
   formSubmissionLimit?: FormSubmissionLimit;
   formPrice?: number | null;
+  formAllowAnonymousChoice?: boolean;
+  formForceAnonymous?: boolean;
   fundraiserGoal?: number | null;
   fundraiserAnonymityMode?: FundraiserAnonymityMode;
   fundraiserTotalRaised?: number | null;
@@ -128,6 +133,7 @@ export type FormSubmissionDoc = {
   announcementId: Id<'announcements'>;
   userId: string;
   userName?: string | null;
+  isAnonymous?: boolean;
   answers: FormAnswer[];
   createdAt: number;
   paypalOrderId?: string | null;

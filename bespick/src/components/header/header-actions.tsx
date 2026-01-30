@@ -48,6 +48,8 @@ import {
   type AssignmentModalEventDetail,
   type AssignmentModalFocus,
 } from '@/lib/assignment-modal-events';
+import { getPendingSwapRequestCountAction } from '@/server/actions/hosthub-shift-swaps';
+import { subscribeLive } from '@/lib/liveEvents';
 
 export function HeaderActions() {
   const { user } = useUser();
@@ -68,6 +70,7 @@ export function HeaderActions() {
   const [assignmentRank, setAssignmentRank] = useState<Rank | ''>('');
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [isAssignmentPending, startAssignmentTransition] = useTransition();
+  const [pendingSwapCount, setPendingSwapCount] = useState(0);
 
   const role = user?.publicMetadata?.role as string | null | undefined;
   const isAdmin = role === 'admin';
@@ -144,7 +147,12 @@ export function HeaderActions() {
 
   const navItems = useMemo(() => {
     const items = [
-      { href: '/hosthub', label: 'HostHub', icon: Server },
+      {
+        href: '/hosthub',
+        label: 'HostHub',
+        icon: Server,
+        showNotification: pendingSwapCount > 0,
+      },
       { href: '/morale', label: 'Morale', icon: HeartPulse },
       { href: '/games', label: 'Games', icon: Gamepad2 },
     ];
@@ -166,7 +174,33 @@ export function HeaderActions() {
     }
 
     return items;
-  }, [canViewRoster, isAdmin]);
+  }, [canViewRoster, isAdmin, pendingSwapCount]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchCount = async () => {
+      if (!user) {
+        if (active) setPendingSwapCount(0);
+        return;
+      }
+      try {
+        const result = await getPendingSwapRequestCountAction();
+        if (active) {
+          setPendingSwapCount(result.count);
+        }
+      } catch {
+        if (active) setPendingSwapCount(0);
+      }
+    };
+    void fetchCount();
+    const unsubscribe = subscribeLive(['hosthubSchedule'], () => {
+      void fetchCount();
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!open) {
@@ -291,12 +325,13 @@ export function HeaderActions() {
           <div className='flex items-center gap-3'>
             <SignedIn>
               <div className='flex items-center gap-3'>
-                {navItems.map(({ href, label, icon }) => (
+                {navItems.map(({ href, label, icon, showNotification }) => (
                   <HeaderButton
                     key={href}
                     href={href}
                     label={label}
                     icon={icon}
+                    showNotification={showNotification}
                   />
                 ))}
                 <UserAssignmentMenu
@@ -365,7 +400,7 @@ export function HeaderActions() {
           <ClerkLoaded>
             <div className='flex flex-col gap-3'>
               <SignedIn>
-                {navItems.map(({ href, label, icon }) => (
+                {navItems.map(({ href, label, icon, showNotification }) => (
                   <HeaderButton
                     key={href}
                     href={href}
@@ -373,6 +408,7 @@ export function HeaderActions() {
                     icon={icon}
                     className='w-full'
                     onClick={closeMenu}
+                    showNotification={showNotification}
                   />
                 ))}
               </SignedIn>

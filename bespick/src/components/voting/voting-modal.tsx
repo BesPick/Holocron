@@ -30,6 +30,7 @@ type Announcement = Doc<'announcements'>;
 type VotingModalProps = {
   event: Announcement;
   onClose: () => void;
+  isAdmin: boolean;
 };
 
 type VoteSelection = {
@@ -50,7 +51,7 @@ const createCurrencyFormatter = (currency: string) =>
     minimumFractionDigits: 2,
   });
 
-export function VotingModal({ event, onClose }: VotingModalProps) {
+export function VotingModal({ event, onClose, isAdmin }: VotingModalProps) {
   const liveEvent = useApiQuery<
     { id: Id<'announcements'> },
     Announcement | null
@@ -69,6 +70,7 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
   const paypalBuyerCountry =
     process.env.NEXT_PUBLIC_PAYPAL_BUYER_COUNTRY?.toUpperCase() ?? undefined;
   const enableVenmo = paypalCurrency === 'USD';
+  const [now, setNow] = React.useState(() => Date.now());
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
     const updateMobile = () => setIsMobile(window.innerWidth < 768);
@@ -89,6 +91,37 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
         : DEFAULT_PAYMENT_METHOD_BUTTONS,
     [allowVenmo],
   );
+  const votingAutoCloseAt =
+    typeof currentEvent.votingAutoCloseAt === 'number'
+      ? currentEvent.votingAutoCloseAt
+      : null;
+  const isVotingClosed = Boolean(
+    votingAutoCloseAt && votingAutoCloseAt <= now,
+  );
+  const votingCountdown = React.useMemo(() => {
+    if (!votingAutoCloseAt || isVotingClosed) return null;
+    const remaining = Math.max(0, votingAutoCloseAt - now);
+    const seconds = Math.floor(remaining / 1000);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    const parts = [
+      days ? `${days}d` : null,
+      hours ? `${hours}h` : null,
+      minutes ? `${minutes}m` : null,
+      `${secs}s`,
+    ].filter(Boolean);
+    return parts.join(' ');
+  }, [isVotingClosed, now, votingAutoCloseAt]);
+
+  React.useEffect(() => {
+    if (!votingAutoCloseAt) return;
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [votingAutoCloseAt]);
 
   const normalizeParticipants = React.useCallback(() => {
     return (currentEvent.votingParticipants ?? []).map((participant) => ({
@@ -121,6 +154,7 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [transactionId, setTransactionId] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isClosing, setIsClosing] = React.useState(false);
   const clearCheckoutFeedback = React.useCallback(() => {
     setStatusMessage(null);
     setStatusState(null);
@@ -139,6 +173,43 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
       message?: string;
     }
   >(api.announcements.purchaseVotes);
+  const closeVoting = useApiMutation(api.announcements.closeVoting);
+  const reopenVoting = useApiMutation(api.announcements.reopenVoting);
+  const handleCloseVoting = React.useCallback(async () => {
+    if (isVotingClosed) {
+      showErrorMessage('Voting is already closed.');
+      return;
+    }
+    try {
+      setIsClosing(true);
+      clearCheckoutFeedback();
+      await closeVoting({ id: eventId });
+    } catch (error) {
+      showErrorMessage(
+        error instanceof Error ? error.message : 'Failed to close voting.',
+      );
+    } finally {
+      setIsClosing(false);
+    }
+  }, [clearCheckoutFeedback, closeVoting, eventId, isVotingClosed, showErrorMessage]);
+
+  const handleReopenVoting = React.useCallback(async () => {
+    if (!isVotingClosed) {
+      showErrorMessage('Voting is already open.');
+      return;
+    }
+    try {
+      setIsClosing(true);
+      clearCheckoutFeedback();
+      await reopenVoting({ id: eventId });
+    } catch (error) {
+      showErrorMessage(
+        error instanceof Error ? error.message : 'Failed to reopen voting.',
+      );
+    } finally {
+      setIsClosing(false);
+    }
+  }, [clearCheckoutFeedback, eventId, isVotingClosed, reopenVoting, showErrorMessage]);
   const adjustmentsRef = React.useRef<VoteAdjustmentPayload[]>([]);
   React.useEffect(() => {
     if (liveEvent === null) {
@@ -658,8 +729,30 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
                   <p className='mt-1 text-xs text-muted-foreground'>
                     Published {formatDate(currentEvent.publishAt)}
                   </p>
+                  {votingAutoCloseAt && (
+                    <p className='mt-2 text-xs text-muted-foreground'>
+                      Voting closes {formatDate(votingAutoCloseAt)}
+                      {votingCountdown ? ` • ${votingCountdown}` : ''}
+                    </p>
+                  )}
                 </div>
-                <div className='flex justify-end sm:justify-start'>
+                <div className='flex justify-end gap-2 sm:justify-start'>
+                  {isAdmin && (
+                    <button
+                      type='button'
+                      onClick={isVotingClosed ? handleReopenVoting : handleCloseVoting}
+                      disabled={isClosing}
+                      className='rounded-full border border-primary px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60'
+                    >
+                      {isVotingClosed
+                        ? isClosing
+                          ? 'Reopening...'
+                          : 'Reopen voting'
+                        : isClosing
+                          ? 'Closing...'
+                          : 'Close voting'}
+                    </button>
+                  )}
                   <button
                     type='button'
                     onClick={onClose}
@@ -689,172 +782,191 @@ export function VotingModal({ event, onClose }: VotingModalProps) {
             </div>
 
             <div className='min-w-0 lg:col-start-2 lg:row-start-2'>
-              <div className='flex min-w-0 flex-col gap-6 lg:max-h-[80vh] lg:overflow-y-auto lg:pr-2'>
-                <div className='rounded-xl border border-border bg-background/60 p-4'>
-                  <div className='flex flex-wrap items-center gap-4 text-sm text-muted-foreground'>
-                    <span>
-                      Add vote price:{' '}
-                      <span className='font-semibold text-foreground'>
-                        ${addPrice.toFixed(2)}
-                      </span>
-                    </span>
-                    {allowRemovals && (
-                      <span>
-                        Remove vote price:{' '}
-                        <span className='font-semibold text-foreground'>
-                          ${removePrice.toFixed(2)}
-                        </span>
-                      </span>
+              <div className='flex min-w-0 flex-col gap-6 max-h-[75vh] overflow-y-auto pr-2 lg:max-h-[80vh]'>
+                {isVotingClosed ? (
+                  <div className='rounded-xl border border-border bg-background/60 p-4 text-sm text-muted-foreground'>
+                    <div className='flex items-center gap-2 text-foreground'>
+                      <Info className='h-4 w-4 text-muted-foreground' />
+                      Voting is closed.
+                    </div>
+                    {votingAutoCloseAt && (
+                      <p className='mt-2 text-xs text-muted-foreground'>
+                        Closed on {formatDate(votingAutoCloseAt)}.
+                      </p>
                     )}
-                  </div>
-                  <p className='mt-2 text-xs text-muted-foreground'>
-                    Enter how many votes to add{allowRemovals ? ' or remove' : ''}, then submit your purchase to update totals.
-                  </p>
-                  {limitSummary && (
-                    <p className='mt-2 text-xs text-muted-foreground'>
-                      {limitSummary}
+                    <p className='mt-3 text-xs text-muted-foreground'>
+                      The leaderboard remains available for review.
                     </p>
-                  )}
-                </div>
-
-                <div className='flex flex-col gap-3'>
-                  <div className='relative'>
-                    <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
-                    <input
-                      type='search'
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder='Search participants by name...'
-                      className='w-full rounded-lg border border-border bg-background py-2 pl-10 pr-3 text-sm text-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                    />
                   </div>
-
-                  <div className='max-h-[50vh] overflow-y-auto rounded-xl border border-dashed border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:max-h-[40vh]'>
-                    {participants.length === 0 ? (
-                      <p className='p-6 text-sm text-muted-foreground'>
-                        No participants available for this event.
-                      </p>
-                    ) : filteredParticipants.length === 0 ? (
-                      <p className='p-6 text-sm text-muted-foreground'>
-                        No participants match your search.
-                      </p>
-                    ) : (
-                      <ul>
-                        {filteredParticipants.map((participant) => {
-                          const userId = participant.userId;
-                          const addCount = selections[userId]?.add ?? 0;
-                          const removeCount = selections[userId]?.remove ?? 0;
-                          const currentVotes = Math.max(0, participant.votes ?? 0);
-                          const remainingAddLimit =
-                            typeof addVoteLimit === 'number'
-                              ? Math.max(0, addVoteLimit - (totals.add - addCount))
-                              : null;
-                          const remainingRemoveLimit =
-                            allowRemovals && typeof removeVoteLimit === 'number'
-                              ? Math.max(
-                                  0,
-                                  removeVoteLimit - (totals.remove - removeCount),
-                                )
-                              : null;
-                          const addMax =
-                            typeof remainingAddLimit === 'number'
-                              ? remainingAddLimit
-                              : undefined;
-                          const removeMax =
-                            typeof remainingRemoveLimit === 'number'
-                              ? Math.min(currentVotes, remainingRemoveLimit)
-                              : currentVotes;
-                          const fullName = getParticipantName(participant);
-                          return (
-                            <li
-                              key={userId}
-                              className='flex flex-col gap-4 border-b border-border/60 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between'
-                            >
-                              <div className='space-y-1'>
-                                <p className='font-medium text-foreground'>{fullName}</p>
-                                <p className='text-xs text-muted-foreground'>
-                                  Current votes: {currentVotes}
-                                </p>
-                              </div>
-                              <div className='flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end'>
-                                {allowRemovals && (
-                                  <VoteAdjuster
-                                    label='Remove'
-                                    count={removeCount}
-                                    price={removePrice}
-                                    onSetCount={(value) =>
-                                      setSelectionValue(userId, 'remove', value, removeMax)
-                                    }
-                                    max={removeMax}
-                                  />
-                                )}
-                                <VoteAdjuster
-                                  label='Add'
-                                  count={addCount}
-                                  price={addPrice}
-                                  onSetCount={(value) =>
-                                    setSelectionValue(userId, 'add', value, addMax)
-                                  }
-                                  max={addMax}
-                                />
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <div className='space-y-3 rounded-xl border border-border bg-background/70 p-4'>
-                  <SummaryRow label={`Add votes (${totals.add})`} value={totals.addCost} />
-                  {allowRemovals && (
-                    <SummaryRow label={`Remove votes (${totals.remove})`} value={totals.removeCost} />
-                  )}
-                  <div className='flex items-center justify-between border-t border-border pt-3 text-lg font-semibold text-foreground'>
-                    <span>Total price</span>
-                    <span>${totals.totalPrice.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div className='rounded-2xl border border-border bg-background/80 p-5 shadow-inner'>
-                  {requiresPayment ? (
-                    !paypalClientId ? (
-                      <div className='flex flex-col items-center gap-3 text-center text-sm text-muted-foreground'>
-                        <ShieldAlert className='h-6 w-6 text-destructive' />
-                        <p>
-                          PayPal is not configured. Set{' '}
-                          <code className='rounded bg-muted px-1 py-0.5 text-[0.8em]'>
-                            NEXT_PUBLIC_PAYPAL_CLIENT_ID
-                          </code>{' '}
-                          and related env vars to enable checkout.
-                        </p>
+                ) : (
+                  <>
+                    <div className='rounded-xl border border-border bg-background/60 p-4'>
+                      <div className='flex flex-wrap items-center gap-4 text-sm text-muted-foreground'>
+                        <span>
+                          Add vote price:{' '}
+                          <span className='font-semibold text-foreground'>
+                            ${addPrice.toFixed(2)}
+                          </span>
+                        </span>
+                        {allowRemovals && (
+                          <span>
+                            Remove vote price:{' '}
+                            <span className='font-semibold text-foreground'>
+                              ${removePrice.toFixed(2)}
+                            </span>
+                          </span>
+                        )}
                       </div>
-                    ) : (
-                      <VotingPayPalPanel
-                        amountLabel={amountLabel}
-                        paymentButtons={paymentButtons}
-                        paypalOptions={paypalOptions}
-                        paypalButtonsProps={paypalButtonsProps}
-                        checkoutFeedbackMessage={checkoutFeedbackMessage}
-                        checkoutFeedbackClass={checkoutFeedbackClass}
-                        checkoutFeedbackVariant={checkoutFeedbackVariant}
-                        transactionId={transactionId}
-                      />
-                    )
-                  ) : (
-                    <VotingFreePanel
-                      hasCart={hasCart}
-                      isSubmitting={isSubmitting}
-                      limitError={limitError}
-                      onSubmit={handleFreeSubmit}
-                      checkoutFeedbackMessage={checkoutFeedbackMessage}
-                      checkoutFeedbackClass={checkoutFeedbackClass}
-                      checkoutFeedbackVariant={checkoutFeedbackVariant}
-                      transactionId={transactionId}
-                    />
-                  )}
-                </div>
+                      <p className='mt-2 text-xs text-muted-foreground'>
+                        Enter how many votes to add{allowRemovals ? ' or remove' : ''}, then submit your purchase to update totals.
+                      </p>
+                      {limitSummary && (
+                        <p className='mt-2 text-xs text-muted-foreground'>
+                          {limitSummary}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className='flex flex-col gap-3'>
+                      <div className='relative'>
+                        <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
+                        <input
+                          type='search'
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          placeholder='Search participants by name...'
+                          className='w-full rounded-lg border border-border bg-background py-2 pl-10 pr-3 text-sm text-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                        />
+                      </div>
+
+                      <div className='max-h-[50vh] overflow-y-auto rounded-xl border border-dashed border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:max-h-[40vh]'>
+                        {participants.length === 0 ? (
+                          <p className='p-6 text-sm text-muted-foreground'>
+                            No participants available for this event.
+                          </p>
+                        ) : filteredParticipants.length === 0 ? (
+                          <p className='p-6 text-sm text-muted-foreground'>
+                            No participants match your search.
+                          </p>
+                        ) : (
+                          <ul>
+                            {filteredParticipants.map((participant) => {
+                              const userId = participant.userId;
+                              const addCount = selections[userId]?.add ?? 0;
+                              const removeCount = selections[userId]?.remove ?? 0;
+                              const currentVotes = Math.max(0, participant.votes ?? 0);
+                              const remainingAddLimit =
+                                typeof addVoteLimit === 'number'
+                                  ? Math.max(0, addVoteLimit - (totals.add - addCount))
+                                  : null;
+                              const remainingRemoveLimit =
+                                allowRemovals && typeof removeVoteLimit === 'number'
+                                  ? Math.max(
+                                      0,
+                                      removeVoteLimit - (totals.remove - removeCount),
+                                    )
+                                  : null;
+                              const addMax =
+                                typeof remainingAddLimit === 'number'
+                                  ? remainingAddLimit
+                                  : undefined;
+                              const removeMax =
+                                typeof remainingRemoveLimit === 'number'
+                                  ? Math.min(currentVotes, remainingRemoveLimit)
+                                  : currentVotes;
+                              const fullName = getParticipantName(participant);
+                              return (
+                                <li
+                                  key={userId}
+                                  className='flex flex-col gap-4 border-b border-border/60 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between'
+                                >
+                                  <div className='space-y-1'>
+                                    <p className='font-medium text-foreground'>{fullName}</p>
+                                    <p className='text-xs text-muted-foreground'>
+                                      Current votes: {currentVotes}
+                                    </p>
+                                  </div>
+                                  <div className='flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end'>
+                                    {allowRemovals && (
+                                      <VoteAdjuster
+                                        label='Remove'
+                                        count={removeCount}
+                                        price={removePrice}
+                                        onSetCount={(value) =>
+                                          setSelectionValue(userId, 'remove', value, removeMax)
+                                        }
+                                        max={removeMax}
+                                      />
+                                    )}
+                                    <VoteAdjuster
+                                      label='Add'
+                                      count={addCount}
+                                      price={addPrice}
+                                      onSetCount={(value) =>
+                                        setSelectionValue(userId, 'add', value, addMax)
+                                      }
+                                      max={addMax}
+                                    />
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className='space-y-3 rounded-xl border border-border bg-background/70 p-4'>
+                      <SummaryRow label={`Add votes (${totals.add})`} value={totals.addCost} />
+                      {allowRemovals && (
+                        <SummaryRow label={`Remove votes (${totals.remove})`} value={totals.removeCost} />
+                      )}
+                      <div className='flex items-center justify-between border-t border-border pt-3 text-lg font-semibold text-foreground'>
+                        <span>Total price</span>
+                        <span>${totals.totalPrice.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className='rounded-2xl border border-border bg-background/80 p-5 shadow-inner'>
+                      {requiresPayment ? (
+                        !paypalClientId ? (
+                          <div className='flex flex-col items-center gap-3 text-center text-sm text-muted-foreground'>
+                            <ShieldAlert className='h-6 w-6 text-destructive' />
+                            <p>
+                              PayPal is not configured. Set{' '}
+                              <code className='rounded bg-muted px-1 py-0.5 text-[0.8em]'>
+                                NEXT_PUBLIC_PAYPAL_CLIENT_ID
+                              </code>{' '}
+                              and related env vars to enable checkout.
+                            </p>
+                          </div>
+                        ) : (
+                          <VotingPayPalPanel
+                            amountLabel={amountLabel}
+                            paymentButtons={paymentButtons}
+                            paypalOptions={paypalOptions}
+                            paypalButtonsProps={paypalButtonsProps}
+                            checkoutFeedbackMessage={checkoutFeedbackMessage}
+                            checkoutFeedbackClass={checkoutFeedbackClass}
+                            checkoutFeedbackVariant={checkoutFeedbackVariant}
+                            transactionId={transactionId}
+                          />
+                        )
+                      ) : (
+                        <VotingFreePanel
+                          hasCart={hasCart}
+                          isSubmitting={isSubmitting}
+                          limitError={limitError}
+                          onSubmit={handleFreeSubmit}
+                          checkoutFeedbackMessage={checkoutFeedbackMessage}
+                          checkoutFeedbackClass={checkoutFeedbackClass}
+                          checkoutFeedbackVariant={checkoutFeedbackVariant}
+                          transactionId={transactionId}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -24,6 +24,7 @@ type UserRoleCardProps = {
     id: string;
     fullName: string;
     email: string;
+    imageUrl?: string | null;
     role: string | null;
     team: Team | null;
     group: Group | null;
@@ -73,6 +74,7 @@ export function UserRoleCard({
   const [currentRankCategory, setCurrentRankCategory] =
     useState<RankCategory | null>(user.rankCategory);
   const [currentRank, setCurrentRank] = useState<Rank | null>(user.rank);
+  const [isAvatarOpen, setIsAvatarOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [isPending, startTransition] = useTransition();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,6 +102,13 @@ export function UserRoleCard({
       value: currentGroup ?? 'No group assigned',
     },
   ];
+
+  const initials = user.fullName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((value) => value[0]?.toUpperCase())
+    .join('');
 
   useEffect(() => {
     return () => {
@@ -261,11 +270,38 @@ export function UserRoleCard({
     <>
       <article className='rounded-xl border border-border bg-card p-6 shadow-sm backdrop-blur'>
         <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-          <div>
-            <h2 className='text-lg font-semibold text-foreground'>
-              {user.fullName}
-            </h2>
-            <p className='wrap-break-word text-sm text-muted-foreground'>{user.email}</p>
+          <div className='flex items-center gap-4'>
+            <button
+              type='button'
+              onClick={() => {
+                if (user.imageUrl) {
+                  setIsAvatarOpen(true);
+                }
+              }}
+              className='group relative h-12 w-12 overflow-hidden rounded-full border border-border bg-secondary/60 shadow-sm transition hover:border-primary/60'
+              aria-label={`Open ${user.fullName} profile photo`}
+            >
+              {user.imageUrl ? (
+                <img
+                  src={user.imageUrl}
+                  alt={user.fullName}
+                  className='h-full w-full object-cover'
+                />
+              ) : (
+                <span className='flex h-full w-full items-center justify-center text-xs font-semibold text-muted-foreground'>
+                  {initials || '—'}
+                </span>
+              )}
+              <span className='absolute inset-0 bg-black/0 transition group-hover:bg-black/10' />
+            </button>
+            <div>
+              <h2 className='text-lg font-semibold text-foreground'>
+                {user.fullName}
+              </h2>
+              <p className='wrap-break-word text-sm text-muted-foreground'>
+                {user.email}
+              </p>
+            </div>
           </div>
           <div className='rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary'>
             {roleLabel}
@@ -478,6 +514,33 @@ export function UserRoleCard({
           )}
         </details>
       </article>
+
+      {isAvatarOpen && user.imageUrl ? (
+        <div
+          className='fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4'
+          role='dialog'
+          aria-modal='true'
+          onClick={() => setIsAvatarOpen(false)}
+        >
+          <div
+            className='relative max-h-[85vh] max-w-[85vw] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl'
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img
+              src={user.imageUrl}
+              alt={user.fullName}
+              className='h-full w-full object-contain'
+            />
+            <button
+              type='button'
+              onClick={() => setIsAvatarOpen(false)}
+              className='absolute right-3 top-3 rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-semibold text-foreground shadow-sm transition hover:bg-background'
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {toast ? (
         <div className='pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center'>

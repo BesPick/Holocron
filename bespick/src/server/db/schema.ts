@@ -23,6 +23,7 @@ export const announcements = sqliteTable(
     }),
     pollMaxSelections: integer('poll_max_selections', { mode: 'number' }),
     pollClosesAt: integer('poll_closes_at', { mode: 'number' }),
+    pollOriginalClosesAt: integer('poll_original_closes_at', { mode: 'number' }),
     votingParticipantsJson: text('voting_participants_json'),
     votingAddVotePrice: real('voting_add_vote_price'),
     votingRemoveVotePrice: real('voting_remove_vote_price'),
@@ -37,9 +38,17 @@ export const announcements = sqliteTable(
     }),
     votingAllowRemovals: integer('voting_allow_removals', { mode: 'boolean' }),
     votingLeaderboardMode: text('voting_leaderboard_mode'),
+    votingAutoCloseAt: integer('voting_auto_close_at', { mode: 'number' }),
+    votingOriginalAutoCloseAt: integer('voting_original_auto_close_at', {
+      mode: 'number',
+    }),
     formQuestionsJson: text('form_questions_json'),
     formSubmissionLimit: text('form_submission_limit'),
     formPrice: real('form_price'),
+    formAllowAnonymousChoice: integer('form_allow_anonymous_choice', {
+      mode: 'boolean',
+    }),
+    formForceAnonymous: integer('form_force_anonymous', { mode: 'boolean' }),
     fundraiserGoal: real('fundraiser_goal'),
     fundraiserAnonymityMode: text('fundraiser_anonymity_mode'),
     giveawayAllowMultipleEntries: integer('giveaway_allow_multiple_entries', {
@@ -114,6 +123,7 @@ export const formSubmissions = sqliteTable(
     createdAt: integer('created_at', { mode: 'number' }).notNull(),
     paypalOrderId: text('paypal_order_id'),
     paymentAmount: real('payment_amount'),
+    isAnonymous: integer('is_anonymous', { mode: 'boolean' }),
   },
   (table) => ({
     announcementIdx: index('idx_form_submissions_announcement').on(
@@ -350,6 +360,36 @@ export const shiftNotifications = sqliteTable(
   }),
 );
 
+export const shiftSwapRequests = sqliteTable(
+  'shift_swap_requests',
+  {
+    id: text('id').primaryKey(),
+    eventType: text('event_type').notNull(),
+    eventDate: text('event_date').notNull(),
+    requesterId: text('requester_id').notNull(),
+    requesterName: text('requester_name'),
+    recipientId: text('recipient_id').notNull(),
+    recipientName: text('recipient_name'),
+    status: text('status').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    respondedAt: integer('responded_at', { mode: 'number' }),
+  },
+  (table) => ({
+    eventIdx: index('idx_shift_swap_requests_event').on(
+      table.eventDate,
+      table.eventType,
+    ),
+    requesterIdx: index('idx_shift_swap_requests_requester').on(
+      table.requesterId,
+    ),
+    recipientIdx: index('idx_shift_swap_requests_recipient').on(
+      table.recipientId,
+    ),
+    statusIdx: index('idx_shift_swap_requests_status').on(table.status),
+  }),
+);
+
 export type AnnouncementRow = typeof announcements.$inferSelect;
 export type AnnouncementInsert = typeof announcements.$inferInsert;
 export type VotingPurchaseRow = typeof votingPurchases.$inferSelect;
@@ -392,3 +432,5 @@ export type ScheduleEventOverrideHistoryInsert =
   typeof scheduleEventOverrideHistory.$inferInsert;
 export type ShiftNotificationRow = typeof shiftNotifications.$inferSelect;
 export type ShiftNotificationInsert = typeof shiftNotifications.$inferInsert;
+export type ShiftSwapRequestRow = typeof shiftSwapRequests.$inferSelect;
+export type ShiftSwapRequestInsert = typeof shiftSwapRequests.$inferInsert;

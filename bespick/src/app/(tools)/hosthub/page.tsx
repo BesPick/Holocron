@@ -27,6 +27,7 @@ import {
   ensureSecurityShiftAssignmentsForWindow,
   ensureStandupAssignmentsForWindow,
   getBuilding892TeamRoster,
+  getHostHubRoster,
   getEligibleSecurityShiftRoster,
   getEligibleStandupRoster,
   getScheduleRuleConfig,
@@ -37,6 +38,7 @@ import {
   listStandupAssignmentsInRange,
   toDateKey,
 } from '@/server/services/hosthub-schedule';
+import { listShiftSwapRequestsForUser } from '@/server/services/hosthub-shift-swaps';
 
 export const metadata = {
   title: 'HostHub | BESPIN Holocron',
@@ -59,9 +61,35 @@ export default async function HostHubPage() {
   const currentShifts: ShiftEntry[] = [];
   const futureShifts: ShiftEntry[] = [];
   const pastShifts: ShiftEntry[] = [];
-  const building892Weeks: Array<{ id: string; label: string; range: string }> = [];
+  const building892Weeks: Array<{
+    id: string;
+    label: string;
+    range: string;
+    weekStart: string;
+  }> = [];
   let currentTeamLabel: string | null = null;
   const todayKey = toDateKey(now);
+  const roster = user ? await getHostHubRoster() : [];
+  const isShiftTimePast = (timeLabel: string) => {
+    if (!timeLabel || timeLabel === 'TBD') return false;
+    const [startRaw, endRaw] = timeLabel.split('-').map((value) => value.trim());
+    const endValue = endRaw || startRaw;
+    const match = endValue.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return false;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return false;
+    const endAt = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hours,
+      minutes,
+      0,
+      0,
+    );
+    return now >= endAt;
+  };
 
   if (user) {
     const eligibleRoster = await getEligibleDemoDayRoster();
@@ -179,6 +207,7 @@ export default async function HostHubPage() {
           range: `${formatShortDateLabel(weekStart)} - ${formatShortDateLabel(
             weekEnd,
           )}`,
+          weekStart: entry.weekStart,
         });
       });
     }
@@ -193,20 +222,19 @@ export default async function HostHubPage() {
     while (cursor <= endDate) {
       const dateLabel = formatShortDateLabel(cursor);
       const dateKey = toDateKey(cursor);
-      const isPast = dateKey < todayKey;
       const isCurrentMonth =
         cursor.getFullYear() === currentYear &&
         cursor.getMonth() === currentMonth;
       const isNextMonth =
         cursor.getFullYear() === nextYear &&
         cursor.getMonth() === nextMonth;
-      const targetShifts = isPast
-        ? pastShifts
-        : isCurrentMonth
-          ? currentShifts
-          : isNextMonth
-            ? futureShifts
-            : futureShifts;
+      const resolveShiftBucket = (timeLabel: string) => {
+        if (dateKey < todayKey) return pastShifts;
+        if (dateKey > todayKey) {
+          return isCurrentMonth ? currentShifts : isNextMonth ? futureShifts : futureShifts;
+        }
+        return isShiftTimePast(timeLabel) ? pastShifts : currentShifts;
+      };
 
       const standupAssignment = standupAssignmentsByDate.get(dateKey);
       const standupOverride = overridesByKey.get(
@@ -220,7 +248,7 @@ export default async function HostHubPage() {
       );
       const standupCanceled = standupOverride?.isCanceled ?? false;
       if (standupUserId === user.id) {
-        targetShifts.push({
+        resolveShiftBucket(standupTime).push({
           id: `standup-${dateKey}`,
           date: dateLabel,
           time: standupTime,
@@ -228,6 +256,8 @@ export default async function HostHubPage() {
             ? 'Standup • Canceled'
             : 'Standup • Assigned to you',
           resources: STANDUP_RESOURCES,
+          eventType: 'standup',
+          eventDate: dateKey,
         });
       }
 
@@ -246,7 +276,7 @@ export default async function HostHubPage() {
           );
           const canceled = override?.isCanceled ?? false;
           if (securityUserId === user.id) {
-            targetShifts.push({
+            resolveShiftBucket(time).push({
               id: securityId,
               date: dateLabel,
               time,
@@ -254,6 +284,8 @@ export default async function HostHubPage() {
                 ? `Security Shift (${window.label}) • Canceled`
                 : `Security Shift (${window.label}) • Assigned to you`,
               resources: SECURITY_SHIFT_RESOURCES,
+              eventType,
+              eventDate: dateKey,
             });
           }
         });
@@ -273,7 +305,7 @@ export default async function HostHubPage() {
           );
           const demoCanceled = movedDemoOverride?.isCanceled ?? false;
           if (demoUserId === user.id) {
-            targetShifts.push({
+            resolveShiftBucket(demoTime).push({
               id: `demo-${movedDemoOverride.date}`,
               date: dateLabel,
               time: demoTime,
@@ -281,6 +313,8 @@ export default async function HostHubPage() {
                 ? 'Demo Day • Canceled'
                 : 'Demo Day • Assigned to you',
               resources: DEMO_DAY_RESOURCES,
+              eventType: 'demo',
+              eventDate: movedDemoOverride.date,
             });
           }
         });
@@ -299,7 +333,7 @@ export default async function HostHubPage() {
         );
         const demoCanceled = demoOverride?.isCanceled ?? false;
         if (demoUserId === user.id) {
-          targetShifts.push({
+          resolveShiftBucket(demoTime).push({
             id: `demo-${dateKey}`,
             date: dateLabel,
             time: demoTime,
@@ -307,6 +341,8 @@ export default async function HostHubPage() {
               ? 'Demo Day • Canceled'
               : 'Demo Day • Assigned to you',
             resources: DEMO_DAY_RESOURCES,
+            eventType: 'demo',
+            eventDate: dateKey,
           });
         }
       }
@@ -314,6 +350,15 @@ export default async function HostHubPage() {
       cursor.setDate(cursor.getDate() + 1);
     }
   }
+
+  const swapRequests =
+    user
+      ? await listShiftSwapRequestsForUser({
+          userId: user.id,
+          startDate,
+          endDate,
+        })
+      : [];
 
   return (
     <section className='page-shell space-y-10'>
@@ -325,13 +370,16 @@ export default async function HostHubPage() {
       ) : (
         <>
           <HostHubAutoRefresh />
-        <MyScheduleList
-          currentShifts={currentShifts}
-          futureShifts={futureShifts}
-          pastShifts={pastShifts}
-          building892Weeks={building892Weeks}
-          currentTeamLabel={currentTeamLabel}
-        />
+          <MyScheduleList
+            currentShifts={currentShifts}
+            futureShifts={futureShifts}
+            pastShifts={pastShifts}
+            building892Weeks={building892Weeks}
+            currentTeamLabel={currentTeamLabel}
+            roster={roster}
+            swapRequests={swapRequests}
+            currentUserId={user?.id ?? null}
+          />
         </>
       )}
     </section>

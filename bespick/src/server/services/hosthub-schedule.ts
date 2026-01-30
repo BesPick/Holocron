@@ -5,6 +5,7 @@ import { db } from '@/server/db/client';
 import {
   building892Assignments,
   demoDayAssignments,
+  scheduleEventOverrideHistory,
   scheduleEventOverrides,
   scheduleRefresh,
   scheduleRules,
@@ -1868,6 +1869,36 @@ export async function listBuilding892AssignmentsInRange({
     team: row.team,
     assignedAt: row.assignedAt,
   }));
+}
+
+export async function listScheduleEventHistoryKeysInRange({
+  startDate,
+  endDate,
+}: {
+  startDate: Date;
+  endDate: Date;
+}): Promise<string[]> {
+  const startKey = toDateKey(startDate);
+  const endKey = toDateKey(endDate);
+  const rows = await db
+    .select({
+      eventType: scheduleEventOverrideHistory.eventType,
+      date: scheduleEventOverrideHistory.date,
+    })
+    .from(scheduleEventOverrideHistory)
+    .where(
+      and(
+        gte(scheduleEventOverrideHistory.date, startKey),
+        lte(scheduleEventOverrideHistory.date, endKey),
+      ),
+    );
+  const keys = new Set<string>();
+  rows.forEach((row) => {
+    if (row.eventType && row.date) {
+      keys.add(`${row.eventType}-${row.date}`);
+    }
+  });
+  return Array.from(keys);
 }
 
 export async function listSecurityShiftAssignmentsInRange({
