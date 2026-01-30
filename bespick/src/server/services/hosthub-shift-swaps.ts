@@ -237,11 +237,14 @@ export const createShiftSwapRequest = async ({
     return { success: false, message: 'Invalid shift date.' };
   }
   const now = new Date();
-  if (
-    eventDateValue.getFullYear() !== now.getFullYear() ||
-    eventDateValue.getMonth() !== now.getMonth()
-  ) {
-    return { success: false, message: 'Swaps are only allowed this month.' };
+  const todayKey = formatDateKey(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+  );
+  if (eventDate < todayKey) {
+    return {
+      success: false,
+      message: 'Swaps are only allowed for upcoming shifts.',
+    };
   }
 
   const assigneeId = await getCurrentAssigneeId({ eventType, eventDate });
@@ -333,11 +336,14 @@ export const respondToShiftSwapRequest = async ({
   if (!eventDateValue) {
     return { success: false, message: 'Invalid shift date.' };
   }
-  if (
-    eventDateValue.getFullYear() !== now.getFullYear() ||
-    eventDateValue.getMonth() !== now.getMonth()
-  ) {
-    return { success: false, message: 'Swaps are only allowed this month.' };
+  const todayKey = formatDateKey(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+  );
+  if (existing.eventDate < todayKey) {
+    return {
+      success: false,
+      message: 'Swaps are only allowed for upcoming shifts.',
+    };
   }
 
   if (!isHostHubEventType(existing.eventType)) {

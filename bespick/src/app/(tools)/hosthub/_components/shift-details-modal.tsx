@@ -42,18 +42,6 @@ export function ShiftDetailsModal({
       ) ?? null,
     [swapRequests, shift.eventType, shift.eventDate, currentUserId],
   );
-  const isCurrentMonth = useMemo(() => {
-    const parts = shift.eventDate.split('-').map(Number);
-    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
-      return false;
-    }
-    const date = new Date(parts[0], parts[1] - 1, parts[2]);
-    const now = new Date();
-    return (
-      date.getFullYear() === now.getFullYear() &&
-      date.getMonth() === now.getMonth()
-    );
-  }, [shift.eventDate]);
   const isPastShift = useMemo(() => {
     const parts = shift.eventDate.split('-').map(Number);
     if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
@@ -170,7 +158,7 @@ export function ShiftDetailsModal({
           )}
         </div>
 
-        {isCurrentMonth && !isPastShift && shift.eventType !== 'building-892' ? (
+        {!isPastShift && shift.eventType !== 'building-892' ? (
           <div className='mt-6'>
             <h4 className='text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground'>
               Shift swap
